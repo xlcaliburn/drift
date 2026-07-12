@@ -12,8 +12,12 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
   const [choices, setChoices] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // Live narration while a turn streams in. null = not streaming; "" = streaming
+  // but no text yet (waiting on first token). Committed to `chat` on done.
+  const [streamingText, setStreamingText] = useState<string | null>(null);
   const [hasApiKey, setHasApiKey] = useState(true);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showSheet, setShowSheet] = useState(false); // mobile sidebar drawer
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackState, setFeedbackState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -53,7 +57,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat, choices]);
+  }, [chat, choices, streamingText]);
 
   async function send(actionText?: string) {
     const text = (actionText ?? input).trim();
@@ -62,26 +66,74 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
     setChoices([]);
     setChat((c) => [...c, { role: "player", text }]);
     setBusy(true);
+    setStreamingText("");
+    let streamed = "";
     try {
       const res = await fetch("/api/turn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaignId, playerText: text }),
       });
-      const data = await res.json();
-      if (data.error) {
-        setChat((c) => [...c, { role: "system", text: `⚠ ${data.error}` }]);
-      } else {
-        setChat((c) => [...c, { role: "dm", text: data.narration || "…" }]);
-        setState(data.state);
-        setChoices(Array.isArray(data.choices) ? data.choices : []);
-        if (data.sceneEnded) {
-          setChat((c) => [...c, { role: "system", text: "— scene ended · checklist applied —" }]);
+
+      // Gating errors (budget/auth/not-found) come back as plain JSON, not a stream.
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        setChat((c) => [...c, { role: "system", text: `⚠ ${data.error ?? "request failed"}` }]);
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finished = false;
+      while (!finished) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? ""; // keep the trailing partial frame
+        for (const frame of frames) {
+          const dataLine = frame.split("\n").find((l) => l.startsWith("data:"));
+          if (!dataLine) continue;
+          let evt: {
+            type: string;
+            text?: string;
+            error?: string;
+            narration?: string;
+            state?: CampaignState;
+            choices?: string[];
+            sceneEnded?: boolean;
+          };
+          try {
+            evt = JSON.parse(dataLine.slice(5).trim());
+          } catch {
+            continue;
+          }
+          if (evt.type === "token") {
+            streamed += evt.text ?? "";
+            setStreamingText(streamed);
+          } else if (evt.type === "done") {
+            setChat((c) => [...c, { role: "dm", text: evt.narration || streamed || "…" }]);
+            if (evt.state) setState(evt.state);
+            setChoices(Array.isArray(evt.choices) ? evt.choices : []);
+            if (evt.sceneEnded) {
+              setChat((c) => [...c, { role: "system", text: "— scene ended · checklist applied —" }]);
+            }
+            finished = true;
+          } else if (evt.type === "error") {
+            setChat((c) => [...c, { role: "system", text: `⚠ ${evt.error ?? "narration failed"}` }]);
+            finished = true;
+          }
         }
+      }
+      // Stream closed without a done/error frame (e.g. dropped connection).
+      if (!finished && streamed) {
+        setChat((c) => [...c, { role: "dm", text: streamed }]);
       }
     } catch {
       setChat((c) => [...c, { role: "system", text: "⚠ request failed" }]);
     } finally {
+      setStreamingText(null);
       setBusy(false);
     }
   }
@@ -114,20 +166,31 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
   }
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-edge px-5 py-3">
-        <span className="text-lg font-bold text-accent">DRIFT</span>
-        <span className="text-sm text-neutral-400">
-          {state?.campaign.name} · {state?.locations.find((l) => l.id === state.campaign.currentLocationId)?.name}
+    <div className="flex h-[100dvh] flex-col">
+      <header className="flex items-center gap-2 border-b border-edge px-3 py-2.5 sm:px-5 sm:py-3">
+        <span className="shrink-0 text-lg font-bold text-accent">DRIFT</span>
+        <span className="min-w-0 flex-1 truncate text-center text-xs text-neutral-400 sm:text-sm">
+          {state?.campaign.name}
+          {state?.campaign.currentLocationId &&
+            ` · ${state?.locations.find((l) => l.id === state.campaign.currentLocationId)?.name ?? ""}`}
         </span>
-        <div className="flex items-center gap-3">
-          {!hasApiKey && <span className="text-sm text-bad">narration disabled</span>}
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+          {!hasApiKey && <span className="hidden text-sm text-bad sm:inline">narration disabled</span>}
           <button
             onClick={() => setShowFeedback(true)}
-            className="rounded-md border border-edge px-3 py-1 text-xs text-neutral-400 transition hover:border-accent hover:text-accent"
+            className="rounded-md border border-edge px-2.5 py-1.5 text-xs text-neutral-400 transition hover:border-accent hover:text-accent"
           >
-            💡 Request
+            💡<span className="hidden sm:inline"> Request</span>
           </button>
+          {/* Mobile-only: open the character sheet/ship/map/clocks drawer. */}
+          {state && (
+            <button
+              onClick={() => setShowSheet(true)}
+              className="rounded-md border border-edge px-2.5 py-1.5 text-xs text-neutral-300 transition hover:border-accent hover:text-accent md:hidden"
+            >
+              ☰<span className="sr-only"> Character sheet</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -197,7 +260,19 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                 </div>
               ),
             )}
-            {busy && <div className="text-sm italic text-neutral-500">the world turns…</div>}
+            {/* Live narration as it streams in. */}
+            {streamingText !== null && streamingText.length > 0 && (
+              <div>
+                <div className="inline-block max-w-[85%] whitespace-pre-wrap rounded-2xl bg-panel px-4 py-3 text-[17px] leading-relaxed text-neutral-100">
+                  {streamingText}
+                  <span className="ml-0.5 inline-block animate-pulse text-accent">▍</span>
+                </div>
+              </div>
+            )}
+            {/* Waiting on the first token. */}
+            {busy && (streamingText === null || streamingText.length === 0) && (
+              <div className="text-sm italic text-neutral-500">the world turns…</div>
+            )}
             <div ref={chatEndRef} />
           </div>
 
@@ -243,8 +318,8 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
           </div>
         </section>
 
-        {/* Sidebar */}
-        {state && <Sidebar state={state} />}
+        {/* Sidebar — right rail on desktop, slide-over drawer on mobile */}
+        {state && <Sidebar state={state} mobileOpen={showSheet} onClose={() => setShowSheet(false)} />}
       </div>
     </div>
   );

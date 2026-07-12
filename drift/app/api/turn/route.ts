@@ -60,80 +60,103 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  try {
-    const result = await runTurn({
-      state: session.state,
-      history: session.history,
-      playerText,
-      focusIds: session.focusIds,
-      cinematic,
-    });
+  // All gating passed → stream the turn as Server-Sent Events. The narrator
+  // forwards narration deltas as they generate ("token" events); when the tool
+  // loop finishes we persist + audit + meter, then emit the authoritative "done"
+  // payload (state, events, choices, …) and close. Errors mid-turn become an
+  // "error" event rather than a broken response.
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (obj: unknown) =>
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
 
-    const transcriptAdds = [
-      { role: "player" as const, text: playerText },
-      { role: "dm" as const, text: result.narration || "…" },
-      ...(result.sceneEnded
-        ? [{ role: "system" as const, text: "— scene ended · checklist applied —" }]
-        : []),
-    ];
+      try {
+        const result = await runTurn({
+          state: session.state,
+          history: session.history,
+          playerText,
+          focusIds: session.focusIds,
+          cinematic,
+          onDelta: (text) => send({ type: "token", text }),
+        });
 
-    setSession(campaignId, {
-      ...session,
-      state: result.state,
-      // Keep the last ~10 exchanges verbatim; older context is carried by scene
-      // summaries (M7). Smaller window = fewer input tokens every turn.
-      history: [...session.history, ...result.newMessages].slice(-20),
-      // Full display transcript is kept so a browser refresh rehydrates the chat.
-      transcript: [...session.transcript, ...transcriptAdds].slice(-400),
-      log: [...session.log, ...result.events].slice(-500),
-      focusIds: session.focusIds,
-    });
+        const transcriptAdds = [
+          { role: "player" as const, text: playerText },
+          { role: "dm" as const, text: result.narration || "…" },
+          ...(result.sceneEnded
+            ? [{ role: "system" as const, text: "— scene ended · checklist applied —" }]
+            : []),
+        ];
 
-    // Persist durable state (HP, credits, rep, clocks, threads) to Supabase.
-    await persistSession(campaignId, result.state);
+        setSession(campaignId, {
+          ...session,
+          state: result.state,
+          // Keep the last ~10 exchanges verbatim; older context is carried by scene
+          // summaries (M7). Smaller window = fewer input tokens every turn.
+          history: [...session.history, ...result.newMessages].slice(-20),
+          // Full display transcript is kept so a browser refresh rehydrates the chat.
+          transcript: [...session.transcript, ...transcriptAdds].slice(-400),
+          log: [...session.log, ...result.events].slice(-500),
+          focusIds: session.focusIds,
+        });
 
-    // Audit every call (dev included; dev logs with a null user id). Best-effort.
-    await recordAiCall({
-      userId: isDevUser(auth.user) ? null : auth.user.id,
-      campaignId,
-      kind: "turn",
-      model: result.model,
-      latencyMs: result.telemetry.latencyMs,
-      usage: result.usage,
-      rounds: result.telemetry.rounds,
-      toolCalls: result.telemetry.toolCalls,
-      stopReason: result.telemetry.stopReason,
-      fellBack: result.telemetry.fellBack,
-      systemChars: result.telemetry.systemChars,
-      prompt: playerText,
-      response: result.narration,
-    });
+        // Persist durable state (HP, credits, rep, clocks, threads) to Supabase.
+        await persistSession(campaignId, result.state);
 
-    // Meter the spend (best-effort; never blocks the response).
-    if (!isDevUser(auth.user)) {
-      await recordTurnUsage({
-        userId: auth.user.id,
-        campaignId,
-        model: result.model,
-        usage: result.usage,
-      });
-    }
+        // Audit every call (dev included; dev logs with a null user id). Best-effort.
+        await recordAiCall({
+          userId: isDevUser(auth.user) ? null : auth.user.id,
+          campaignId,
+          kind: "turn",
+          model: result.model,
+          latencyMs: result.telemetry.latencyMs,
+          usage: result.usage,
+          rounds: result.telemetry.rounds,
+          toolCalls: result.telemetry.toolCalls,
+          stopReason: result.telemetry.stopReason,
+          fellBack: result.telemetry.fellBack,
+          systemChars: result.telemetry.systemChars,
+          prompt: playerText,
+          response: result.narration,
+        });
 
-    return NextResponse.json({
-      narration: result.narration,
-      events: result.events,
-      state: result.state,
-      worldEvents: result.worldEvents,
-      choices: result.choices,
-      sceneEnded: result.sceneEnded,
-      model: result.model,
-      usage: result.usage,
-    });
-  } catch (err) {
-    console.error("turn error", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "narration failed" },
-      { status: 500 },
-    );
-  }
+        // Meter the spend (best-effort; never blocks the response).
+        if (!isDevUser(auth.user)) {
+          await recordTurnUsage({
+            userId: auth.user.id,
+            campaignId,
+            model: result.model,
+            usage: result.usage,
+          });
+        }
+
+        send({
+          type: "done",
+          narration: result.narration,
+          events: result.events,
+          state: result.state,
+          worldEvents: result.worldEvents,
+          choices: result.choices,
+          sceneEnded: result.sceneEnded,
+          model: result.model,
+          usage: result.usage,
+        });
+      } catch (err) {
+        console.error("turn error", err);
+        send({ type: "error", error: err instanceof Error ? err.message : "narration failed" });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

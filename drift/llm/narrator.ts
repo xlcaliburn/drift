@@ -5,7 +5,7 @@ import { liveRng, type EngineEvent } from "@/engine";
 import { tools } from "./tools";
 import { buildSystem, buildContextSlice } from "./promptBuilder";
 import { TurnRuntime } from "./engineBridge";
-import { deepseekChat, deepseekAvailable, isDeepSeekModel, resolveModel } from "./deepseek";
+import { deepseekChat, deepseekChatStream, deepseekAvailable, isDeepSeekModel, resolveModel } from "./deepseek";
 
 export interface TurnInput {
   state: CampaignState;
@@ -19,6 +19,9 @@ export interface TurnInput {
   model?: string;
   rng?: RNG;
   apiKey?: string;
+  /** When set, narration text is streamed here delta-by-delta as it generates
+   *  (both providers). The final joined narration still comes back in the result. */
+  onDelta?: (text: string) => void;
 }
 
 export interface TurnResult {
@@ -164,9 +167,12 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
   async function callRound(
     m: string,
     viaDeepSeek: boolean,
+    onDelta?: (text: string) => void,
   ): Promise<{ respContent: Anthropic.ContentBlockParam[]; stopReason: string }> {
     if (viaDeepSeek) {
-      const resp = await deepseekChat({ model: m, maxTokens, system, tools, messages });
+      const resp = onDelta
+        ? await deepseekChatStream({ model: m, maxTokens, system, tools, messages, onDelta })
+        : await deepseekChat({ model: m, maxTokens, system, tools, messages });
       usage.inputTokens += resp.usage.input_tokens;
       usage.outputTokens += resp.usage.output_tokens;
       usage.cacheReadTokens += resp.usage.cache_read_input_tokens;
@@ -174,6 +180,16 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
     }
     anthropic ??= new Anthropic({ apiKey: input.apiKey ?? process.env.ANTHROPIC_API_KEY });
     setMessageCacheBreakpoint(messages);
+    if (onDelta) {
+      const stream = anthropic.messages.stream({ model: m, max_tokens: maxTokens, system, tools, messages });
+      stream.on("text", (t) => onDelta(t));
+      const msg = await stream.finalMessage();
+      usage.inputTokens += msg.usage.input_tokens;
+      usage.outputTokens += msg.usage.output_tokens;
+      usage.cacheReadTokens += msg.usage.cache_read_input_tokens ?? 0;
+      usage.cacheWriteTokens += msg.usage.cache_creation_input_tokens ?? 0;
+      return { respContent: msg.content, stopReason: msg.stop_reason ?? "end_turn" };
+    }
     const resp = await anthropic.messages.create({ model: m, max_tokens: maxTokens, system, tools, messages });
     usage.inputTokens += resp.usage.input_tokens;
     usage.outputTokens += resp.usage.output_tokens;
@@ -186,12 +202,24 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
     let respContent: Anthropic.ContentBlockParam[];
     let stopReason: string;
 
+    // Wrap the caller's onDelta so we know if any text was streamed this round —
+    // once deltas are out we can't cleanly fall back (it would double-narrate).
+    let roundEmitted = false;
+    const roundDelta = input.onDelta
+      ? (t: string) => {
+          roundEmitted = true;
+          input.onDelta!(t);
+        }
+      : undefined;
+
     try {
-      ({ respContent, stopReason } = await callRound(activeModel, activeDeepSeek));
+      ({ respContent, stopReason } = await callRound(activeModel, activeDeepSeek, roundDelta));
     } catch (err) {
       // Runtime failure on the cheap provider (e.g. DeepSeek 402). Fall back to
-      // Haiku once if an Anthropic key exists, then let the loop continue.
-      const canFallBack = !fellBack && activeDeepSeek && Boolean(process.env.ANTHROPIC_API_KEY);
+      // Haiku once if an Anthropic key exists AND nothing was streamed yet, then
+      // let the loop continue.
+      const canFallBack =
+        !fellBack && activeDeepSeek && Boolean(process.env.ANTHROPIC_API_KEY) && !roundEmitted;
       if (!canFallBack) throw err;
       console.error(
         `[narrator] ${activeModel} failed, falling back to Haiku:`,
@@ -200,7 +228,7 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
       fellBack = true;
       activeModel = "claude-haiku-4-5-20251001";
       activeDeepSeek = false;
-      ({ respContent, stopReason } = await callRound(activeModel, activeDeepSeek));
+      ({ respContent, stopReason } = await callRound(activeModel, activeDeepSeek, roundDelta));
     }
     rounds++;
     lastStopReason = stopReason;

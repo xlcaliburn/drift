@@ -12,9 +12,13 @@ import { estimateCostUsd, type TokenUsage } from "@/lib/pricing";
  *   2. An insert into ai_calls when Supabase is configured.
  */
 
-/** How much of the prompt/response we retain. Enough to debug length/latency
- *  without storing whole transcripts. */
+/**
+ * Capture full prompts/responses by default (storage isn't a concern yet and the
+ * audit log is admin-only). Set AI_AUDIT_TRUNCATE=1 to cap each field at
+ * AUDIT_PREVIEW_CHARS instead — the knob is kept for when volume grows.
+ */
 export const AUDIT_PREVIEW_CHARS = 2000;
+export const AUDIT_TRUNCATE = process.env.AI_AUDIT_TRUNCATE === "1";
 
 export type AiCallKind = "turn" | "creation" | "summary";
 
@@ -40,8 +44,10 @@ export interface AiCallEntry {
   error?: string;
 }
 
-function truncate(s: string | undefined, n = AUDIT_PREVIEW_CHARS): string | undefined {
+/** Full text by default; truncated only when AI_AUDIT_TRUNCATE=1. */
+function capture(s: string | undefined, n = AUDIT_PREVIEW_CHARS): string | undefined {
   if (s == null) return undefined;
+  if (!AUDIT_TRUNCATE) return s;
   return s.length > n ? `${s.slice(0, n)}…[+${s.length - n} chars]` : s;
 }
 
@@ -81,8 +87,8 @@ export async function recordAiCall(entry: AiCallEntry): Promise<void> {
       stop_reason: entry.stopReason ?? null,
       fell_back: entry.fellBack ?? false,
       system_chars: entry.systemChars ?? null,
-      prompt_preview: truncate(entry.prompt) ?? null,
-      response_preview: truncate(entry.response) ?? null,
+      prompt_preview: capture(entry.prompt) ?? null,
+      response_preview: capture(entry.response) ?? null,
       error: entry.error ?? null,
     });
     if (error) console.error("recordAiCall failed", error);

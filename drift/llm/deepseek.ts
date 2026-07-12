@@ -221,3 +221,121 @@ export async function deepseekChat(params: {
     },
   };
 }
+
+// ── Streaming call ───────────────────────────────────────────────────────────
+
+interface OAToolCallDelta {
+  index?: number;
+  id?: string;
+  function?: { name?: string; arguments?: string };
+}
+
+/**
+ * Streaming twin of deepseekChat over the OpenAI-compatible SSE protocol. Text
+ * deltas are forwarded to onDelta as they arrive (so the UI can render the
+ * narration progressively); tool-call fragments are accumulated by index and
+ * the final NormalizedResponse is identical in shape to the non-streaming path.
+ */
+export async function deepseekChatStream(params: {
+  model: string;
+  maxTokens: number;
+  system: Anthropic.TextBlockParam[];
+  tools?: Anthropic.Tool[];
+  messages: Anthropic.MessageParam[];
+  onDelta?: (text: string) => void;
+}): Promise<NormalizedResponse> {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) throw new Error("DEEPSEEK_API_KEY is not set");
+  const baseUrl = process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com";
+
+  const body: Record<string, unknown> = {
+    model: params.model,
+    max_tokens: params.maxTokens,
+    stream: true,
+    stream_options: { include_usage: true },
+    messages: [
+      { role: "system", content: systemToString(params.system) },
+      ...messagesToOpenAI(params.messages),
+    ],
+  };
+  if (params.tools?.length) body.tools = toolsToOpenAI(params.tools);
+
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`DeepSeek ${res.status}: ${detail.slice(0, 300)}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let text = "";
+  let finishReason = "";
+  const toolAcc = new Map<number, { id: string; name: string; args: string }>();
+  let usage = { prompt_tokens: 0, completion_tokens: 0, prompt_cache_hit_tokens: 0 };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? ""; // keep the trailing partial line for next chunk
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (payload === "[DONE]") continue;
+      let chunk: {
+        choices?: Array<{
+          delta?: { content?: string | null; tool_calls?: OAToolCallDelta[] };
+          finish_reason?: string | null;
+        }>;
+        usage?: typeof usage;
+      };
+      try {
+        chunk = JSON.parse(payload);
+      } catch {
+        continue; // skip a malformed/partial event
+      }
+      const choice = chunk.choices?.[0];
+      const content = choice?.delta?.content;
+      if (content) {
+        text += content;
+        params.onDelta?.(content);
+      }
+      for (const tc of choice?.delta?.tool_calls ?? []) {
+        const idx = tc.index ?? 0;
+        const cur = toolAcc.get(idx) ?? { id: "", name: "", args: "" };
+        if (tc.id) cur.id = tc.id;
+        if (tc.function?.name) cur.name = tc.function.name;
+        if (tc.function?.arguments) cur.args += tc.function.arguments;
+        toolAcc.set(idx, cur);
+      }
+      if (choice?.finish_reason) finishReason = choice.finish_reason;
+      if (chunk.usage) usage = chunk.usage;
+    }
+  }
+
+  const content: NormalizedResponse["content"] = [];
+  if (text) content.push({ type: "text", text });
+  for (const [, tc] of [...toolAcc.entries()].sort((a, b) => a[0] - b[0])) {
+    content.push({ type: "tool_use", id: tc.id, name: tc.name, input: safeParseArgs(tc.args) });
+  }
+
+  const stop_reason: NormalizedResponse["stop_reason"] =
+    finishReason === "tool_calls" ? "tool_use" : finishReason === "length" ? "max_tokens" : "end_turn";
+
+  return {
+    content,
+    stop_reason,
+    usage: {
+      input_tokens: usage.prompt_tokens ?? 0,
+      output_tokens: usage.completion_tokens ?? 0,
+      cache_read_input_tokens: usage.prompt_cache_hit_tokens ?? 0,
+    },
+  };
+}
