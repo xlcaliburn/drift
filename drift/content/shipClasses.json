@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "note": "Ship class sets how the tier budget is spent. AC/HP ranges and default loadout by class.",
+  "classes": {
+    "scout": {
+      "label": "Scout",
+      "acRange": [15, 16],
+      "hpRange": [12, 15],
+      "weapon": { "type": "kinetic", "damage": "2d6" },
+      "defenses": ["evasion"],
+      "moraleDc": 10,
+      "profile": "High evasion, LOW HP, light kinetic, sensors, often flees. Counter: energy/missiles"
+    },
+    "fighter": {
+      "label": "Fighter",
+      "acRange": [14, 15],
+      "hpRange": [15, 18],
+      "weapon": { "type": "kinetic", "damage": "2d8" },
+      "defenses": ["evasion"],
+      "profile": "Balanced"
+    },
+    "hauler": {
+      "label": "Hauler",
+      "acRange": [11, 12],
+      "hpRange": [20, 30],
+      "weapon": { "type": "kinetic", "damage": "2d6" },
+      "defenses": ["armor"],
+      "profile": "Limited hardpoints, cargo. (Lark base class)"
+    },
+    "gunship": {
+      "label": "Gunship",
+      "acRange": [13, 13],
+      "hpRange": [25, 35],
+      "weapon": { "type": "kinetic", "damage": "2d8" },
+      "defenses": ["shields"],
+      "tier": "T2-elite/T3",
+      "profile": "Mixed weapons + shield"
+    },
+    "corvette": {
+      "label": "Corvette (warship)",
+      "acRange": [13, 14],
+      "hpRange": [40, 60],
+      "weapon": { "type": "kinetic", "damage": "2d10" },
+      "defenses": ["shields", "pd"],
+      "multiAttack": true,
+      "tier": "T3 boss only",
+      "profile": "2d10 batteries, shields + PD, multi-attack"
+    }
+  }
+}

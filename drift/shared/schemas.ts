@@ -1,0 +1,314 @@
+import { z } from "zod";
+
+/**
+ * Single source of truth for DRIFT game state.
+ *
+ * Design notes:
+ * - Attributes are stored as MODIFIERS (Reflex 18 -> +4). Party members in the
+ *   save file are already given as modifiers; PCs get their scores reduced to
+ *   modifiers at import time so the engine treats everyone uniformly.
+ * - `actionModifiers` holds the precomputed Quick Reference Card numbers. The
+ *   save file says "use these, don't recalculate" — so when present, the engine
+ *   treats them as authoritative and does NOT re-derive from attribute+level.
+ *   Skills without a precomputed entry fall back to attribute mod + skill level.
+ */
+
+export const AttributeKey = z.enum([
+  "might",
+  "reflex",
+  "vitality",
+  "intellect",
+  "perception",
+  "presence",
+]);
+export type AttributeKey = z.infer<typeof AttributeKey>;
+
+export const Attributes = z.object({
+  might: z.number().int(),
+  reflex: z.number().int(),
+  vitality: z.number().int(),
+  intellect: z.number().int(),
+  perception: z.number().int(),
+  presence: z.number().int(),
+});
+export type Attributes = z.infer<typeof Attributes>;
+
+export const Skill = z.object({
+  name: z.string(),
+  level: z.number().int().min(0),
+  ticks: z.number().int().min(0),
+});
+export type Skill = z.infer<typeof Skill>;
+
+export const Injury = z.object({
+  name: z.string(),
+  effect: z.string().optional(),
+});
+
+export const GearItem = z.object({
+  name: z.string(),
+  detail: z.string().optional(),
+  damage: z.string().optional(),
+  rounds: z.number().int().optional(),
+  acBonus: z.number().int().optional(),
+});
+
+/**
+ * A player-authored signature ability. Two shapes, both with balance caps:
+ * - passive: a small always-on buff (skill +1/+2, or one attribute +1)
+ * - trigger: in a narrow, GM-adjudicated scenario, a check resolves as a
+ *   natural 20 (auto-crit). Limited by usesPerScene.
+ */
+export const UniqueSkill = z.object({
+  name: z.string(),
+  description: z.string(),
+  kind: z.enum(["passive", "trigger"]),
+  // passive
+  passiveTargetType: z.enum(["skill", "attribute"]).optional(),
+  passiveTarget: z.string().optional(),
+  passiveAmount: z.number().int().min(1).max(2).optional(),
+  // trigger
+  triggerScenario: z.string().optional(),
+  triggerEffect: z.literal("auto_crit").optional(),
+  usesPerScene: z.number().int().min(1).max(3).default(1),
+});
+export type UniqueSkill = z.infer<typeof UniqueSkill>;
+
+export const CharacterKind = z.enum(["pc", "party"]);
+
+export const Character = z.object({
+  id: z.string(),
+  campaignId: z.string(),
+  kind: CharacterKind,
+  name: z.string(),
+  attributes: Attributes,
+  hp: z.number().int(),
+  maxHp: z.number().int().positive(),
+  ac: z.number().int(),
+  slots: z.number().int().optional(),
+  maxSlots: z.number().int().optional(),
+  stims: z.number().int().min(0).default(0),
+  credits: z.number().int().optional(),
+  loyalty: z.number().int().min(0).max(5).optional(),
+  /** Vitality-based death save penalty is derived from attributes.vitality; this
+   *  flag documents fragile crew (e.g. Josen at -4) for the UI. */
+  fragile: z.boolean().default(false),
+  skills: z.array(Skill),
+  /** Precomputed QRC roll modifiers keyed by action label, e.g. "gunneryShip". */
+  actionModifiers: z.record(z.string(), z.number().int()).default({}),
+  backstory: z.string().optional(),
+  drives: z.string().optional(),
+  gear: z.array(GearItem).default([]),
+  injuries: z.array(Injury).default([]),
+
+  // ── Multiplayer / character-creation metadata (optional; absent on legacy PCs) ──
+  /** Which faction the character starts embedded in. */
+  parentFactionId: z.string().optional(),
+  /** Loyalty to the parent faction; drops toward the break-away beat. */
+  loyaltyToParent: z.number().int().min(0).max(5).optional(),
+  /** Set once the character splits off and founds their own faction. */
+  ownFactionId: z.string().optional(),
+  /** Creation steering answers, kept for story hooks + dossier voice. */
+  bias: z.enum(["commerce", "combat", "intrigue", "piloting", "diplomacy"]).optional(),
+  alignment: z.enum(["ruthless", "pragmatic", "principled"]).optional(),
+  background: z.string().optional(),
+  ambition: z.string().optional(),
+  /** The line this character won't cross (e.g. "people aren't cargo"). */
+  moralCode: z.string().optional(),
+  /** Voice/personality notes so the GM can play them consistently as an NPC. */
+  voiceNotes: z.string().optional(),
+  uniqueSkill: UniqueSkill.optional(),
+});
+export type Character = z.infer<typeof Character>;
+
+export const ShipWeapon = z.object({
+  name: z.string(),
+  type: z.enum(["kinetic", "energy", "missile", "ion"]),
+  damage: z.string(),
+  count: z.number().int().optional(),
+  ammo: z.number().int().optional(),
+});
+
+export const Ship = z.object({
+  id: z.string(),
+  campaignId: z.string(),
+  name: z.string(),
+  shipClass: z.enum(["scout", "fighter", "hauler", "gunship", "corvette"]),
+  hp: z.number().int(),
+  maxHp: z.number().int().positive(),
+  ac: z.number().int(),
+  /** AC bonus applied when flown evasive. */
+  evasiveAcBonus: z.number().int().default(0),
+  /** Damage reduction per hit from plating. */
+  damageReduction: z.number().int().default(0),
+  weapons: z.array(ShipWeapon).default([]),
+  hasShield: z.boolean().default(false),
+  shieldReady: z.boolean().default(true),
+  hasPointDefense: z.boolean().default(false),
+  burstDriveReady: z.boolean().default(false),
+  /** Ship-piloting DC modifier (racing thrusters = -2, i.e. easier). */
+  dcModifier: z.number().int().default(0),
+  buyoutRemaining: z.number().int().default(0),
+  notes: z.string().optional(),
+});
+export type Ship = z.infer<typeof Ship>;
+
+export const Faction = z.object({
+  id: z.string(),
+  universeId: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  defaultRep: z.number().int().min(-5).max(5).default(0),
+});
+export type Faction = z.infer<typeof Faction>;
+
+export const FactionRep = z.object({
+  campaignId: z.string(),
+  factionId: z.string(),
+  rep: z.number().int().min(-5).max(5),
+  standing: z.string().optional(),
+});
+export type FactionRep = z.infer<typeof FactionRep>;
+
+export const Location = z.object({
+  id: z.string(),
+  universeId: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  tags: z.array(z.string()).default([]),
+});
+export type Location = z.infer<typeof Location>;
+
+export const Npc = z.object({
+  id: z.string(),
+  universeId: z.string(),
+  name: z.string(),
+  oneBreath: z.string(),
+  status: z.string().optional(),
+  factionId: z.string().optional(),
+  locationId: z.string().optional(),
+  notes: z.string().optional(),
+});
+export type Npc = z.infer<typeof Npc>;
+
+export const ClockMilestone = z.object({
+  at: z.number().int(),
+  effect: z.string(),
+  done: z.boolean().default(false),
+});
+
+export const Clock = z.object({
+  id: z.string(),
+  campaignId: z.string(),
+  name: z.string(),
+  current: z.number().int().min(0),
+  max: z.number().int().positive(),
+  triggerText: z.string(),
+  milestones: z.array(ClockMilestone).default([]),
+  status: z.enum(["active", "paused", "complete"]).default("active"),
+});
+export type Clock = z.infer<typeof Clock>;
+
+export const Thread = z.object({
+  id: z.string(),
+  campaignId: z.string(),
+  title: z.string(),
+  body: z.string(),
+  status: z.enum(["active", "resolved"]).default("active"),
+  entityRefs: z.array(z.string()).default([]),
+});
+export type Thread = z.infer<typeof Thread>;
+
+export const Contract = z.object({
+  id: z.string(),
+  campaignId: z.string(),
+  name: z.string(),
+  payoutRange: z.string().optional(),
+  notes: z.string().optional(),
+  status: z.enum(["standing", "active", "complete"]).default("standing"),
+});
+export type Contract = z.infer<typeof Contract>;
+
+export const Roll = z.object({
+  id: z.string(),
+  sceneId: z.string().optional(),
+  characterId: z.string().optional(),
+  skill: z.string(),
+  d20: z.number().int().min(1).max(20),
+  modifier: z.number().int(),
+  total: z.number().int(),
+  dc: z.number().int().optional(),
+  outcome: z.enum(["success", "failure", "n/a"]).default("n/a"),
+  stakes: z.boolean().default(false),
+  ticked: z.boolean().default(false),
+  breakdown: z.string(),
+  createdAt: z.string().optional(),
+});
+export type Roll = z.infer<typeof Roll>;
+
+export const Scene = z.object({
+  id: z.string(),
+  campaignId: z.string(),
+  seq: z.number().int(),
+  title: z.string(),
+  locationId: z.string().optional(),
+  summary: z.string().optional(),
+  entityRefs: z.array(z.string()).default([]),
+  startedAt: z.string().optional(),
+  endedAt: z.string().optional(),
+  /** JSON snapshot of full campaign state at scene end (rewind point). */
+  snapshot: z.unknown().optional(),
+});
+export type Scene = z.infer<typeof Scene>;
+
+export const WorldEvent = z.object({
+  id: z.string(),
+  universeId: z.string(),
+  sourceCampaignId: z.string(),
+  factionIds: z.array(z.string()).default([]),
+  locationId: z.string().optional(),
+  headline: z.string(),
+  detail: z.string().optional(),
+  visibility: z.enum(["private", "canon"]).default("private"),
+  createdAt: z.string().optional(),
+});
+export type WorldEvent = z.infer<typeof WorldEvent>;
+
+export const Campaign = z.object({
+  id: z.string(),
+  universeId: z.string(),
+  name: z.string(),
+  playerId: z.string().optional(),
+  status: z.enum(["active", "archived"]).default("active"),
+  currentLocationId: z.string().optional(),
+  tendaysElapsed: z.number().int().min(0).default(0),
+  narratorModel: z.string().optional(),
+  /** One-line "current situation" headline, shown in the free opening recap. */
+  situation: z.string().optional(),
+});
+export type Campaign = z.infer<typeof Campaign>;
+
+export const Universe = z.object({
+  id: z.string(),
+  name: z.string(),
+  ownerId: z.string().optional(),
+  primer: z.string(),
+  styleRules: z.string().optional(),
+});
+export type Universe = z.infer<typeof Universe>;
+
+/** Full campaign state assembled for the engine and for snapshots. */
+export const CampaignState = z.object({
+  universe: Universe,
+  campaign: Campaign,
+  characters: z.array(Character),
+  ship: Ship.optional(),
+  factions: z.array(Faction).default([]),
+  factionRep: z.array(FactionRep).default([]),
+  locations: z.array(Location).default([]),
+  npcs: z.array(Npc).default([]),
+  clocks: z.array(Clock).default([]),
+  threads: z.array(Thread).default([]),
+  contracts: z.array(Contract).default([]),
+});
+export type CampaignState = z.infer<typeof CampaignState>;

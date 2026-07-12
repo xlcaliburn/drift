@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "shipScale": {
+    "kinetic": {
+      "label": "Kinetic (cannons/turrets)",
+      "damage": "2d6-2d10",
+      "traits": "No ammo cost, reliable baseline",
+      "ammoLimited": false
+    },
+    "energy": {
+      "label": "Energy (beams)",
+      "damage": "2d6-2d8",
+      "traits": "Light-speed: hard to evade",
+      "ammoLimited": false
+    },
+    "missile": {
+      "label": "Missiles (seekers)",
+      "damage": "3d8",
+      "traits": "Tracking; ammo-limited; can be shot down",
+      "ammoLimited": true,
+      "ammoCost": 51
+    },
+    "ion": {
+      "label": "Ion (disruptors)",
+      "damage": "1d6",
+      "traits": "On hit: strips shields entirely OR disables 1 system 1 round; near-useless vs bare hull",
+      "ammoLimited": false
+    }
+  },
+  "personalScale": {
+    "dartPistol": { "label": "Dart pistol", "damage": "1d6" },
+    "sidearm": { "label": "Sidearm", "damage": "1d8" },
+    "combatRifle": { "label": "Combat rifle", "damage": "2d6" }
+  },
+  "critRules": {
+    "player": "max damage + roll dice again",
+    "enemy": "max damage only, no bonus roll"
+  }
+}

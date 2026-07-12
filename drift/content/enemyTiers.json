@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "note": "Tier sets the budget. Never spawn below Vess's weight class. Solo T1s do not appear.",
+  "tiers": {
+    "T1": {
+      "label": "Mook",
+      "hpRange": [8, 10],
+      "ac": 13,
+      "atk": 3,
+      "damage": "1d8",
+      "notes": "Only as fodder alongside higher tiers now"
+    },
+    "T2": {
+      "label": "Professional",
+      "hpRange": [15, 20],
+      "acRange": [14, 15],
+      "atk": 5,
+      "damage": "2d8",
+      "notes": "Default threat. May carry shield (negate 1st hit); come in 2-4s"
+    },
+    "T3": {
+      "label": "Elite/Boss",
+      "hpRange": [25, 35],
+      "ac": 16,
+      "atk": 6,
+      "damage": "2d10",
+      "multiAttack": true,
+      "moraleDc": 16,
+      "notes": "Shields, coordination, morale DC 16. May attack twice."
+    }
+  },
+  "rampRule": {
+    "note": "New threat tiers introduce gradually. First encounter with a new tier is 1-2 ships; full groups (3+) only after the player has faced the tier once.",
+    "firstEncounterMaxCount": 2
+  },
+  "critRules": {
+    "player": "max damage + roll dice again (heroic)",
+    "enemy": "max damage only, no bonus roll"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "constants": {
+    "repairCostPerHp": 18,
+    "dockFee": 15,
+    "missileCost": 51,
+    "crewWagePerPayingJob": 50
+  },
+  "tickRule": {
+    "minDcForTick": 13,
+    "requiresStakes": true,
+    "maxTicksPerSkillPerScene": 1,
+    "levelUpCostFormula": "newLevel * 3",
+    "note": "Only DC 13+ rolls with real stakes earn ticks. Routine departures/dockings/short hops NEVER tick. Max 1 tick per skill per scene."
+  }
+}

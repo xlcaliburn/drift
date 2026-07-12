@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "note": "Attacker rolls with these mods vs each defense type. hit = to-hit modifier, dmg = damage modifier, special = keyword effect.",
+  "defenseTypes": {
+    "armor": "Armor plating: +HP and/or damage reduction -2 per hit (heavy plate)",
+    "shields": "Shields: negate first hit(s), recharge between fights",
+    "evasion": "Evasion: high AC from speed/size",
+    "pd": "Point-defense: roll d20+3 vs incoming missile; 13+ destroys it mid-flight"
+  },
+  "interactions": {
+    "kinetic": {
+      "armor": { "hit": 0, "dmg": -2 },
+      "shields": { "hit": 0, "dmg": 0 },
+      "evasion": { "hit": -2, "dmg": 0 },
+      "pd": { "hit": 0, "dmg": 0 }
+    },
+    "energy": {
+      "armor": { "hit": 0, "dmg": 2 },
+      "shields": { "hit": 0, "dmg": -2 },
+      "evasion": { "hit": 2, "dmg": 0 },
+      "pd": { "hit": 0, "dmg": 0 }
+    },
+    "missile": {
+      "armor": { "hit": 0, "dmg": 2 },
+      "shields": { "hit": 0, "dmg": 0 },
+      "evasion": { "hit": 2, "dmg": 0 },
+      "pd": { "hit": 0, "dmg": 0, "special": "pd_may_destroy" }
+    },
+    "ion": {
+      "armor": { "hit": 0, "dmg": 0, "special": "1d6_only" },
+      "shields": { "hit": 0, "dmg": 0, "special": "strips_shield" },
+      "evasion": { "hit": -2, "dmg": 0 },
+      "pd": { "hit": 0, "dmg": 0 }
+    }
+  },
+  "pd": { "roll": "d20+3", "destroyDc": 13 }
+}

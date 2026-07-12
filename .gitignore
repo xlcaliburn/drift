@@ -1,0 +1,16 @@
+# local assistant/session config
+.claude/
+
+# node / next (also covered by drift/.gitignore)
+node_modules/
+.next/
+
+# secrets — never commit real keys
+.env
+.env.local
+*.env.local
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
