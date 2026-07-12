@@ -1,7 +1,7 @@
 import type { CampaignState } from "@/shared/schemas";
 import type { EngineEvent } from "./events";
 import { awardTick } from "./progression";
-import { advanceClock } from "./clocks";
+import { advanceClock, timeTrigger } from "./clocks";
 import { applySceneCosts } from "./economy";
 
 export interface SceneEndInput {
@@ -143,6 +143,21 @@ export function runSceneEnd(
       ...campaign,
       tendaysElapsed: campaign.tendaysElapsed + input.tendaysDelta,
     };
+
+    // The Fault Line season clock is time-driven ONLY: +1 per in-world day
+    // elapsed, firing any milestone it crosses. Predetermined pressure, identical
+    // for every campaign — deliberately not affected by player action.
+    const fIdx = clocks.findIndex(
+      (c) => c.id === "clk-faultline" && c.status === "active",
+    );
+    if (fIdx !== -1) {
+      const res = timeTrigger(clocks[fIdx], input.tendaysDelta, 1);
+      if (res) {
+        clocks[fIdx] = res.clock;
+        clocksAdvanced.push(res.event.breakdown);
+        events.push(res.event);
+      }
+    }
   }
 
   const newState: CampaignState = {

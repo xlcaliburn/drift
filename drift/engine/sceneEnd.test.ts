@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { applySceneCosts, repairCost, missileCost } from "./economy";
 import { runSceneEnd } from "./sceneEnd";
-import { buildCampaignState } from "@/scripts/seedData";
+import { buildCampaignState } from "@/engine/__fixtures__/vessCampaign";
 
 describe("economy", () => {
   it("paying job with 2 crew + 1 docking = -¢115", () => {

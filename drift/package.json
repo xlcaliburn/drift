@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "import-save": "tsx scripts/import-save.ts"
+    "import-save": "tsx --env-file-if-exists=.env.local scripts/import-save.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.65.0",

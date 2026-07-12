@@ -211,26 +211,25 @@ create index if not exists idx_world_events_factions on world_events using gin(f
 create index if not exists idx_scenes_campaign on scenes(campaign_id, seq);
 create index if not exists idx_rolls_scene on rolls(scene_id);
 
--- ── Row-level security (permissive single-user for now) ────────────────────
--- Enable RLS everywhere; policies start owner-scoped and widen for canon world
--- events when multiplayer ships (add a universe_members table + membership check).
-alter table universes    enable row level security;
-alter table campaigns    enable row level security;
-alter table characters   enable row level security;
-alter table ships        enable row level security;
-alter table world_events enable row level security;
-
--- Single-user dev policy: authenticated users can do everything. Tighten later.
-create policy if not exists dev_all_universes on universes
-  for all using (true) with check (true);
-create policy if not exists dev_all_campaigns on campaigns
-  for all using (true) with check (true);
-create policy if not exists dev_all_characters on characters
-  for all using (true) with check (true);
-create policy if not exists dev_all_ships on ships
-  for all using (true) with check (true);
--- world_events: everyone in the universe can read canon; only source can write.
-create policy if not exists read_canon_events on world_events
-  for select using (true);
-create policy if not exists write_own_events on world_events
-  for all using (true) with check (true);
+-- ── Row-level security (deny-by-default lockdown) ──────────────────────────
+-- RLS is enabled on EVERY table with NO policies: anon/publishable-key access
+-- is fully blocked. All app access is server-side via the secret key, which
+-- bypasses RLS. When auth ships (Milestone 4), add owner-scoped policies here
+-- (e.g. universes.owner_id = auth.uid(), campaign ownership via joins) and a
+-- read policy for world_events where visibility='canon' once multiplayer lands.
+alter table universes        enable row level security;
+alter table factions         enable row level security;
+alter table locations        enable row level security;
+alter table npcs             enable row level security;
+alter table campaigns        enable row level security;
+alter table characters       enable row level security;
+alter table ships            enable row level security;
+alter table faction_rep      enable row level security;
+alter table clocks           enable row level security;
+alter table threads          enable row level security;
+alter table contracts        enable row level security;
+alter table scenes           enable row level security;
+alter table turns            enable row level security;
+alter table rolls            enable row level security;
+alter table world_events     enable row level security;
+alter table feature_requests enable row level security;

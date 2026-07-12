@@ -80,6 +80,23 @@ export type Season = z.infer<typeof Season>;
 
 // ── Character-creation input (the questionnaire answers) ──────────────────────
 
+/**
+ * Optional flavor answers that add depth. Any left blank are invented by the
+ * AI finalize pass and woven into the backstory + voice, so a player can skip
+ * the whole section (or use Quick Create) and still get a fleshed-out character.
+ */
+export const CreationFlavor = z.object({
+  /** The line this character won't cross (e.g. "people aren't cargo"). */
+  moralCode: z.string().optional(),
+  /** A defining loss or scar. */
+  loss: z.string().optional(),
+  /** A debt or tie — someone they owe, or who owes them. */
+  tie: z.string().optional(),
+  /** A habit or mannerism that makes them recognizable. */
+  tell: z.string().optional(),
+});
+export type CreationFlavor = z.infer<typeof CreationFlavor>;
+
 export const CreationInput = z.object({
   name: z.string().min(1),
   parentFactionId: z.string(),
@@ -87,7 +104,8 @@ export const CreationInput = z.object({
   alignment: z.enum(["ruthless", "pragmatic", "principled"]),
   background: z.string(),
   ambition: z.string(),
-  moralCode: z.string().min(1),
+  /** Optional flavor — blanks are auto-generated at finalize. */
+  flavor: CreationFlavor.default({}),
   uniqueSkill: UniqueSkill,
 });
 export type CreationInput = z.infer<typeof CreationInput>;

@@ -32,7 +32,7 @@ export function buildOpeningRecap(state: CampaignState): string {
     lines.push(["Open threads:", ...bullets].join("\n"));
   }
 
-  lines.push("What does Vess do?");
+  lines.push(`What does ${pc?.name ?? "you"} do?`);
   return lines.join("\n\n");
 }
 

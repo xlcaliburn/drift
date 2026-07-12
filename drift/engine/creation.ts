@@ -50,7 +50,7 @@ export function buildCharacterFromCreation(
     skills,
     actionModifiers: {},
     backstory: bg.hook,
-    drives: input.moralCode,
+    drives: input.flavor.moralCode,
     gear: bg.gear,
     injuries: [],
     parentFactionId: input.parentFactionId,
@@ -59,7 +59,7 @@ export function buildCharacterFromCreation(
     alignment: input.alignment,
     background: input.background,
     ambition: input.ambition,
-    moralCode: input.moralCode,
+    moralCode: input.flavor.moralCode,
     uniqueSkill: input.uniqueSkill,
   });
 }

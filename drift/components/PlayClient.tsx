@@ -27,6 +27,15 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
     fetch(`/api/state?campaignId=${campaignId}`)
       .then((r) => r.json())
       .then((d) => {
+        if (!d.state) {
+          setChat([
+            {
+              role: "system",
+              text: `⚠ ${d.error ?? "Campaign not found."} Head back to the home page and create a character to begin.`,
+            },
+          ]);
+          return;
+        }
         setState(d.state);
         setLog(d.log ?? []);
         setHasApiKey(d.hasApiKey);
@@ -233,7 +242,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                   }
                 }}
                 rows={2}
-                placeholder={choices.length ? "…or write your own action" : "What does Vess do?"}
+                placeholder={choices.length ? "…or write your own action" : `What does ${state?.characters.find((c) => c.kind === "pc")?.name ?? "you"} do?`}
                 className="flex-1 resize-none rounded-lg border border-edge bg-ink px-4 py-3 text-[16px] outline-none focus:border-accent"
               />
               <button

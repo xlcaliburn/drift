@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runTurn } from "@/llm/narrator";
-import { getSession, setSession, DEFAULT_CAMPAIGN_ID } from "@/lib/state";
+import { getSession, setSession, persistSession } from "@/lib/state";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -21,13 +21,22 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const playerText: string = (body.playerText ?? "").toString().trim();
-  const campaignId: string = body.campaignId ?? DEFAULT_CAMPAIGN_ID;
+  const campaignId: string = (body.campaignId ?? "").toString();
   const cinematic: boolean = Boolean(body.cinematic);
+  if (!campaignId) {
+    return NextResponse.json({ error: "campaignId is required" }, { status: 400 });
+  }
   if (!playerText) {
     return NextResponse.json({ error: "playerText is required" }, { status: 400 });
   }
 
-  const session = getSession(campaignId);
+  const session = await getSession(campaignId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "Campaign not found. Create a character to begin." },
+      { status: 404 },
+    );
+  }
 
   try {
     const result = await runTurn({
@@ -57,6 +66,9 @@ export async function POST(req: NextRequest) {
       log: [...session.log, ...result.events].slice(-500),
       focusIds: session.focusIds,
     });
+
+    // Persist durable state (HP, credits, rep, clocks, threads) to Supabase.
+    await persistSession(campaignId, result.state);
 
     return NextResponse.json({
       narration: result.narration,

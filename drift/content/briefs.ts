@@ -53,14 +53,6 @@ export const factionBriefs: FactionBrief[] = [
     playstyle: "Enforcement, bounties, leverage and information.",
   },
   {
-    factionId: "f-ledger",
-    name: "The Ledger Network",
-    tagline: "Nothing moves without a record.",
-    brief:
-      "Rook Station's courier-fixers — symbol-marked, no real names, no drama. They move cargo and secrets between everyone, beholden to none. Starting here means neutrality, connections, and knowing things before others do. The catch: staying useful to all sides while trusted by none.",
-    playstyle: "Neutral broker, smuggling, information, connections everywhere.",
-  },
-  {
     factionId: "f-meridian",
     name: "Meridian Commerce",
     tagline: "Legitimate business in an illegitimate age.",
@@ -69,11 +61,27 @@ export const factionBriefs: FactionBrief[] = [
     playstyle: "Commerce, logistics, building wealth while staying legitimate.",
   },
   {
-    factionId: "f-talos",
-    name: "Talos Security",
-    tagline: "Order, at the edge of the map.",
+    factionId: "f-wreckers",
+    name: "The Wreckers",
+    tagline: "What drifts, we take.",
     brief:
-      "Station security four days through the Shear — hard-line, isolated, and suspicious of everyone from the inner lanes. Starting here means authority and a fortress at your back, but you're far from the action and short on friends. Outsiders don't trust Talos, and Talos trusts no one.",
-    playstyle: "Authority, frontier law, isolation and hard choices.",
+      "Raiders who nest deep in the Shear — the debris field no lawful crew dares cross — and hunt the bulk lanes from it. No patron, no ledger, no law: what you have, you took, and you keep it only as long as you can hold it. Starting here means a fast, violent life with no safety net and no masters. The catch — every other faction wants you dead, and your own crew would sell you for a full tank.",
+    playstyle: "Raiding, ambush, plunder — lawless survival, no allegiance.",
+  },
+  {
+    factionId: "f-free",
+    name: "Free Drift",
+    tagline: "No flag, no leash.",
+    brief:
+      "The independents — crews who refuse every syndicate and patron but keep each other alive: shared frequencies, safe berths, a no-questions code. They're the lanes' open circuit, carrying work and word between powers that won't be seen dealing directly. Starting here means a contact on every side and an obligation to none — you take the jobs no one else can touch. The catch: everyone wants to own you, and the moment you pick a side for good, you stop being useful to the rest.",
+    playstyle: "Freelance across all sides — contacts everywhere, allegiance nowhere.",
+  },
+  {
+    factionId: "f-reclaimers",
+    name: "The Reclaimers",
+    tagline: "The dead ships still have things to say.",
+    brief:
+      "Salvagers and tech-scavengers who pull hardware — and buried truths — out of dead ships. They already suspect the Shear's wrecks aren't all accidents. Starting here means strange gear, hard knowledge, and a nose for what the powers would rather stay sunk. The catch: what you dig up makes an enemy of whoever buried it.",
+    playstyle: "Salvage, tech, investigation, uncovering secrets.",
   },
 ];

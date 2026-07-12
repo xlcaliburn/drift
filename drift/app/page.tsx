@@ -1,8 +1,21 @@
 import Link from "next/link";
-import { DEFAULT_CAMPAIGN_ID } from "@/lib/state";
-import { campaign, vess } from "@/scripts/seedData";
+import { hasSupabase } from "@/lib/state";
+import { getServiceClient, listCampaigns, type CampaignSummary } from "@/db/queries";
 
-export default function Home() {
+// The campaign list is read from the DB per request — never statically cached.
+export const dynamic = "force-dynamic";
+
+async function getCampaigns(): Promise<CampaignSummary[]> {
+  if (!hasSupabase()) return [];
+  try {
+    return await listCampaigns(getServiceClient());
+  } catch {
+    return [];
+  }
+}
+
+export default async function Home() {
+  const campaigns = await getCampaigns();
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
       <h1 className="text-4xl font-bold tracking-tight text-accent">DRIFT</h1>
@@ -20,21 +33,25 @@ export default function Home() {
         </p>
       </Link>
 
-      <div className="mt-8">
-        <h2 className="text-xs uppercase tracking-widest text-neutral-500">Example campaign</h2>
-        <Link
-          href={`/play/${DEFAULT_CAMPAIGN_ID}`}
-          className="mt-3 block rounded-lg border border-edge bg-panel p-5 transition hover:border-accent"
-        >
-          <div className="flex items-baseline justify-between">
-            <span className="text-lg font-semibold">{campaign.name}</span>
-            <span className="text-xs text-neutral-500">{campaign.status}</span>
+      {campaigns.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-xs uppercase tracking-widest text-neutral-500">Your campaigns</h2>
+          <div className="mt-3 space-y-2">
+            {campaigns.map((c) => (
+              <Link
+                key={c.id}
+                href={`/play/${c.id}`}
+                className="block rounded-lg border border-edge bg-panel p-4 transition hover:border-accent"
+              >
+                <div className="flex items-baseline justify-between">
+                  <span className="text-lg font-semibold">{c.name}</span>
+                  <span className="text-xs text-neutral-500">{c.status}</span>
+                </div>
+              </Link>
+            ))}
           </div>
-          <p className="mt-1 text-sm text-neutral-400">
-            {vess.name} · ¢{vess.credits} · Goal: Lark buyout
-          </p>
-        </Link>
-      </div>
+        </div>
+      )}
 
       <div className="mt-10 flex items-center justify-between text-xs text-neutral-600">
         <span>

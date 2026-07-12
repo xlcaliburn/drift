@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { awardTick, nextLevelCost, tickMax } from "./progression";
-import { vess } from "@/scripts/seedData";
+import { vess } from "@/engine/__fixtures__/vessCampaign";
 
 describe("tick / level-up math", () => {
   it("next-level cost = (level+1) * 3", () => {

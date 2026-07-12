@@ -20,7 +20,8 @@ const DM_STYLE = `You are the DM of DRIFT, a brutal space-opera TTRPG. Voice and
 - When a clock's trigger fires, call advance_clock and narrate any milestone effect it returns (these are non-optional).
 - End every scene with end_scene, passing whether it was a paying job, dockings, and arrival — the engine runs wages, dock fees, and ticks.
 - After narrating a beat (outside active combat resolution), call offer_choices with 2-4 short, concrete next actions the player can click. The player can always type their own, so don't include a "something else" option.
-- The player's line she won't cross: people aren't cargo.`;
+- Honor the player character's stated line they won't cross (given below); a moment that dares them to break it is high drama, never a throwaway.
+- THE FAULT LINE is the season's rising pressure — a Crown–Sable war grinding the whole board toward a reckoning. It advances on its own with time, no matter what the player does. Weave its current phase into the world (see the SEASON line each turn), and read it through the lens of the player's own faction.`;
 
 /** Build the cached system blocks: style rules + universe primer. */
 export function buildSystem(state: CampaignState): Anthropic.TextBlockParam[] {
@@ -86,11 +87,29 @@ export function buildContextSlice(state: CampaignState, playerText: string, focu
     .map((r) => `${state.factions.find((f) => f.id === r.factionId)?.name ?? r.factionId} ${r.rep >= 0 ? "+" : ""}${r.rep}`)
     .join(", ");
 
+  // The Fault Line — the season's shared pressure. Surface its current phase every
+  // turn so the narrator keeps it in play and reads it through the PC's faction.
+  const faultLine = state.clocks.find((c) => c.id === "clk-faultline");
+  const pcFactionName = pc?.parentFactionId
+    ? state.factions.find((f) => f.id === pc.parentFactionId)?.name ?? "the PC's faction"
+    : "the PC's faction";
+  let seasonLine = "";
+  if (faultLine) {
+    const crossed = faultLine.milestones.filter((m) => m.at <= faultLine.current).slice(-1)[0];
+    const next = faultLine.milestones.find((m) => m.at > faultLine.current);
+    const phase = crossed ? crossed.effect : "the lanes are only beginning to crack — tension, not yet blood";
+    const nextStr = next ? ` Coming at day ${next.at}: ${next.effect}.` : " The reckoning is here.";
+    seasonLine = `SEASON — THE FAULT LINE (day ${faultLine.current}/${faultLine.max}): ${phase}. Shared pressure on every faction; read it through ${pcFactionName}, the PC's side.${nextStr}`;
+  }
+  const moralLine = pc?.moralCode ? `PC's line they won't cross: ${pc.moralCode}.` : "";
+
   return [
     `CURRENT SCENE`,
     `Location: ${loc ? `${loc.name} — ${loc.description}` : "unknown"}`,
+    ...(seasonLine ? [seasonLine] : []),
     ``,
-    `PC skills (id: vess): ${pc ? pc.skills.map(skillProgress).join(" · ") : "—"}`,
+    `PC skills (id: ${pc?.id ?? "pc"}): ${pc ? pc.skills.map(skillProgress).join(" · ") : "—"}`,
+    ...(moralLine ? [moralLine] : []),
     `Party & PC vitals:`,
     ...state.characters.map((c) => `  ${vitals(c)} (id: ${c.id})`),
     `Ship: ${shipLine}`,
@@ -102,6 +121,6 @@ export function buildContextSlice(state: CampaignState, playerText: string, focu
     `Clocks: ${clocksLine}`,
     `Faction rep: ${repLine}`,
     ``,
-    `Entity ids for tools — characters: ${state.characters.map((c) => c.id).join(", ")}; ship: lark; clocks: ${state.clocks.map((c) => c.id).join(", ")}; factions: ${state.factions.map((f) => f.id).join(", ")}.`,
+    `Entity ids for tools — characters: ${state.characters.map((c) => c.id).join(", ")}; ship: ${state.ship?.id ?? "none"}; clocks: ${state.clocks.map((c) => c.id).join(", ")}; factions: ${state.factions.map((f) => f.id).join(", ")}.`,
   ].join("\n");
 }

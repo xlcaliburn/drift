@@ -29,7 +29,10 @@ function mapKeys<T extends Record<string, unknown>>(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
-    if (v !== undefined) out[fn(k)] = v;
+    // Skip null and undefined. Postgres returns absent optional columns as null,
+    // but the Zod schemas use `.optional()` (string | undefined), so a null would
+    // fail validation on read — drop it and let the field be absent instead.
+    if (v !== undefined && v !== null) out[fn(k)] = v;
   }
   return out;
 }
@@ -42,7 +45,7 @@ export const fromRow = (row: Record<string, unknown>) => mapKeys(row, toCamelKey
 /** Service-role client (server only — bypasses RLS). Never import in the browser. */
 export function getServiceClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = process.env.SUPABASE_SECRET_KEY;
   if (!url || !key) throw new Error("Missing Supabase service env vars");
   return createClient(url, key, { auth: { persistSession: false } });
 }
@@ -50,7 +53,7 @@ export function getServiceClient(): SupabaseClient {
 /** Anon client (browser-safe, RLS-enforced). */
 export function getBrowserClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
   return createClient(url, key);
 }
 
@@ -103,4 +106,31 @@ export async function saveCampaignState(db: SupabaseClient, state: CampaignState
   await db.from("faction_rep").upsert(state.factionRep.map((r) => toRow(r)));
   await db.from("clocks").upsert(state.clocks.map((c) => toRow(c)));
   await db.from("threads").upsert(state.threads.map((t) => toRow(t)));
+}
+
+export interface CampaignSummary {
+  id: string;
+  name: string;
+  status: string;
+  createdAt?: string;
+}
+
+/**
+ * List persisted campaigns for the home page, newest first. Campaign `name` is
+ * the character's name (set at creation), so this is enough for a picker card.
+ * Returns [] on error so the landing page degrades gracefully.
+ */
+export async function listCampaigns(db: SupabaseClient, limit = 50): Promise<CampaignSummary[]> {
+  const { data, error } = await db
+    .from("campaigns")
+    .select("id,name,status,created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: String(r.id),
+    name: String(r.name),
+    status: String(r.status),
+    createdAt: r.created_at ? String(r.created_at) : undefined,
+  }));
 }

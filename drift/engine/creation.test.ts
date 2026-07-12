@@ -12,7 +12,7 @@ const base: CreationInput = {
   alignment: "pragmatic",
   background: "dock-rat",
   ambition: "freedom",
-  moralCode: "no passengers left behind",
+  flavor: { moralCode: "no passengers left behind" },
   uniqueSkill: {
     name: "Deadhand",
     description: "steady in a crisis",

@@ -1,45 +1,24 @@
 /**
- * One-time import: validate the hand-transcribed DRIFT seed against the Zod
- * schemas and (optionally) push it to Supabase.
+ * Seed the DRIFT shared-world canon: validate the universe/faction/location/NPC
+ * data against the Zod schemas and (optionally) push it to Supabase. These are
+ * the parent rows every created campaign references via foreign keys, so they
+ * must exist in the DB before real characters are persisted.
  *
  *   npm run import-save            # validate only (dry run)
  *   npm run import-save -- --push  # validate then upsert to Supabase
  *
- * The dry run needs no environment and is the migration trust-check: it proves
- * the save file round-trips through the schema cleanly before any DB exists.
+ * The dry run needs no environment and proves the canon round-trips through the
+ * schema cleanly. (Player campaigns/characters are created at runtime, not here.)
  */
-import {
-  Universe,
-  Campaign,
-  Character,
-  Ship,
-  Faction,
-  FactionRep,
-  Location,
-  Npc,
-  Clock,
-  Thread,
-  Contract,
-  Scene,
-  WorldEvent,
-} from "@/shared/schemas";
+import { Universe, Faction, Location, Npc } from "@/shared/schemas";
 import * as seed from "./seedData";
 
 function validate() {
   const checks: [string, () => unknown][] = [
     ["universe", () => Universe.parse(seed.universe)],
-    ["campaign", () => Campaign.parse(seed.campaign)],
-    ["characters", () => [seed.vess, seed.denna, seed.josen].map((c) => Character.parse(c))],
-    ["ship", () => Ship.parse(seed.lark)],
     ["factions", () => seed.factions.map((f) => Faction.parse(f))],
-    ["factionRep", () => seed.factionRep.map((f) => FactionRep.parse(f))],
     ["locations", () => seed.locations.map((l) => Location.parse(l))],
     ["npcs", () => seed.npcs.map((n) => Npc.parse(n))],
-    ["clocks", () => seed.clocks.map((c) => Clock.parse(c))],
-    ["threads", () => seed.threads.map((t) => Thread.parse(t))],
-    ["contracts", () => seed.contracts.map((c) => Contract.parse(c))],
-    ["resolvedScenes", () => seed.resolvedScenes.map((s) => Scene.parse(s))],
-    ["worldEvents", () => seed.worldEvents.map((w) => WorldEvent.parse(w))],
   ];
 
   let ok = 0;
@@ -54,33 +33,34 @@ function validate() {
       throw err;
     }
   }
-  console.log(`\nValidated ${ok}/${checks.length} entity groups. Seed is schema-clean.`);
+  console.log(`\nValidated ${ok}/${checks.length} entity groups. Canon is schema-clean.`);
 }
 
 async function push() {
   const { getServiceClient, toRow } = await import("@/db/queries");
   const db = getServiceClient();
-  const state = seed.buildCampaignState();
-  console.log("Pushing to Supabase…");
+  console.log("Pushing shared-world canon to Supabase…");
 
-  await db.from("universes").upsert(toRow(state.universe));
-  await db.from("campaigns").upsert(toRow(state.campaign));
-  await db.from("factions").upsert(state.factions.map(toRow));
-  await db.from("locations").upsert(state.locations.map(toRow));
-  await db.from("npcs").upsert(state.npcs.map(toRow));
-  await db.from("characters").upsert(state.characters.map(toRow));
-  if (state.ship) await db.from("ships").upsert(toRow(state.ship));
-  await db.from("faction_rep").upsert(state.factionRep.map(toRow));
-  await db.from("clocks").upsert(state.clocks.map(toRow));
-  await db.from("threads").upsert(state.threads.map(toRow));
-  await db.from("contracts").upsert(state.contracts.map(toRow));
-  await db.from("scenes").upsert(seed.resolvedScenes.map(toRow));
-  await db.from("world_events").upsert(seed.worldEvents.map(toRow));
+  // Upsert one table, surfacing any Postgres error (the client returns errors
+  // rather than throwing — silently ignoring them hides FK failures).
+  async function upsert(table: string, rows: unknown) {
+    const payload = Array.isArray(rows) ? rows : [rows];
+    const { error } = await db.from(table).upsert(payload as never);
+    if (error) throw new Error(`upsert ${table} failed: ${error.message}`);
+    console.log(`  ✓ ${table} (${payload.length})`);
+  }
+
+  // Order matters: parents before children so foreign keys resolve.
+  // universes → factions/locations (ref universe) → npcs (ref faction+location).
+  await upsert("universes", toRow(seed.universe));
+  await upsert("factions", seed.factions.map(toRow));
+  await upsert("locations", seed.locations.map(toRow));
+  await upsert("npcs", seed.npcs.map(toRow));
   console.log("Push complete.");
 }
 
 async function main() {
-  console.log("DRIFT save import — validating seed against Zod schemas:\n");
+  console.log("DRIFT canon import — validating shared world against Zod schemas:\n");
   validate();
   if (process.argv.includes("--push")) {
     await push();

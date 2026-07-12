@@ -13,7 +13,7 @@ export const tools: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: {
-        characterId: { type: "string", description: "e.g. 'vess', 'denna', 'josen'" },
+        characterId: { type: "string", description: "the PC or a party member's id — see the entity-ids line in the scene context" },
         skill: { type: "string", description: "skill/action key, e.g. 'piloting', 'gunnery', 'streetwise', 'shipSensors', 'deathSave'" },
         dc: { type: "integer", description: "difficulty class before ship modifiers" },
         stakes: { type: "boolean" },
@@ -156,7 +156,7 @@ export const tools: Anthropic.Tool[] = [
   {
     name: "offer_choices",
     description:
-      "After narrating, offer the player 2-4 short, concrete suggested actions they can click. Keep each under ~10 words, phrased as an action Vess could take right now. The player can always type their own instead, so don't add a 'something else' option yourself. Call this once at the end of a beat (not during combat resolution).",
+      "After narrating, offer the player 2-4 short, concrete suggested actions they can click. Keep each under ~10 words, phrased as an action the player character could take right now. The player can always type their own instead, so don't add a 'something else' option yourself. Call this once at the end of a beat (not during combat resolution).",
     input_schema: {
       type: "object",
       properties: {

@@ -3,18 +3,14 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { CampaignState, Scene } from "@/shared/schemas";
 import type { EngineEvent } from "@/engine";
 import type { ChatEntry } from "@/shared/chat";
-import { buildCampaignState, CAMPAIGN_ID } from "@/scripts/seedData";
 
 /**
  * Server-side campaign store.
  *
- * If Supabase env vars are present it will (in a full deployment) load/save via
- * db/queries. Without them it falls back to an in-memory store seeded from the
- * ported save file — so the app runs locally with only an ANTHROPIC_API_KEY,
- * and the sheet renders even with no key at all.
- *
- * The in-memory store is process-local (fine for solo dev); production swaps in
- * loadCampaignState/saveCampaignState + a snapshot per scene.
+ * Sessions live in a process-local in-memory cache (fine for solo dev), backed
+ * by Supabase when configured (loadCampaignState/saveCampaignState + a snapshot
+ * per scene). There is NO demo/seed fallback: every campaign is created at
+ * runtime from character creation, so an unknown id resolves to null.
  */
 export interface SessionData {
   state: CampaignState;
@@ -30,27 +26,54 @@ export interface SessionData {
 const store = new Map<string, SessionData>();
 
 export function hasSupabase(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SECRET_KEY);
 }
 
-export function getSession(campaignId: string): SessionData {
-  let s = store.get(campaignId);
-  if (!s) {
-    s = {
-      state: buildCampaignState(),
-      history: [],
-      transcript: [],
-      log: [],
-      scenes: [],
-      focusIds: [],
-    };
-    store.set(campaignId, s);
+/**
+ * Resolve a session: in-memory cache first, then Supabase for persisted
+ * campaigns. Returns null when the campaign exists in neither — there is no demo
+ * fallback, so callers should surface a "not found / create a character" state.
+ */
+export async function getSession(campaignId: string): Promise<SessionData | null> {
+  const cached = store.get(campaignId);
+  if (cached) return cached;
+
+  if (hasSupabase()) {
+    try {
+      const { getServiceClient, loadCampaignState } = await import("@/db/queries");
+      const state = await loadCampaignState(getServiceClient(), campaignId);
+      const session: SessionData = { state, history: [], transcript: [], log: [], scenes: [], focusIds: [] };
+      store.set(campaignId, session);
+      return session;
+    } catch (e) {
+      console.error(
+        `[state] failed to load campaign ${campaignId} from DB:`,
+        e instanceof Error ? e.message : e,
+      );
+    }
   }
-  return s;
+
+  return null;
 }
 
 export function setSession(campaignId: string, data: SessionData): void {
   store.set(campaignId, data);
 }
 
-export const DEFAULT_CAMPAIGN_ID = CAMPAIGN_ID;
+/**
+ * Persist a campaign's durable state to Supabase. No-op without Supabase.
+ * Errors are logged, not thrown — a failed write must not break a turn (the
+ * in-memory session is still authoritative for the round).
+ */
+export async function persistSession(campaignId: string, state: CampaignState): Promise<void> {
+  if (!hasSupabase()) return;
+  try {
+    const { getServiceClient, saveCampaignState } = await import("@/db/queries");
+    await saveCampaignState(getServiceClient(), state);
+  } catch (e) {
+    console.error(
+      `[state] failed to persist campaign ${campaignId}:`,
+      e instanceof Error ? e.message : e,
+    );
+  }
+}

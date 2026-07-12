@@ -96,7 +96,11 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
   // then resolveModel degrades to whichever provider actually has a key.
   const routineModel = input.state.campaign.narratorModel ?? defaultNarratorModel();
   const model = resolveModel(input.model ?? (useCinematic ? cinematicModel() : routineModel));
-  const useDeepSeek = isDeepSeekModel(model);
+  // Active model can change mid-turn if the primary (DeepSeek) errors at runtime
+  // — e.g. a 402 balance failure — and an Anthropic key is available to take over.
+  let activeModel = model;
+  let activeDeepSeek = isDeepSeekModel(model);
+  let fellBack = false;
   // Sonnet gets more room for prose; cheap models stay tight (output is the priciest token).
   const maxTokens = model.includes("sonnet") || model.includes("opus") ? 1400 : 800;
 
@@ -119,33 +123,50 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
   // Lazy — only constructed on the Anthropic path, so DeepSeek-only setups work.
   let anthropic: Anthropic | null = null;
 
+  // One model call for the current round. Reads the growing `messages` array and
+  // accumulates usage; provider is chosen by the caller so a mid-turn fallback
+  // can flip it. Messages stay in Anthropic shape on both paths, so swapping
+  // DeepSeek → Anthropic between rounds needs no conversion.
+  async function callRound(
+    m: string,
+    viaDeepSeek: boolean,
+  ): Promise<{ respContent: Anthropic.ContentBlockParam[]; stopReason: string }> {
+    if (viaDeepSeek) {
+      const resp = await deepseekChat({ model: m, maxTokens, system, tools, messages });
+      usage.inputTokens += resp.usage.input_tokens;
+      usage.outputTokens += resp.usage.output_tokens;
+      usage.cacheReadTokens += resp.usage.cache_read_input_tokens;
+      return { respContent: resp.content as Anthropic.ContentBlockParam[], stopReason: resp.stop_reason };
+    }
+    anthropic ??= new Anthropic({ apiKey: input.apiKey ?? process.env.ANTHROPIC_API_KEY });
+    setMessageCacheBreakpoint(messages);
+    const resp = await anthropic.messages.create({ model: m, max_tokens: maxTokens, system, tools, messages });
+    usage.inputTokens += resp.usage.input_tokens;
+    usage.outputTokens += resp.usage.output_tokens;
+    usage.cacheReadTokens += resp.usage.cache_read_input_tokens ?? 0;
+    usage.cacheWriteTokens += resp.usage.cache_creation_input_tokens ?? 0;
+    return { respContent: resp.content, stopReason: resp.stop_reason ?? "end_turn" };
+  }
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     let respContent: Anthropic.ContentBlockParam[];
     let stopReason: string;
 
-    if (useDeepSeek) {
-      const resp = await deepseekChat({ model, maxTokens, system, tools, messages });
-      respContent = resp.content as Anthropic.ContentBlockParam[];
-      stopReason = resp.stop_reason;
-      usage.inputTokens += resp.usage.input_tokens;
-      usage.outputTokens += resp.usage.output_tokens;
-      usage.cacheReadTokens += resp.usage.cache_read_input_tokens;
-    } else {
-      anthropic ??= new Anthropic({ apiKey: input.apiKey ?? process.env.ANTHROPIC_API_KEY });
-      setMessageCacheBreakpoint(messages);
-      const resp = await anthropic.messages.create({
-        model,
-        max_tokens: maxTokens,
-        system,
-        tools,
-        messages,
-      });
-      respContent = resp.content;
-      stopReason = resp.stop_reason ?? "end_turn";
-      usage.inputTokens += resp.usage.input_tokens;
-      usage.outputTokens += resp.usage.output_tokens;
-      usage.cacheReadTokens += resp.usage.cache_read_input_tokens ?? 0;
-      usage.cacheWriteTokens += resp.usage.cache_creation_input_tokens ?? 0;
+    try {
+      ({ respContent, stopReason } = await callRound(activeModel, activeDeepSeek));
+    } catch (err) {
+      // Runtime failure on the cheap provider (e.g. DeepSeek 402). Fall back to
+      // Haiku once if an Anthropic key exists, then let the loop continue.
+      const canFallBack = !fellBack && activeDeepSeek && Boolean(process.env.ANTHROPIC_API_KEY);
+      if (!canFallBack) throw err;
+      console.error(
+        `[narrator] ${activeModel} failed, falling back to Haiku:`,
+        err instanceof Error ? err.message : err,
+      );
+      fellBack = true;
+      activeModel = "claude-haiku-4-5-20251001";
+      activeDeepSeek = false;
+      ({ respContent, stopReason } = await callRound(activeModel, activeDeepSeek));
     }
 
     for (const block of respContent) {
@@ -183,7 +204,7 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
     worldEvents: runtime.worldEvents,
     choices: runtime.choices,
     sceneEnded: runtime.sceneEndReport !== null,
-    model,
+    model: activeModel,
     newMessages,
     usage,
   };

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { computeModifier, rollCheck } from "./rolls";
 import { scriptedRng } from "./rng";
-import { vess, denna, josen } from "@/scripts/seedData";
+import { vess, denna, josen } from "@/engine/__fixtures__/vessCampaign";
 
 describe("computeModifier — reproduces the Quick Reference Card", () => {
   const cases: [string, number][] = [

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { advanceClock, timeTrigger } from "./clocks";
-import { clocks } from "@/scripts/seedData";
+import { clocks } from "@/engine/__fixtures__/vessCampaign";
 
 const sable = clocks.find((c) => c.id === "clk-sable")!;
 const talos = clocks.find((c) => c.id === "clk-talos")!;
