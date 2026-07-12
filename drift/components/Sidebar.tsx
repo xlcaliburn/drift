@@ -5,15 +5,15 @@ import type { CampaignState } from "@/shared/schemas";
 import { tickMax } from "@/engine/progression";
 import { shipIsOwned } from "@/shared/recap";
 
-type Tab = "sheet" | "ship" | "clocks";
+type Tab = "sheet" | "ship" | "map" | "clocks";
 
 export default function Sidebar({ state }: { state: CampaignState }) {
   const [tab, setTab] = useState<Tab>("sheet");
 
   return (
     <aside className="hidden w-80 shrink-0 flex-col border-l border-edge bg-panel/40 md:flex">
-      <div className="flex border-b border-edge text-sm">
-        {(["sheet", "ship", "clocks"] as Tab[]).map((t) => (
+      <div className="flex border-b border-edge text-xs">
+        {(["sheet", "ship", "map", "clocks"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -30,19 +30,38 @@ export default function Sidebar({ state }: { state: CampaignState }) {
       <div className="scrollbar-thin flex-1 overflow-y-auto p-3 text-[13px]">
         {tab === "sheet" && <SheetTab state={state} />}
         {tab === "ship" && <ShipTab state={state} />}
+        {tab === "map" && <MapTab state={state} />}
         {tab === "clocks" && <ClocksTab state={state} />}
       </div>
     </aside>
   );
 }
 
-function Bar({ value, max, tone = "bg-accent" }: { value: number; max: number; tone?: string }) {
+function Bar({
+  value,
+  max,
+  tone = "bg-accent",
+  height = "h-1.5",
+}: {
+  value: number;
+  max: number;
+  tone?: string;
+  height?: string;
+}) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   return (
-    <div className="h-1.5 w-full rounded bg-ink">
+    <div className={`${height} w-full rounded bg-ink`}>
       <div className={`h-full rounded ${tone}`} style={{ width: `${pct}%` }} />
     </div>
   );
+}
+
+/** camelCase skill ids → readable labels ("smallArms" → "Small Arms", "zeroG" → "Zero-G"). */
+function humanizeSkill(name: string): string {
+  const special: Record<string, string> = { zeroG: "Zero-G", smallArms: "Small Arms" };
+  if (special[name]) return special[name];
+  const spaced = name.replace(/([A-Z])/g, " $1").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 function SheetTab({ state }: { state: CampaignState }) {
@@ -66,20 +85,27 @@ function SheetTab({ state }: { state: CampaignState }) {
             {c.fragile && <span className="text-bad"> · FRAGILE</span>}
           </div>
           {c.kind === "pc" && (
-            <div className="mt-2 space-y-1">
-              {c.skills
-                .filter((s) => s.level > 0 || s.ticks > 0)
-                .map((s) => (
-                  <div key={s.name} className="flex items-center gap-2">
-                    <span className="w-24 truncate capitalize text-neutral-400">
-                      {s.name} {s.level}
-                    </span>
-                    <Bar value={s.ticks} max={tickMax(s.level)} />
-                    <span className="w-8 text-right text-neutral-600">
-                      {s.ticks}/{tickMax(s.level)}
-                    </span>
-                  </div>
-                ))}
+            <div className="mt-2 border-t border-edge pt-2">
+              <div className="mb-1.5 text-[11px] uppercase tracking-wide text-neutral-500">Skills</div>
+              <div className="space-y-2">
+                {c.skills
+                  .filter((s) => s.level > 0 || s.ticks > 0)
+                  .sort((a, b) => b.level - a.level || a.name.localeCompare(b.name))
+                  .map((s) => (
+                    <div key={s.name}>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[13px] text-neutral-200">{humanizeSkill(s.name)}</span>
+                        <span className="shrink-0 tabular-nums text-[11px] text-neutral-500">
+                          Lv&nbsp;{s.level}
+                          <span className="text-neutral-600"> · {s.ticks}/{tickMax(s.level)}</span>
+                        </span>
+                      </div>
+                      <div className="mt-1">
+                        <Bar value={s.ticks} max={tickMax(s.level)} height="h-1" />
+                      </div>
+                    </div>
+                  ))}
+              </div>
             </div>
           )}
         </div>
@@ -152,19 +178,175 @@ function ClocksTab({ state }: { state: CampaignState }) {
       <div>
         <h3 className="mb-2 uppercase tracking-wide text-neutral-500">Faction rep</h3>
         <div className="space-y-1">
-          {state.factionRep.map((r) => {
-            const f = state.factions.find((x) => x.id === r.factionId);
-            return (
-              <div key={r.factionId} className="flex justify-between text-neutral-400">
-                <span className="truncate">{f?.name ?? r.factionId}</span>
-                <span className={r.rep >= 0 ? "text-good" : "text-bad"}>
-                  {r.rep >= 0 ? `+${r.rep}` : r.rep}
-                </span>
-              </div>
-            );
-          })}
+          {(() => {
+            // Only surface factions the player has actually encountered: their own
+            // faction (which carries a starting `standing`) and any faction whose
+            // rep has moved off its neutral default through play.
+            const encountered = state.factionRep.filter((r) => r.standing !== undefined || r.rep !== 0);
+            if (encountered.length === 0) {
+              return <p className="text-neutral-600">No factions encountered yet.</p>;
+            }
+            return encountered.map((r) => {
+              const f = state.factions.find((x) => x.id === r.factionId);
+              return (
+                <div key={r.factionId} className="flex justify-between text-neutral-400">
+                  <span className="truncate">{f?.name ?? r.factionId}</span>
+                  <span className={r.rep >= 0 ? "text-good" : "text-bad"}>
+                    {r.rep >= 0 ? `+${r.rep}` : r.rep}
+                  </span>
+                </div>
+              );
+            });
+          })()}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Star map ────────────────────────────────────────────────────────────────
+// A hand-authored stellar layout for the shared world's canonical locations,
+// rendered dynamically from live state: the player's current location pulses,
+// lanes connect neighbouring stations, and any location id NOT in the curated
+// layout falls back to an evenly-spaced ring so the map never breaks if the
+// world's canon grows.
+const MAP_W = 260;
+const MAP_H = 340;
+
+const MAP_LAYOUT: Record<string, { x: number; y: number; color: string }> = {
+  "loc-meridian": { x: 66, y: 52, color: "#e8a33d" }, // ordered core
+  "loc-rook": { x: 198, y: 74, color: "#c99a5b" }, // black-market hub
+  "loc-undertow": { x: 138, y: 142, color: "#8b93a6" }, // contested space
+  "loc-shear": { x: 92, y: 224, color: "#d9584a" }, // the hazard field
+  "loc-nest": { x: 200, y: 248, color: "#d9584a" }, // hidden in the Shear
+  "loc-talos": { x: 84, y: 306, color: "#6f7b93" }, // frontier, beyond the Shear
+};
+
+const MAP_LANES: [string, string][] = [
+  ["loc-meridian", "loc-rook"],
+  ["loc-meridian", "loc-undertow"],
+  ["loc-rook", "loc-undertow"],
+  ["loc-meridian", "loc-shear"],
+  ["loc-undertow", "loc-shear"],
+  ["loc-shear", "loc-talos"],
+  ["loc-shear", "loc-nest"],
+];
+
+// Deterministic decorative starfield (no RNG — stable across renders).
+const MAP_STARS = [
+  { x: 30, y: 30, r: 0.8 }, { x: 220, y: 40, r: 1 }, { x: 160, y: 26, r: 0.7 },
+  { x: 240, y: 130, r: 0.9 }, { x: 18, y: 150, r: 0.7 }, { x: 236, y: 210, r: 0.8 },
+  { x: 40, y: 250, r: 1 }, { x: 150, y: 300, r: 0.7 }, { x: 230, y: 320, r: 0.9 },
+  { x: 60, y: 180, r: 0.6 }, { x: 120, y: 90, r: 0.6 }, { x: 200, y: 170, r: 0.7 },
+];
+
+function MapTab({ state }: { state: CampaignState }) {
+  const currentId = state.campaign.currentLocationId;
+
+  // Resolve a position for every location in state: curated layout first, then a
+  // deterministic fallback ring for anything the layout table doesn't know.
+  const positions = new Map<string, { x: number; y: number; color: string }>();
+  const unknowns: typeof state.locations = [];
+  state.locations.forEach((l) => {
+    if (MAP_LAYOUT[l.id]) positions.set(l.id, MAP_LAYOUT[l.id]);
+    else unknowns.push(l);
+  });
+  unknowns.forEach((l, i) => {
+    const angle = (i / Math.max(1, unknowns.length)) * Math.PI * 2 - Math.PI / 2;
+    positions.set(l.id, {
+      x: MAP_W / 2 + Math.cos(angle) * 72,
+      y: MAP_H / 2 + Math.sin(angle) * 72,
+      color: "#8b93a6",
+    });
+  });
+
+  const current = state.locations.find((l) => l.id === currentId);
+
+  return (
+    <div className="space-y-3">
+      <div className="text-[11px] uppercase tracking-wide text-neutral-500">Known space</div>
+      <div className="rounded-lg border border-edge bg-ink/60 p-1">
+        <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} className="w-full" role="img" aria-label="Star map of known space">
+          {MAP_STARS.map((s, i) => (
+            <circle key={i} cx={s.x} cy={s.y} r={s.r} fill="#2a3342" opacity={0.7} />
+          ))}
+
+          {/* Travel lanes between neighbouring locations. */}
+          {MAP_LANES.map(([a, b]) => {
+            const pa = positions.get(a);
+            const pb = positions.get(b);
+            if (!pa || !pb) return null;
+            const active = a === currentId || b === currentId;
+            return (
+              <line
+                key={`${a}-${b}`}
+                x1={pa.x}
+                y1={pa.y}
+                x2={pb.x}
+                y2={pb.y}
+                stroke={active ? "#e8a33d" : "#2b3444"}
+                strokeWidth={active ? 1.4 : 1}
+                strokeDasharray="2 4"
+                opacity={active ? 0.85 : 0.55}
+              />
+            );
+          })}
+
+          {/* Location nodes; the current one is enlarged with a pulsing ring. */}
+          {state.locations.map((l) => {
+            const p = positions.get(l.id);
+            if (!p) return null;
+            const isCurrent = l.id === currentId;
+            return (
+              <g key={l.id}>
+                {isCurrent && (
+                  <circle cx={p.x} cy={p.y} r={11} fill="none" stroke="#e8a33d" strokeWidth={1.5} opacity={0.6} className="animate-pulse" />
+                )}
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={isCurrent ? 6 : 4}
+                  fill={p.color}
+                  stroke={isCurrent ? "#e8a33d" : "#0b0e14"}
+                  strokeWidth={isCurrent ? 2 : 1}
+                />
+                <text
+                  x={p.x}
+                  y={p.y + 15}
+                  textAnchor="middle"
+                  fontSize={9}
+                  fill={isCurrent ? "#e8a33d" : "#9aa3b2"}
+                  fontWeight={isCurrent ? 600 : 400}
+                >
+                  {l.name}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      {current && (
+        <div className="rounded border border-edge p-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full" style={{ background: MAP_LAYOUT[current.id]?.color ?? "#8b93a6" }} />
+            <span className="font-semibold text-neutral-100">{current.name}</span>
+            <span className="text-[10px] uppercase tracking-wide text-accent">· you are here</span>
+          </div>
+          {current.description && (
+            <p className="mt-1 text-[12px] leading-snug text-neutral-400">{current.description}</p>
+          )}
+          {current.tags.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {current.tags.map((t) => (
+                <span key={t} className="rounded bg-edge px-1.5 py-0.5 text-[10px] capitalize text-neutral-400">
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

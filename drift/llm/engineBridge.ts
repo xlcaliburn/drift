@@ -294,7 +294,13 @@ export class TurnRuntime {
     const to = Math.max(-5, Math.min(5, from + delta));
     this.state = {
       ...this.state,
-      factionRep: this.state.factionRep.map((r) => (r.factionId === factionId ? { ...r, rep: to } : r)),
+      factionRep: this.state.factionRep.map((r) =>
+        r.factionId === factionId
+          ? // Mark the faction as "encountered" the first time its rep is touched, so
+            // the sheet keeps showing it even if rep later swings back to neutral 0.
+            { ...r, rep: to, standing: r.standing ?? "Encountered" }
+          : r,
+      ),
     };
     this.events.push({ type: "rep", breakdown: `Rep ${factionId}: ${from}→${to}`, factionId, from, to });
 

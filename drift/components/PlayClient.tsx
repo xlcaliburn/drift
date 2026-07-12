@@ -2,22 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CampaignState } from "@/shared/schemas";
-import type { EngineEvent } from "@/engine/events";
 import type { ChatEntry } from "@/shared/chat";
 import { buildOpeningRecap, buildOpeningChoices } from "@/shared/recap";
 import Sidebar from "./Sidebar";
-import DiceLog from "./DiceLog";
 
 export default function PlayClient({ campaignId }: { campaignId: string }) {
   const [state, setState] = useState<CampaignState | null>(null);
-  const [log, setLog] = useState<EngineEvent[]>([]);
   const [chat, setChat] = useState<ChatEntry[]>([]);
   const [choices, setChoices] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(true);
-  const [cinematic, setCinematic] = useState(false);
-  const [lastMeta, setLastMeta] = useState("");
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackState, setFeedbackState] = useState<"idle" | "sending" | "sent" | "error">("idle");
@@ -37,7 +32,6 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
           return;
         }
         setState(d.state);
-        setLog(d.log ?? []);
         setHasApiKey(d.hasApiKey);
 
         // The opening recap + starter choices are derived from stored state — free.
@@ -72,7 +66,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
       const res = await fetch("/api/turn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaignId, playerText: text, cinematic }),
+        body: JSON.stringify({ campaignId, playerText: text }),
       });
       const data = await res.json();
       if (data.error) {
@@ -80,14 +74,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
       } else {
         setChat((c) => [...c, { role: "dm", text: data.narration || "…" }]);
         setState(data.state);
-        setLog((l) => [...l, ...(data.events ?? [])]);
         setChoices(Array.isArray(data.choices) ? data.choices : []);
-        if (data.usage) {
-          const u = data.usage;
-          const model = (data.model ?? "").replace("claude-", "").split("-").slice(0, 2).join("-");
-          const cached = u.cacheReadTokens ? ` · ${u.cacheReadTokens} cached` : "";
-          setLastMeta(`${model} · in ${u.inputTokens}${cached} · out ${u.outputTokens} tok`);
-        }
         if (data.sceneEnded) {
           setChat((c) => [...c, { role: "system", text: "— scene ended · checklist applied —" }]);
         }
@@ -253,26 +240,11 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                 Act
               </button>
             </div>
-            <div className="mt-2 flex items-center justify-between text-xs text-neutral-500">
-              <label className="flex cursor-pointer items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={cinematic}
-                  onChange={(e) => setCinematic(e.target.checked)}
-                  className="accent-accent"
-                />
-                Cinematic mode (Sonnet — richer prose, higher cost)
-              </label>
-              {lastMeta && <span className="font-mono">{lastMeta}</span>}
-            </div>
           </div>
         </section>
 
         {/* Sidebar */}
         {state && <Sidebar state={state} />}
-
-        {/* Dice log */}
-        <DiceLog log={log} />
       </div>
     </div>
   );
