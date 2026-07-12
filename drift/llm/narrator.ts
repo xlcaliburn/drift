@@ -32,9 +32,36 @@ export interface TurnResult {
   /** Full assistant/user message pairs generated this turn, for history. */
   newMessages: Anthropic.MessageParam[];
   usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
+  /** Observability: what actually happened this turn, for the audit log. */
+  telemetry: {
+    /** Wall-clock ms from first model call to loop exit. */
+    latencyMs: number;
+    /** How many model round-trips the tool loop actually made. */
+    rounds: number;
+    /** Tool names invoked, in order (repeats included). */
+    toolCalls: string[];
+    /** Stop reason of the final model response. */
+    stopReason: string;
+    /** True if the cheap provider errored and we fell back to Haiku mid-turn. */
+    fellBack: boolean;
+    /** Size of the system prompt in chars (cached prefix; logged, not stored). */
+    systemChars: number;
+  };
 }
 
 const MAX_TOOL_ROUNDS = 12;
+
+/**
+ * "Sink" tools whose result is a bare acknowledgement the narrator never needs to
+ * react to (offer_choices → {offered}, log_world_event → {logged}). When a model
+ * response's ONLY tool calls are sinks, calling the model again just to consume a
+ * useless ack is a wasted round-trip — the dominant source of "double API calls"
+ * on routine beats. We execute them and end the turn instead. Every other tool
+ * (roll_check, resolve_attack, advance_clock milestones, adjust_rep's shipSeized,
+ * end_scene's checklist, …) can return consequences the narrator must voice, so
+ * those still trigger another round.
+ */
+const SINK_TOOLS = new Set(["offer_choices", "log_world_event"]);
 
 /**
  * Cheapest-first routing: DeepSeek is the routine narrator whenever its key is
@@ -101,8 +128,10 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
   let activeModel = model;
   let activeDeepSeek = isDeepSeekModel(model);
   let fellBack = false;
-  // Sonnet gets more room for prose; cheap models stay tight (output is the priciest token).
-  const maxTokens = model.includes("sonnet") || model.includes("opus") ? 1400 : 800;
+  // Output is the priciest AND slowest token, so cap it hard: a routine beat is a
+  // few sentences (~90 words ≈ 130 tokens). Cinematic (Sonnet/Opus) gets more room
+  // for genuine set pieces. These caps are a backstop; the prompt asks for concision.
+  const maxTokens = model.includes("sonnet") || model.includes("opus") ? 900 : 450;
 
   const runtime = new TurnRuntime(input.state, input.rng ?? liveRng);
 
@@ -120,6 +149,11 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
   const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   const narrationParts: string[] = [];
   const newMessages: Anthropic.MessageParam[] = [];
+  // Telemetry accumulated across the tool loop, surfaced for the audit log.
+  const toolCalls: string[] = [];
+  let rounds = 0;
+  let lastStopReason = "end_turn";
+  const startedAt = Date.now();
   // Lazy — only constructed on the Anthropic path, so DeepSeek-only setups work.
   let anthropic: Anthropic | null = null;
 
@@ -168,6 +202,8 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
       activeDeepSeek = false;
       ({ respContent, stopReason } = await callRound(activeModel, activeDeepSeek));
     }
+    rounds++;
+    lastStopReason = stopReason;
 
     for (const block of respContent) {
       if (block.type === "text") narrationParts.push(block.text);
@@ -181,17 +217,28 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
 
     // Service ALL tool_use blocks from this response (the model is prompted to
     // batch a combat round's calls, so this is often several at once).
+    const toolUses = respContent.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+    );
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const block of respContent) {
-      if (block.type === "tool_use") {
-        const result = runtime.execute(block.name, block.input as Record<string, unknown>);
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: JSON.stringify(result),
-        });
-      }
+    for (const block of toolUses) {
+      toolCalls.push(block.name);
+      const result = runtime.execute(block.name, block.input as Record<string, unknown>);
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: block.id,
+        content: JSON.stringify(result),
+      });
     }
+
+    // Round-trip elimination: if every tool this round was a sink (its result is a
+    // bare ack) and we already have narration to return, stop here instead of
+    // calling the model again just to consume acks. This is the common routine
+    // beat — narrate + offer_choices — and halves its API calls. We keep the
+    // narration text; we simply don't feed the useless results back.
+    const allSinks = toolUses.length > 0 && toolUses.every((b) => SINK_TOOLS.has(b.name));
+    if (allSinks && narrationParts.length > 0) break;
+
     const toolMsg: Anthropic.MessageParam = { role: "user", content: toolResults };
     messages.push(toolMsg);
     newMessages.push(toolMsg);
@@ -207,5 +254,13 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
     model: activeModel,
     newMessages,
     usage,
+    telemetry: {
+      latencyMs: Date.now() - startedAt,
+      rounds,
+      toolCalls,
+      stopReason: lastStopReason,
+      fellBack,
+      systemChars: system.reduce((n, b) => n + b.text.length, 0),
+    },
   };
 }

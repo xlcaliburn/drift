@@ -1,18 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { CreationInput } from "@/shared/multiplayer";
 import { buildCharacterFromCreation } from "@/engine";
-import { finalizeCreation } from "@/llm/creationFinalize";
+import { finalizeCreation, quickCreationNotes } from "@/llm/creationFinalize";
 import { buildNewCampaignState } from "@/lib/newCampaign";
-import { setSession, persistSession } from "@/lib/state";
+import { getSession, setSession, persistSession } from "@/lib/state";
 import { requireApprovedUser, isDevUser } from "@/lib/auth";
+import { recordAiCall } from "@/lib/audit";
 
 export const runtime = "nodejs";
 
 /**
- * POST /api/create — validate creation answers, build the starting sheet, run
- * the AI finalize pass (personalized backstory + free-text sanity notes), store
- * the session owned by the signed-in player, and return the full character +
- * notes so the client can show the "meet your character" review before play.
+ * POST /api/create — validate creation answers, build the starting sheet, and
+ * return IMMEDIATELY with the deterministic character + notes so the "meet your
+ * character" review appears without waiting on the model.
+ *
+ * The heavy AI pass (personalized backstory, voice, invented flavor, and the
+ * per-character opening quest) runs in the BACKGROUND via after(): the player
+ * proceeds into play concurrently while the story is fleshed out and persisted.
+ * newCampaign starts on the static faction opening; the background pass upgrades
+ * it to the personalized one — but only if no turn has been taken yet, so it
+ * never clobbers a player who has already started.
  */
 export async function POST(req: NextRequest) {
   const auth = await requireApprovedUser();
@@ -31,40 +38,82 @@ export async function POST(req: NextRequest) {
   // Random suffix: two players creating in the same millisecond must not collide.
   const stamp = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const campaignId = `camp-${stamp}`;
+  const playerId = isDevUser(user) ? undefined : user.id;
   const base = buildCharacterFromCreation(parsed.data, {
     id: `pc-${stamp}`,
     campaignId,
   });
 
-  // AI pass: personalized backstory + voice, invented flavor for blanks, and
-  // free-text validation notes.
-  const finalize = await finalizeCreation(parsed.data, base);
-  const character = {
-    ...base,
-    backstory: finalize.backstory || base.backstory,
-    moralCode: finalize.moralCode || base.moralCode,
-    drives: finalize.moralCode || base.drives,
-    voiceNotes: finalize.voiceNotes || base.voiceNotes,
-  };
-
-  // Own the campaign. The keyless-dev stub id never reaches the DB
-  // (persistSession is a no-op without Supabase).
-  const state = buildNewCampaignState(
-    character,
-    isDevUser(user) ? undefined : user.id,
-    finalize.opening,
-  );
-
-  // Initialise a fresh session (in-memory for this process) and persist the new
-  // campaign + character to Supabase so /play can reload the real character even
-  // if this process's memory is later lost.
+  // Build state on the STATIC faction opening (generated opening arrives later).
+  // Own the campaign. The keyless-dev stub id never reaches the DB.
+  const state = buildNewCampaignState(base, playerId, undefined);
   setSession(campaignId, { state, history: [], transcript: [], log: [], scenes: [], focusIds: [] });
   await persistSession(campaignId, state);
 
+  // Background flesh-out: personalized backstory/voice/opening + audit. Runs
+  // after the response is sent; the player is already in the review screen.
+  after(async () => {
+    let finalize;
+    try {
+      finalize = await finalizeCreation(parsed.data, base);
+    } catch (e) {
+      console.error("[create] background finalize threw:", e instanceof Error ? e.message : e);
+      return;
+    }
+
+    // Re-read the live session: the player may have started playing already.
+    const session = await getSession(campaignId);
+    if (session) {
+      const enriched = {
+        ...base,
+        backstory: finalize.backstory || base.backstory,
+        moralCode: finalize.moralCode || base.moralCode,
+        drives: finalize.moralCode || base.drives,
+        voiceNotes: finalize.voiceNotes || base.voiceNotes,
+      };
+      if (session.history.length === 0) {
+        // No turn yet: safe to rebuild from scratch with the enriched character +
+        // personalized opening (deterministic from the character; nothing to lose).
+        session.state = buildNewCampaignState(enriched, playerId, finalize.opening);
+      } else {
+        // Play already in motion: patch only the character's narrative fields so
+        // we don't overwrite HP/credits/threads mutated by turns taken meanwhile.
+        const pc = session.state.characters.find((c) => c.id === base.id);
+        if (pc) {
+          pc.backstory = enriched.backstory;
+          pc.moralCode = enriched.moralCode;
+          pc.drives = enriched.drives;
+          pc.voiceNotes = enriched.voiceNotes;
+        }
+      }
+      setSession(campaignId, session);
+      await persistSession(campaignId, session.state);
+    }
+
+    if (finalize.telemetry) {
+      await recordAiCall({
+        userId: playerId ?? null,
+        campaignId,
+        kind: "creation",
+        model: finalize.telemetry.model,
+        latencyMs: finalize.telemetry.latencyMs,
+        usage: finalize.telemetry.usage,
+        fellBack: finalize.telemetry.fellBack,
+        systemChars: undefined,
+        prompt: finalize.telemetry.prompt,
+        response: finalize.telemetry.response,
+        error: finalize.telemetry.error,
+      });
+    }
+  });
+
+  // Deterministic notes now (name-handle heuristic); the AI may add more, which
+  // the review screen picks up if it polls /api/create/enrichment.
   return NextResponse.json({
     campaignId,
-    characterId: character.id,
-    character,
-    notes: finalize.notes,
+    characterId: base.id,
+    character: base,
+    notes: quickCreationNotes(parsed.data),
+    enriching: true,
   });
 }

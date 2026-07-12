@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { worldIntro, seasonOneSpine, factionBriefs } from "@/content/briefs";
 import { backgrounds, alignments, ambitions } from "@/content/creation";
@@ -28,6 +28,9 @@ interface CreateResult {
   characterId: string;
   character: Character;
   notes: CreationNote[];
+  /** True while the AI flesh-out (backstory/voice/opening) is still running in
+   *  the background; the review screen polls for it. */
+  enriching?: boolean;
 }
 
 const BIASES = [
@@ -55,6 +58,44 @@ export default function CreateWizard() {
   const [err, setErr] = useState("");
   const [result, setResult] = useState<CreateResult | null>(null);
   const [dismissed, setDismissed] = useState<string[]>([]);
+
+  // Poll for the background AI flesh-out (see /api/create): once the review
+  // screen is up, swap the templated backstory/voice for the personalized ones
+  // as soon as they land. The player can hit "Enter" at any time regardless.
+  useEffect(() => {
+    if (step !== 5 || !result?.enriching) return;
+    const campaignId = result.campaignId;
+    const baseBackstory = result.character.backstory ?? "";
+    let tries = 0;
+    const id = setInterval(async () => {
+      tries++;
+      try {
+        const r = await fetch(`/api/create/enrichment?campaignId=${campaignId}`);
+        const d = await r.json();
+        if (d.ready && d.backstory && d.backstory !== baseBackstory) {
+          setResult((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  enriching: false,
+                  character: {
+                    ...prev.character,
+                    backstory: d.backstory,
+                    voiceNotes: d.voiceNotes || prev.character.voiceNotes,
+                    moralCode: d.moralCode || prev.character.moralCode,
+                  },
+                }
+              : prev,
+          );
+          clearInterval(id);
+        }
+      } catch {
+        /* transient; keep polling until the ceiling */
+      }
+      if (tries >= 10) clearInterval(id); // ~18s ceiling, then keep the templated copy
+    }, 1800);
+    return () => clearInterval(id);
+  }, [step, result?.enriching, result?.campaignId, result?.character.backstory]);
 
   // form state
   const [name, setName] = useState("");
@@ -470,10 +511,13 @@ export default function CreateWizard() {
               </div>
             ))}
 
-          {/* backstory */}
+          {/* backstory (templated first, then swapped for the AI version) */}
           {result.character.backstory && (
             <div className="mb-5 rounded-lg border border-edge bg-panel/50 p-4">
               <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-neutral-200">{result.character.backstory}</p>
+              {result.enriching && (
+                <p className="mt-2 animate-pulse text-xs text-neutral-500">✍ fleshing out your story…</p>
+              )}
             </div>
           )}
 

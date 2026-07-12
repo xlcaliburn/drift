@@ -28,6 +28,21 @@ export interface CreationNote {
   suggestion?: string;
 }
 
+/** What actually happened during the AI pass, for the audit log. */
+export interface CreationTelemetry {
+  model: string;
+  latencyMs: number;
+  usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
+  /** The user prompt sent to the model. */
+  prompt: string;
+  /** The raw model response (before JSON extraction). */
+  response: string;
+  /** True if the primary (cheap) model errored and we used the Haiku fallback. */
+  fellBack: boolean;
+  /** Set when every model failed and we used the deterministic fallback. */
+  error?: string;
+}
+
 export interface CreationFinalize {
   backstory: string;
   /** The character's line-they-won't-cross — verbatim if given, else invented. */
@@ -38,6 +53,8 @@ export interface CreationFinalize {
   /** Personalized cold-open (context + starting quest) generated from the
    *  faction's starting points. Undefined → newCampaign uses the static opening. */
   opening?: GeneratedOpening;
+  /** Observability for the audit log (absent on the no-API deterministic path). */
+  telemetry?: CreationTelemetry;
 }
 
 const SYSTEM = `You finalize a newly created player character for DRIFT, a gritty, lawless space-opera TTRPG set among three stations (Meridian Ring, Rook, Talos) and the dead lanes between them. Consequences stick; nobody is coming to save anyone.
@@ -93,17 +110,26 @@ function looksLikeHandle(name: string): boolean {
   );
 }
 
-function fallback(input: CreationInput, character: Character): CreationFinalize {
-  const notes: CreationNote[] = [];
-  if (looksLikeHandle(input.name)) {
-    notes.push({
+/**
+ * Deterministic creation notes (no AI). Just the name-handle heuristic — enough
+ * to show the "meet your character" review INSTANTLY while the AI flesh-out (a
+ * richer name critique, backstory, opening) runs in the background.
+ */
+export function quickCreationNotes(input: CreationInput): CreationNote[] {
+  if (!looksLikeHandle(input.name)) return [];
+  return [
+    {
       field: "name",
       severity: "warn",
       message:
         "That name reads more like a handle than a person. The lanes would call someone like you by a real name.",
       suggestion: suggestName(seedFrom(input.name)),
-    });
-  }
+    },
+  ];
+}
+
+function fallback(input: CreationInput, character: Character): CreationFinalize {
+  const notes: CreationNote[] = quickCreationNotes(input);
   // No AI: keep the player's line if given, else pick a deterministic default.
   const moralCode =
     input.flavor.moralCode?.trim() ||
@@ -170,38 +196,68 @@ A tell/mannerism: ${blank(input.flavor.tell)}${startingSituation}`;
     candidates.push("claude-haiku-4-5-20251001");
   }
 
+  // Telemetry captured across the (possibly two) attempts, for the audit log.
+  const startedAt = Date.now();
+  const tel = {
+    model: primary,
+    usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    fellBack: false,
+    lastError: undefined as string | undefined,
+  };
+
   let raw: string | null = null;
-  for (const model of candidates) {
+  for (let i = 0; i < candidates.length; i++) {
+    const model = candidates[i];
+    tel.model = model;
+    tel.fellBack = i > 0;
     try {
       if (isDeepSeekModel(model)) {
         const resp = await deepseekChat({
           model,
-          maxTokens: 800,
+          maxTokens: 600,
           system: [{ type: "text", text: SYSTEM }],
           messages: [{ role: "user", content: user }],
         });
+        tel.usage.inputTokens += resp.usage.input_tokens;
+        tel.usage.outputTokens += resp.usage.output_tokens;
+        tel.usage.cacheReadTokens += resp.usage.cache_read_input_tokens;
         const text = resp.content.find((b) => b.type === "text");
         raw = text && text.type === "text" ? text.text : "{}";
       } else {
         const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
         const resp = await client.messages.create({
           model,
-          max_tokens: 800,
+          max_tokens: 600,
           system: SYSTEM,
           messages: [{ role: "user", content: user }],
         });
+        tel.usage.inputTokens += resp.usage.input_tokens;
+        tel.usage.outputTokens += resp.usage.output_tokens;
+        tel.usage.cacheReadTokens += resp.usage.cache_read_input_tokens ?? 0;
+        tel.usage.cacheWriteTokens += resp.usage.cache_creation_input_tokens ?? 0;
         const text = resp.content.find((b) => b.type === "text");
         raw = text && text.type === "text" ? text.text : "{}";
       }
       break; // success
     } catch (e) {
-      console.error(`[creationFinalize] model ${model} failed:`, e instanceof Error ? e.message : e);
+      tel.lastError = e instanceof Error ? e.message : String(e);
+      console.error(`[creationFinalize] model ${model} failed:`, tel.lastError);
     }
   }
 
+  const telemetry = (): CreationTelemetry => ({
+    model: tel.model,
+    latencyMs: Date.now() - startedAt,
+    usage: tel.usage,
+    prompt: user,
+    response: raw ?? "",
+    fellBack: tel.fellBack,
+    error: tel.lastError,
+  });
+
   if (raw === null) {
     console.error("[creationFinalize] all models failed, using deterministic fallback");
-    return fallback(input, character);
+    return { ...fallback(input, character), telemetry: telemetry() };
   }
 
   try {
@@ -245,9 +301,9 @@ A tell/mannerism: ${blank(input.flavor.tell)}${startingSituation}`;
       if (situation && questTitle && questBody) opening = { situation, questTitle, questBody };
     }
 
-    return { backstory, moralCode, voiceNotes, notes, opening };
+    return { backstory, moralCode, voiceNotes, notes, opening, telemetry: telemetry() };
   } catch (e) {
     console.error("[creationFinalize] response parse failed, using fallback:", e);
-    return fallback(input, character);
+    return { ...fallback(input, character), telemetry: telemetry() };
   }
 }

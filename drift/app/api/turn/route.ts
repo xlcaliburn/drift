@@ -3,6 +3,7 @@ import { runTurn } from "@/llm/narrator";
 import { getSession, setSession, persistSession } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
+import { recordAiCall } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -90,6 +91,23 @@ export async function POST(req: NextRequest) {
 
     // Persist durable state (HP, credits, rep, clocks, threads) to Supabase.
     await persistSession(campaignId, result.state);
+
+    // Audit every call (dev included; dev logs with a null user id). Best-effort.
+    await recordAiCall({
+      userId: isDevUser(auth.user) ? null : auth.user.id,
+      campaignId,
+      kind: "turn",
+      model: result.model,
+      latencyMs: result.telemetry.latencyMs,
+      usage: result.usage,
+      rounds: result.telemetry.rounds,
+      toolCalls: result.telemetry.toolCalls,
+      stopReason: result.telemetry.stopReason,
+      fellBack: result.telemetry.fellBack,
+      systemChars: result.telemetry.systemChars,
+      prompt: playerText,
+      response: result.narration,
+    });
 
     // Meter the spend (best-effort; never blocks the response).
     if (!isDevUser(auth.user)) {
