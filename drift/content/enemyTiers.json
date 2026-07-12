@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Tier sets the budget. Never spawn below Vess's weight class. Solo T1s do not appear.",
+  "note": "Tier sets the budget. Never spawn below the party's weight class. Solo T1s do not appear.",
   "tiers": {
     "T1": {
       "label": "Mook",

@@ -1,27 +1,41 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { hasSupabase } from "@/lib/state";
 import { getServiceClient, listCampaigns, type CampaignSummary } from "@/db/queries";
+import { getAuthedUser, type AuthedUser } from "@/lib/auth";
+import UserMenu from "@/components/UserMenu";
 
 // The campaign list is read from the DB per request — never statically cached.
 export const dynamic = "force-dynamic";
 
-async function getCampaigns(): Promise<CampaignSummary[]> {
+async function getCampaigns(user: AuthedUser): Promise<CampaignSummary[]> {
   if (!hasSupabase()) return [];
   try {
-    return await listCampaigns(getServiceClient());
+    return await listCampaigns(getServiceClient(), user.id, {
+      includeUnowned: user.role === "admin",
+    });
   } catch {
     return [];
   }
 }
 
 export default async function Home() {
-  const campaigns = await getCampaigns();
+  const user = await getAuthedUser();
+  if (!user) redirect("/login");
+  if (user.status !== "approved") redirect("/pending");
+
+  const campaigns = await getCampaigns(user);
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="text-4xl font-bold tracking-tight text-accent">DRIFT</h1>
-      <p className="mt-2 text-edge-foreground text-sm text-neutral-400">
-        A brutal space-opera TTRPG. The engine rolls the dice; the narrator tells the story.
-      </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-4xl font-bold tracking-tight text-accent">DRIFT</h1>
+          <p className="mt-2 text-edge-foreground text-sm text-neutral-400">
+            A brutal space-opera TTRPG. The engine rolls the dice; the narrator tells the story.
+          </p>
+        </div>
+        <UserMenu user={user} />
+      </div>
 
       <Link
         href="/create"
@@ -52,15 +66,6 @@ export default async function Home() {
           </div>
         </div>
       )}
-
-      <div className="mt-10 flex items-center justify-between text-xs text-neutral-600">
-        <span>
-          Login (Google) and shared-world persistence land with the Supabase wiring. Set DEEPSEEK_API_KEY (or ANTHROPIC_API_KEY) in .env.local to play.
-        </span>
-        <Link href="/requests" className="shrink-0 text-neutral-500 hover:text-accent">
-          Feature requests →
-        </Link>
-      </div>
     </main>
   );
 }

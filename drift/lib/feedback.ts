@@ -1,39 +1,80 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import type { FeatureRequest, FeedbackStatus } from "@/shared/feedback";
+import { FeatureRequest, type FeedbackStatus } from "@/shared/feedback";
 import { deepseekChat, deepseekAvailable, resolveModel, isDeepSeekModel } from "@/llm/deepseek";
+import { hasSupabase } from "@/lib/state";
 
 /**
- * Feature-request store + LLM formatter. In-memory for now (same pattern as
- * lib/state.ts); the feature_requests table in db/schema.sql is ready for the
- * Supabase wiring. Formatting always uses the cheapest configured model.
+ * Feature-request store + LLM formatter. DB-backed (feature_requests table)
+ * when Supabase is configured; in-memory Map fallback for keyless local dev
+ * (same pattern as lib/state.ts). Formatting always uses the cheapest
+ * configured model.
  */
 
 const store = new Map<string, FeatureRequest>();
 
-export function listRequests(): FeatureRequest[] {
-  return [...store.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+async function db() {
+  const { getServiceClient } = await import("@/db/queries");
+  return getServiceClient();
 }
 
-export function saveRequest(req: FeatureRequest): void {
-  store.set(req.id, req);
+export async function listRequests(): Promise<FeatureRequest[]> {
+  if (!hasSupabase()) {
+    return [...store.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+  const { fromRow } = await import("@/db/queries");
+  const { data, error } = await (await db())
+    .from("feature_requests")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.flatMap((r) => {
+    const parsed = FeatureRequest.safeParse(fromRow(r));
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
-export function decideRequest(
+export async function saveRequest(req: FeatureRequest): Promise<void> {
+  if (!hasSupabase()) {
+    store.set(req.id, req);
+    return;
+  }
+  const { toRow } = await import("@/db/queries");
+  const { error } = await (await db()).from("feature_requests").upsert(toRow(req));
+  if (error) console.error("saveRequest failed", error);
+}
+
+export async function decideRequest(
   id: string,
   status: FeedbackStatus,
   note?: string,
-): FeatureRequest | null {
-  const req = store.get(id);
-  if (!req) return null;
-  const updated: FeatureRequest = {
-    ...req,
-    status,
-    decisionNote: note ?? req.decisionNote,
-    decidedAt: new Date().toISOString(),
-  };
-  store.set(id, updated);
-  return updated;
+): Promise<FeatureRequest | null> {
+  if (!hasSupabase()) {
+    const req = store.get(id);
+    if (!req) return null;
+    const updated: FeatureRequest = {
+      ...req,
+      status,
+      decisionNote: note ?? req.decisionNote,
+      decidedAt: new Date().toISOString(),
+    };
+    store.set(id, updated);
+    return updated;
+  }
+  const { fromRow } = await import("@/db/queries");
+  const { data, error } = await (await db())
+    .from("feature_requests")
+    .update({
+      status,
+      ...(note !== undefined ? { decision_note: note } : {}),
+      decided_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select()
+    .maybeSingle();
+  if (error || !data) return null;
+  const parsed = FeatureRequest.safeParse(fromRow(data));
+  return parsed.success ? parsed.data : null;
 }
 
 const FORMAT_SYSTEM =

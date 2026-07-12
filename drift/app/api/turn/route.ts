@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runTurn } from "@/llm/narrator";
 import { getSession, setSession, persistSession } from "@/lib/state";
+import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
+import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -12,6 +14,9 @@ export const maxDuration = 60;
  * the updated state for the sidebar.
  */
 export async function POST(req: NextRequest) {
+  const auth = await requireApprovedUser();
+  if (auth.error) return auth.error;
+
   if (!process.env.ANTHROPIC_API_KEY && !process.env.DEEPSEEK_API_KEY) {
     return NextResponse.json(
       { error: "No narrator key set. Add DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY to .env.local to play." },
@@ -36,6 +41,22 @@ export async function POST(req: NextRequest) {
       { error: "Campaign not found. Create a character to begin." },
       { status: 404 },
     );
+  }
+  if (!canAccessCampaign(auth.user, session.state.campaign.playerId)) {
+    return NextResponse.json({ error: "Not your campaign." }, { status: 403 });
+  }
+
+  // Hard monthly budget: block BEFORE spending tokens. (Two concurrent turns
+  // can both pass — a one-turn overshoot is fine at playtest scale.)
+  if (!isDevUser(auth.user)) {
+    const month = await getMonthUsage(auth.user.id);
+    const budget = checkBudget(auth.user, month);
+    if (!budget.ok) {
+      return NextResponse.json(
+        { error: `Monthly budget reached (${budget.reason}). Ask the GM to raise your cap.` },
+        { status: 402 },
+      );
+    }
   }
 
   try {
@@ -69,6 +90,16 @@ export async function POST(req: NextRequest) {
 
     // Persist durable state (HP, credits, rep, clocks, threads) to Supabase.
     await persistSession(campaignId, result.state);
+
+    // Meter the spend (best-effort; never blocks the response).
+    if (!isDevUser(auth.user)) {
+      await recordTurnUsage({
+        userId: auth.user.id,
+        campaignId,
+        model: result.model,
+        usage: result.usage,
+      });
+    }
 
     return NextResponse.json({
       narration: result.narration,

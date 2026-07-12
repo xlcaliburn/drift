@@ -4,21 +4,21 @@ import { buildCharacterFromCreation } from "@/engine";
 import { finalizeCreation } from "@/llm/creationFinalize";
 import { buildNewCampaignState } from "@/lib/newCampaign";
 import { setSession, persistSession } from "@/lib/state";
+import { requireApprovedUser, isDevUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 /**
  * POST /api/create — validate creation answers, build the starting sheet, run
  * the AI finalize pass (personalized backstory + free-text sanity notes), store
- * the session, and return the full character + notes so the client can show the
- * "meet your character" review before entering play.
- *
- * In-memory for now; the Supabase wiring persists the character, dossier,
- * ledger, and campaign, and associates them with the logged-in player. The
- * characters table already has every column this character sets (see the
- * add_creation_metadata_columns migration).
+ * the session owned by the signed-in player, and return the full character +
+ * notes so the client can show the "meet your character" review before play.
  */
 export async function POST(req: NextRequest) {
+  const auth = await requireApprovedUser();
+  if (auth.error) return auth.error;
+  const user = auth.user;
+
   const body = await req.json().catch(() => null);
   const parsed = CreationInput.safeParse(body);
   if (!parsed.success) {
@@ -28,7 +28,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const stamp = Date.now().toString(36);
+  // Random suffix: two players creating in the same millisecond must not collide.
+  const stamp = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const campaignId = `camp-${stamp}`;
   const base = buildCharacterFromCreation(parsed.data, {
     id: `pc-${stamp}`,
@@ -46,7 +47,13 @@ export async function POST(req: NextRequest) {
     voiceNotes: finalize.voiceNotes || base.voiceNotes,
   };
 
-  const state = buildNewCampaignState(character);
+  // Own the campaign. The keyless-dev stub id never reaches the DB
+  // (persistSession is a no-op without Supabase).
+  const state = buildNewCampaignState(
+    character,
+    isDevUser(user) ? undefined : user.id,
+    finalize.opening,
+  );
 
   // Initialise a fresh session (in-memory for this process) and persist the new
   // campaign + character to Supabase so /play can reload the real character even

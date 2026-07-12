@@ -2,7 +2,7 @@
  * Static creation-inspiration content — canon names, example signature skills,
  * and example moral codes. Hand-authored so character creation never has to
  * spend tokens generating throwaway suggestions. Everything here is in-world for
- * the DRIFT lanes: names read as people (Vess Karo, Silas Corr), not usernames.
+ * the DRIFT lanes: names read as people (Silas Corr, Denna Vale), not usernames.
  */
 
 import type { UniqueSkill } from "@/shared/schemas";
@@ -13,7 +13,7 @@ import type { UniqueSkill } from "@/shared/schemas";
 // of these double as the lone-callsign names some spacers actually go by.
 
 const GIVEN_NAMES = [
-  "Vess", "Silas", "Rell", "Denna", "Josen", "Kira", "Marn", "Sable", "Tovic",
+  "Silas", "Rell", "Denna", "Josen", "Kira", "Marn", "Tovic", "Cassin",
   "Ana", "Corwin", "Yuki", "Dax", "Neve", "Osei", "Lena", "Bram", "Ravi",
   "Sena", "Cato", "Mira", "Halden", "Nadia", "Emil", "Zara", "Piotr", "Ludo",
   "Iona", "Garrick", "Sol", "Tamsin", "Voss", "Ekko", "Wren", "Isko", "Perla",

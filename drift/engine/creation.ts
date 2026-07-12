@@ -45,7 +45,7 @@ export function buildCharacterFromCreation(
     slots: 8,
     maxSlots: 8,
     stims: 2,
-    credits: 300, // flat starting credits — equal footing
+    credits: 120, // flat starting credits — equal footing, thin (a low-level minion's pocket)
     fragile: false,
     skills,
     actionModifiers: {},

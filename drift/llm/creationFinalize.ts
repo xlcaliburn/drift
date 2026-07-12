@@ -4,6 +4,7 @@ import type { Character } from "@/shared/schemas";
 import type { CreationInput } from "@/shared/multiplayer";
 import { factionBriefs } from "@/content/briefs";
 import { suggestName, exampleMoralCodes } from "@/content/examples";
+import { openingFor, type GeneratedOpening } from "@/content/openings";
 import { deepseekChat, deepseekAvailable, isDeepSeekModel, resolveModel } from "./deepseek";
 
 /**
@@ -34,6 +35,9 @@ export interface CreationFinalize {
   /** 1-2 sentences of personality/voice for playing them (esp. as an NPC). */
   voiceNotes: string;
   notes: CreationNote[];
+  /** Personalized cold-open (context + starting quest) generated from the
+   *  faction's starting points. Undefined → newCampaign uses the static opening. */
+  opening?: GeneratedOpening;
 }
 
 const SYSTEM = `You finalize a newly created player character for DRIFT, a gritty, lawless space-opera TTRPG set among three stations (Meridian Ring, Rook, Talos) and the dead lanes between them. Consequences stick; nobody is coming to save anyone.
@@ -51,8 +55,14 @@ You are given the player's creation answers and their computed sheet. Some flavo
    - moralCode: only if the player PROVIDED one, flag if it isn't actually a line-you-won't-cross or contradicts the character.
    - uniqueSkill: flag if the trigger scenario is too broad/overpowered to adjudicate (e.g. "any fight", "whenever I want") or too vague. Suggest narrowing to one clear situation.
 
+5. OPENING: Using the STARTING SITUATION block (the faction's live setup and candidate leads), write a customized cold-open for THIS character. Return "opening":
+   - "situation": 1-2 sentences of present-tense context — the scene they are standing in RIGHT NOW. Drop them into the faction's live tension and tie in their ambition or background; name an anchor NPC or place where natural. Do NOT restate their backstory; this is where they are, not who they were. No stats.
+   - "questTitle": a short, concrete first-quest title that is a GOAL (e.g. "Collect the Vantry debt", "Get aboard the salvage run") — never a generic "earn your place".
+   - "questBody": 2-3 sentences framing that first job — what to do, who's involved, and the choice or risk it poses — drawn from the candidate leads and fitted to this character.
+   Pick and personalize ONE lead; stay inside the given canon (don't invent new stations/factions).
+
 Reply ONLY with JSON, no prose:
-{"backstory": string, "moralCode": string, "voiceNotes": string, "notes": [{"field": "name"|"moralCode"|"uniqueSkill", "severity": "ok"|"warn", "message": string, "suggestion"?: string}]}
+{"backstory": string, "moralCode": string, "voiceNotes": string, "notes": [{"field": "name"|"moralCode"|"uniqueSkill", "severity": "ok"|"warn", "message": string, "suggestion"?: string}], "opening": {"situation": string, "questTitle": string, "questBody": string}}
 Only include a note when severity is "warn". Return "notes": [] if everything is fine.`;
 
 function cheapModel() {
@@ -115,6 +125,28 @@ export async function finalizeCreation(
 
   const blank = (v?: string) => (v && v.trim() ? v.trim() : "(blank)");
 
+  // Faction "starting points" — hardcoded canon that seeds the opening the model
+  // writes. Absent only for a faction with no authored opening (then no OPENING
+  // block is sent and newCampaign falls back to its static/generic opening).
+  const factionOpening = openingFor(input.parentFactionId);
+  const seed = factionOpening?.seed;
+  // Starting mobility, so the cold-open never implies they own a ship they don't:
+  // a faction loaner (flown, not owned) or no ship at all (begs/borrows passage).
+  const mobility = factionOpening?.loaner
+    ? `They fly ${factionOpening.loaner.name}, a ${factionName} LOANER they do NOT own yet — the faction can pull it; the title is earned later. Don't call it "yours".`
+    : "They have NO ship yet — they beg and borrow passage. Don't give them a ship in the opening.";
+  const startingSituation = seed
+    ? `
+--- STARTING SITUATION (${factionName}) — build the OPENING from this ---
+Their standing: a brand-new, LOW-LEVEL minion of ${factionName} with little pull — unproven, treated as such.
+Starting mobility: ${mobility}
+Where they are RIGHT NOW (set the opening here): ${seed.startLocation}
+Faction wants from a recruit: ${seed.recruitGoal}
+Anchors (use these; don't invent new ones): ${seed.anchors}
+Live tension: ${seed.tension}
+Candidate leads (pick and personalize ONE): ${seed.leads.map((l) => `(${l})`).join(" ")}`
+    : "";
+
   const user = `Faction: ${factionName}
 Background: ${input.background}
 Focus: ${input.bias}
@@ -127,7 +159,7 @@ Starting skills: ${character.skills.map((s) => `${s.name} ${s.level}`).join(", "
 Line they won't cross: ${blank(input.flavor.moralCode)}
 A loss/scar: ${blank(input.flavor.loss)}
 A debt/tie: ${blank(input.flavor.tie)}
-A tell/mannerism: ${blank(input.flavor.tell)}`;
+A tell/mannerism: ${blank(input.flavor.tell)}${startingSituation}`;
 
   // Try the cheapest model first; if it errors at runtime (e.g. DeepSeek 402
   // insufficient balance), fall back to Anthropic Haiku before giving up on the
@@ -144,7 +176,7 @@ A tell/mannerism: ${blank(input.flavor.tell)}`;
       if (isDeepSeekModel(model)) {
         const resp = await deepseekChat({
           model,
-          maxTokens: 500,
+          maxTokens: 800,
           system: [{ type: "text", text: SYSTEM }],
           messages: [{ role: "user", content: user }],
         });
@@ -154,7 +186,7 @@ A tell/mannerism: ${blank(input.flavor.tell)}`;
         const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
         const resp = await client.messages.create({
           model,
-          max_tokens: 500,
+          max_tokens: 800,
           system: SYSTEM,
           messages: [{ role: "user", content: user }],
         });
@@ -200,7 +232,20 @@ A tell/mannerism: ${blank(input.flavor.tell)}`;
     if (!notes.some((n) => n.field === "name") && looksLikeHandle(input.name)) {
       notes.push(fallback(input, character).notes.find((n) => n.field === "name")!);
     }
-    return { backstory, moralCode, voiceNotes, notes };
+
+    // Personalized cold-open — only accept it if all three parts came back
+    // non-empty; otherwise leave it undefined and let newCampaign use the static
+    // faction opening (a half-built opening is worse than the solid fallback).
+    let opening: GeneratedOpening | undefined;
+    const o = parsed.opening;
+    if (o && typeof o === "object") {
+      const situation = String(o.situation ?? "").trim();
+      const questTitle = String(o.questTitle ?? "").trim();
+      const questBody = String(o.questBody ?? "").trim();
+      if (situation && questTitle && questBody) opening = { situation, questTitle, questBody };
+    }
+
+    return { backstory, moralCode, voiceNotes, notes, opening };
   } catch (e) {
     console.error("[creationFinalize] response parse failed, using fallback:", e);
     return fallback(input, character);

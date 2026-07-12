@@ -84,4 +84,12 @@ export const factionBriefs: FactionBrief[] = [
       "Salvagers and tech-scavengers who pull hardware — and buried truths — out of dead ships. They already suspect the Shear's wrecks aren't all accidents. Starting here means strange gear, hard knowledge, and a nose for what the powers would rather stay sunk. The catch: what you dig up makes an enemy of whoever buried it.",
     playstyle: "Salvage, tech, investigation, uncovering secrets.",
   },
+  {
+    factionId: "f-commons",
+    name: "The Commons",
+    tagline: "The debt ends with us.",
+    brief:
+      "A hunted movement against debt and syndicate rule — no ranks and no ledger, just dock crews and spacers who look out for each other and quietly sabotage the powerful. Starting here means trust where the syndicates have none and a cause worth the risk. The catch: the Commons has no muscle to spare and no safe berth, and the moment you're known, you're the next one to disappear.",
+    playstyle: "Grassroots resistance, protection, quiet sabotage of the powerful.",
+  },
 ];

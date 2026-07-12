@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { CampaignState } from "@/shared/schemas";
 import { skillProgress } from "@/engine";
+import { shipIsOwned, shipThreadId } from "@/shared/recap";
 
 /**
  * DM style rules — the voice of the game. Kept static and marked for prompt
@@ -21,6 +22,8 @@ const DM_STYLE = `You are the DM of DRIFT, a brutal space-opera TTRPG. Voice and
 - End every scene with end_scene, passing whether it was a paying job, dockings, and arrival — the engine runs wages, dock fees, and ticks.
 - After narrating a beat (outside active combat resolution), call offer_choices with 2-4 short, concrete next actions the player can click. The player can always type their own, so don't include a "something else" option.
 - Honor the player character's stated line they won't cross (given below); a moment that dares them to break it is high drama, never a throwaway.
+- STARTING STATUS: a new character is a LOW-LEVEL MINION of their faction with little pull or standing — NPCs treat them as unproven, and access, respect, and better work are earned, not given. Don't hand them authority, big scores, or faction trust for free.
+- THE LOANER SHIP: if the ship shows "on loan", the character flies it on their faction's leave and does NOT own it — the faction can pull it, and losing their standing puts the ship at risk. They earn the title by proving themselves (roughly reaching solid standing, rep ~+4 with their faction, or completing the ship-ownership thread). When they've genuinely earned it, resolve that thread with update_thread (status "resolved") and narrate the title transferring — the ship is then theirs. A character with NO ship begs or borrows passage until they earn a hull of their own. Never narrate the loaner as fully theirs while it is still on loan.
 - THE FAULT LINE is the season's rising pressure — a Crown–Sable war grinding the whole board toward a reckoning. It advances on its own with time, no matter what the player does. Weave its current phase into the world (see the SEASON line each turn), and read it through the lens of the player's own faction.`;
 
 /** Build the cached system blocks: style rules + universe primer. */
@@ -71,9 +74,10 @@ export function buildContextSlice(state: CampaignState, playerText: string, focu
     `${c.name}: HP ${c.hp}/${c.maxHp}, AC ${c.ac}${c.credits !== undefined ? `, ¢${c.credits}` : ""}${c.loyalty !== undefined ? `, loyalty ${c.loyalty}/5` : ""}${c.fragile ? " [FRAGILE: death saves -4]" : ""}`;
 
   const ship = state.ship;
+  const shipOwnership = ship ? (shipIsOwned(state) ? "OWNED" : "ON LOAN — not yet theirs") : "";
   const shipLine = ship
-    ? `${ship.name} (${ship.shipClass}): HP ${ship.hp}/${ship.maxHp}, AC ${ship.ac}${ship.evasiveAcBonus ? ` (+${ship.evasiveAcBonus} evasive)` : ""}, shield ${ship.shieldReady ? "ready" : "spent"}, missiles ${ship.weapons.find((w) => w.type === "missile")?.ammo ?? 0}, buyout ¢${ship.buyoutRemaining}`
-    : "no ship";
+    ? `${ship.name} (${ship.shipClass}) [${shipOwnership}]: HP ${ship.hp}/${ship.maxHp}, AC ${ship.ac}${ship.evasiveAcBonus ? ` (+${ship.evasiveAcBonus} evasive)` : ""}, shield ${ship.shieldReady ? "ready" : "spent"}, missiles ${ship.weapons.find((w) => w.type === "missile")?.ammo ?? 0}`
+    : "no ship (grounded — begs/borrows passage until they earn a hull)";
 
   const clocksLine = state.clocks
     .filter((c) => c.status === "active")
@@ -121,6 +125,6 @@ export function buildContextSlice(state: CampaignState, playerText: string, focu
     `Clocks: ${clocksLine}`,
     `Faction rep: ${repLine}`,
     ``,
-    `Entity ids for tools — characters: ${state.characters.map((c) => c.id).join(", ")}; ship: ${state.ship?.id ?? "none"}; clocks: ${state.clocks.map((c) => c.id).join(", ")}; factions: ${state.factions.map((f) => f.id).join(", ")}.`,
+    `Entity ids for tools — characters: ${state.characters.map((c) => c.id).join(", ")}; ship: ${state.ship?.id ?? "none"}; clocks: ${state.clocks.map((c) => c.id).join(", ")}; factions: ${state.factions.map((f) => f.id).join(", ")}${state.ship && !shipIsOwned(state) ? `; ship-ownership thread (resolve to grant the title): ${shipThreadId(state.campaign.id)}` : ""}.`,
   ].join("\n");
 }

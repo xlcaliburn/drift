@@ -50,13 +50,6 @@ export function getServiceClient(): SupabaseClient {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-/** Anon client (browser-safe, RLS-enforced). */
-export function getBrowserClient(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
-  return createClient(url, key);
-}
-
 // ── State assembly ───────────────────────────────────────────────────────────
 
 /** Load and validate a full CampaignState from the database. */
@@ -116,16 +109,26 @@ export interface CampaignSummary {
 }
 
 /**
- * List persisted campaigns for the home page, newest first. Campaign `name` is
- * the character's name (set at creation), so this is enough for a picker card.
+ * List a player's campaigns for the home page, newest first. Campaign `name`
+ * is the character's name (set at creation), so this is enough for a picker
+ * card. Admins pass includeUnowned to also see seeded/unclaimed campaigns
+ * (player_id is null) until the claim UPDATE in 002_auth.sql runs.
  * Returns [] on error so the landing page degrades gracefully.
  */
-export async function listCampaigns(db: SupabaseClient, limit = 50): Promise<CampaignSummary[]> {
-  const { data, error } = await db
+export async function listCampaigns(
+  db: SupabaseClient,
+  playerId: string,
+  opts: { includeUnowned?: boolean; limit?: number } = {},
+): Promise<CampaignSummary[]> {
+  let query = db
     .from("campaigns")
     .select("id,name,status,created_at")
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .limit(opts.limit ?? 50);
+  query = opts.includeUnowned
+    ? query.or(`player_id.eq.${playerId},player_id.is.null`)
+    : query.eq("player_id", playerId);
+  const { data, error } = await query;
   if (error || !data) return [];
   return data.map((r) => ({
     id: String(r.id),
@@ -133,4 +136,22 @@ export async function listCampaigns(db: SupabaseClient, limit = 50): Promise<Cam
     status: String(r.status),
     createdAt: r.created_at ? String(r.created_at) : undefined,
   }));
+}
+
+/**
+ * Cheap ownership lookup (indexed single-column select) so /play can check
+ * access without loading the whole campaign state. Returns undefined for
+ * unowned (seeded) campaigns, null when the campaign doesn't exist.
+ */
+export async function getCampaignOwner(
+  db: SupabaseClient,
+  campaignId: string,
+): Promise<string | undefined | null> {
+  const { data, error } = await db
+    .from("campaigns")
+    .select("player_id")
+    .eq("id", campaignId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data.player_id ? String(data.player_id) : undefined;
 }

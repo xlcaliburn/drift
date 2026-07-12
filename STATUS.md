@@ -4,23 +4,29 @@
 
 ## TL;DR
 
-The app is **built and playable in-memory**. Engine is fully tested (59 tests). The
-big remaining work is **Supabase persistence + Google auth** (nothing multiplayer
-survives a server restart until then). Three setup items are half-done and need
-you: GitHub push (auth mismatch), the `claude` CLI (PATH/reboot), and running the
-DB schema.
+The app is **built, playable, and persistent**. Engine is fully tested (64 tests).
+**Supabase persistence + Google auth + a user/admin system are now wired**:
+players sign in with Google, land pending until you approve them, see only their
+own campaigns, and are hard-capped by a per-user monthly token/cost budget. You
+manage users, spend, and feature requests at `/admin`.
+
+**What still needs you (external dashboards — code can't do it):** set up the
+Google OAuth provider in Google Cloud + Supabase, add the localhost redirect URL,
+sign in once, then claim the 3 seeded campaigns. See *Open action items* below.
 
 ## How to run / verify
 
 ```bash
 cd drift
 npm install
-cp .env.example .env.local     # add DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY
-npm run dev                    # http://localhost:3000 → "+ Create a character"
-npm test                       # 59 engine tests, no keys needed
+cp .env.example .env.local     # DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY; + Supabase vars for auth
+npm run dev                    # http://localhost:3000
+npm test                       # 64 engine tests, no keys needed
 npm run build                  # required before any commit
 ```
-If you see a Next.js error right after code changes: `rm -rf .next && npm run dev` + hard refresh. It's almost always stale cache, not a bug.
+Without the Supabase env vars the app runs **keyless/in-memory**: no login, a stub
+dev admin, nothing survives restart. With them, Google sign-in is required.
+If you see a Next.js error right after code changes: `rm -rf .next && npm run dev` + hard refresh. It's almost always stale cache, not a bug. Note: don't run two dev servers against the same `.next` dir — they corrupt each other's build output.
 
 ## What's built
 
@@ -50,9 +56,28 @@ dice log, cinematic toggle + per-turn cost readout. Opening recap is rendered
 **free from stored state** (no tokens). Transcript persists across refresh
 (in-memory server session).
 
+**Auth + users + admin (built)** — Google sign-in via Supabase Auth
+(`@supabase/ssr`, `middleware.ts`, `/login`, `/auth/callback`, sign-out). Open
+signup → new accounts land **pending** → you approve/suspend at `/admin`. A
+`profiles` table holds role (admin/player), status, and per-user monthly budgets.
+`lib/auth.ts` (`getAuthedUser`/`requireApprovedUser`/`requireAdmin`) guards every
+API route + page; campaigns are scoped per player (`campaigns.player_id`).
+Authorization is server-side in the guards (all DB access uses the service key,
+RLS is deny-all with no policies — intentional; Supabase advisor flags it, safe).
+
+**Budgets (built, enforced)** — every narrated turn is metered into `turn_usage`
+(tokens by type + estimated cost from `lib/pricing.ts`). `/api/turn` hard-blocks
+(402) when a player hits their monthly token OR cost cap (default 2M tokens /
+$5.00, editable per user in `/admin`). Keyless dev skips metering.
+
+**Admin panel** — `/admin` with **Users** (approve/suspend + edit caps),
+**Usage** (per-user spend, per-model breakdown, month picker), **Requests**
+(the old `/requests` review queue moved here; `/requests` now redirects). Add a
+tab in `components/AdminTabs.tsx` + a page under `app/admin/` to extend.
+
 **Feature requests** — 💡 button in play → free-text → cheap-LLM formats it →
-owner reviews at `/requests` (approve/decline/done). `feature_requests` table in
-schema. `TODO(auth)` to gate to owner.
+persisted to the `feature_requests` table (with `author_id`) → you review at
+`/admin` → Requests. Submitting requires an approved account; reviewing is admin-only.
 
 **Multiplayer foundations (schemas only, not yet wired at runtime)** —
 `shared/multiplayer.ts`: Dossier (public NPC-play profile), LedgerEntry
@@ -64,44 +89,51 @@ schema. `TODO(auth)` to gate to owner.
 - `drift/shared/multiplayer.ts` — dossier, ledger, season, creation input
 - `drift/engine/` — the whole rules engine + tests
 - `drift/llm/{narrator,deepseek,tools,promptBuilder,engineBridge,summarizer}.ts`
-- `drift/lib/{state,newCampaign,feedback}.ts` — in-memory stores (swap for Supabase)
-- `drift/db/schema.sql` — full Postgres schema (run this in Supabase)
-- `drift/db/queries.ts` — snake/camel mappers + load/save helpers (partially wired)
+- `drift/lib/state.ts` — session store (in-memory cache backed by Supabase)
+- `drift/lib/auth.ts` — `getAuthedUser` + `requireApprovedUser`/`requireAdmin` guards
+- `drift/lib/{usage,pricing}.ts` — token metering, cost estimates, budget checks
+- `drift/lib/{newCampaign,feedback}.ts` — campaign builder; DB-backed feedback store
+- `drift/lib/supabase/{server,client}.ts` + `drift/middleware.ts` — auth plumbing
+- `drift/db/schema.sql` — full Postgres schema; `db/migrations/002_auth.sql` — auth migration (applied)
+- `drift/db/queries.ts` — snake/camel mappers, load/save, `listCampaigns` (scoped), `getCampaignOwner`
+- `drift/app/admin/*` + `drift/app/api/admin/*` — the admin panel
 - `drift/scripts/seedData.ts` + `import-save.ts` — Vess seed, `--push` to DB
-- Docs: `ARCHITECTURE.md`, `IMPLEMENTATION.md`, `MULTIPLAYER.md`
+- Docs: `ARCHITECTURE.md`, `IMPLEMENTATION.md`, `MULTIPLAYER.md`, `WORLD_SYSTEMS.md`
 
 ## Open action items (need you)
 
-1. **GitHub push blocked (403).** Repo `github.com/xlcaliburn/drift.git`; commit
-   `45566b6` is made locally but push failed — this machine's cached credential is
-   for account **todomichael**, not xlcaliburn. Fix: Windows Credential Manager →
-   Windows Credentials → remove the `github.com` entry → `git push -u origin main`
-   (re-auth as xlcaliburn in the browser). Or add todomichael as a collaborator.
-   Untracked-but-safe extras to add when ready: `.mcp.json`, `.agents/`, `skills-lock.json`.
+1. **Finish Google OAuth setup (external dashboards — the only thing blocking
+   real logins).** The DB migration is already applied to the `drift` Supabase
+   project (`mgsogqnrpvoblqxkfgge`): `profiles`, `turn_usage`, the sign-in
+   trigger, campaign-ownership FK, and `feature_requests.author_id` all exist.
+   What's left:
+   - Google Cloud console → OAuth client (web) → redirect URI
+     `https://mgsogqnrpvoblqxkfgge.supabase.co/auth/v1/callback`.
+   - Supabase → Auth → Providers → enable Google with that client id/secret.
+   - Supabase → Auth → URL Configuration → add `http://localhost:3000/auth/callback`
+     (and the deployed origin's `/auth/callback` when you deploy).
+   - Sign in once as michaelchunkitwong@gmail.com → the trigger makes you
+     admin+approved. Then claim the 3 seeded campaigns (still `player_id is null`):
+     `update campaigns set player_id = (select id from profiles where role='admin' limit 1) where player_id is null;`
 
-2. **`claude` CLI "not recognized."** It IS installed (v2.1.207) and PATH is
-   correct; your terminal has a stale environment block. Fix: **reboot or sign
-   out/in**. Immediate workaround: `& "$env:APPDATA\npm\claude.cmd" --version`.
-   Only needed for MCP auth — optional (see below).
+2. **GitHub push blocked (403).** Repo `github.com/xlcaliburn/drift.git`; this
+   machine's cached credential is for account **todomichael**, not xlcaliburn.
+   Fix: Windows Credential Manager → Windows Credentials → remove the `github.com`
+   entry → `git push` (re-auth as xlcaliburn in the browser). Or add todomichael
+   as a collaborator. Untracked-but-safe extras to add when ready: `.mcp.json`,
+   `.agents/`, `skills-lock.json`.
 
-3. **Supabase not set up yet.** Fastest path, no CLI/MCP needed: Supabase project →
-   SQL Editor → paste all of `drift/db/schema.sql` → Run. Then `.env.local` gets the
-   3 Supabase vars. (MCP server config is in `.mcp.json`; auth via `/mcp` after reboot,
-   but the SQL editor makes it unnecessary for now.)
+## Next build phase — durable transcripts & shared-world runtime
 
-## Next build phase — Supabase persistence & auth (the critical path)
-
-In rough order:
-1. Run `db/schema.sql` in Supabase; `npm run import-save -- --push` to seed.
-2. Swap `lib/state.ts` in-memory store → `loadCampaignState`/`saveCampaignState`
-   (mappers already exist in `db/queries.ts`). Persist transcript + dice log + a
-   per-scene snapshot. Add an `updated_at` version check to avoid last-write-wins
-   clobbering on concurrent turns.
-3. Persist `/api/create` characters and `/api/feedback` requests to tables.
-4. **Google OAuth** via Supabase Auth (player_id columns already exist). Then
-   tighten the placeholder RLS policies and gate `/requests` to the owner.
-5. Per-player API budget cap (token usage already logged per turn) so friends
-   don't run up your keys.
+Persistence + auth + budgets are done. Remaining, in rough order:
+1. **Durable transcript/dice log.** `lib/state.ts` persists campaign state (HP,
+   credits, rep, clocks, threads) but the chat transcript + dice log + per-scene
+   snapshot still live only in the in-memory session — a server restart loses the
+   narrative history (not the mechanical state). Persist scenes/turns/rolls; add
+   an `updated_at` version check to avoid last-write-wins on concurrent turns.
+2. **Shared-world runtime** (see below) — dossiers, ledgers, cross-campaign reads.
+3. **World systems** — the exploration/artifacts/consequence-web design in
+   `WORLD_SYSTEMS.md` (artifact vertical slice first).
 
 ## Then — shared-world runtime (engine-side, mostly DB-independent)
 
@@ -124,14 +156,24 @@ In rough order:
   shared universe; async free-play; fully AI-run (no human referee yet); seasons
   with a fixed end date. Cross-player contact via dossiers + ledgers.
 - Cheapest-model-first (DeepSeek default). Equal footing at character creation.
-- Persistence is mandatory for multiplayer (Supabase, in progress).
+- Persistence is mandatory for multiplayer (Supabase — done).
+- Open signup → admin approval; players see only their own campaigns; per-user
+  hard budget caps protect the API keys.
 
 ## Watch-outs
 
 - DeepSeek's multi-turn tool-calling is less disciplined than Claude's; failure
   mode is a turn that narrates without rolling. Can't corrupt state (engine is the
   only mutator), but tighten the prompt if it shows up.
-- Created characters + feature requests are in server memory → lost on dev-server
-  restart until Supabase is wired. The Vess example campaign always regenerates.
+- **Transcript + dice log are still in-memory** (mechanical state persists;
+  narrative history doesn't) → a server restart loses the chat scrollback until
+  #1 in the next build phase lands. Created characters + feature requests DO
+  persist now. The Vess example campaign regenerates from seed.
+- `profiles`/`turn_usage` have RLS enabled with **no policies** (deny-all) —
+  intentional (all access is server-side via the service key). Supabase's security
+  advisor flags this; it's expected, not a bug. Add policies only if/when the
+  publishable key is ever used for direct table reads.
+- Budget check is per-turn and non-locking: two concurrent turns can both pass,
+  so a cap can be overshot by ~one turn. Fine at playtest scale.
 - Rotate the Anthropic key at some point — never committed (verified clean), but it
   briefly lived in an unignored file.

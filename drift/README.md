@@ -13,27 +13,57 @@ Built from `../IMPLEMENTATION.md`. Faithful port of `../vess-karo-save_1.md`.
 |---|---|
 | M0 Scaffold | ✅ |
 | M1 Schemas + rules content + DB schema | ✅ |
-| M2 Pure engine + 50 passing tests | ✅ |
+| M2 Pure engine + 64 passing tests | ✅ |
 | M3 Save import (Zod-validated seed) | ✅ |
 | M4 Narrator loop (tools, prompt cache, summarizer) | ✅ |
 | M5 Play UI (chat, sheet, ship, clocks, dice log) | ✅ |
-| M6 Durability (snapshots, export) | ⏳ next |
-| M7 Retrieval tuning | ⏳ ongoing |
-| M8 Multiplayer spillover | seams in place (`world_events`, `log_world_event`) |
+| M6 Persistence + Google auth + user/admin system + budgets | ✅ |
+| M7 Durable transcript/dice log (snapshots, export) | ⏳ next |
+| M8 Retrieval tuning | ⏳ ongoing |
+| M9 Multiplayer spillover | seams in place (`world_events`, `log_world_event`) |
 
 ## Quick start
 
 ```bash
 npm install
-npm test                 # 50 engine tests — no keys needed
+npm test                 # 64 engine tests — no keys needed
 npm run import-save      # validate the seed against Zod (dry run)
-cp .env.example .env.local   # add ANTHROPIC_API_KEY to actually play
+cp .env.example .env.local   # add ANTHROPIC_API_KEY (or DEEPSEEK_API_KEY) to actually play
 npm run dev              # http://localhost:3000
 ```
 
 The app runs **without Supabase** (in-memory state seeded from the save file) and
 renders the character sheet **without an API key** — you only need a key to
-narrate. Add Supabase env vars later for persistence (`db/schema.sql`).
+narrate. Without Supabase there is **no login**: everyone is a stub dev
+admin and nothing survives a restart. Add the Supabase env vars for
+persistence + auth (below).
+
+## Auth & multiplayer setup (Supabase)
+
+One-time setup, in this order:
+
+1. **Run the SQL** — Supabase SQL editor → paste `db/schema.sql` (fresh project)
+   or just `db/migrations/002_auth.sql` (existing project). Must run **before**
+   the first sign-in so the profile trigger exists.
+2. **Google OAuth** — Google Cloud console → create an OAuth client
+   (web application) with authorized redirect URI
+   `https://<project-ref>.supabase.co/auth/v1/callback`. Then Supabase
+   dashboard → Authentication → Providers → enable Google with that client
+   id/secret.
+3. **Redirect URLs** — Supabase → Authentication → URL Configuration →
+   add `http://localhost:3000/auth/callback` (and your deployed origin's
+   `/auth/callback`) to Additional Redirect URLs.
+4. **Sign in once** with the owner Google account — the trigger makes it
+   admin + approved automatically. Then claim the seeded campaigns
+   (one-liner documented at the bottom of `002_auth.sql`).
+
+How access works: anyone can sign in with Google, but new accounts land
+**pending** until approved at `/admin` (Users tab). Each player sees only
+their own campaigns. Every narrated turn is metered into `turn_usage`;
+players are hard-capped per month (default **2M tokens / $5.00**, editable
+per user in the admin panel) and get a clear "budget reached" error when
+spent. `/admin` also shows usage-by-model and the feature-request review
+queue (formerly `/requests`).
 
 ## Layout
 

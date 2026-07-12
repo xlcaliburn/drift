@@ -17,6 +17,8 @@ export const FeatureRequest = z.object({
   campaignId: z.string().optional(),
   /** Who asked — the character/player name shown to the owner. */
   authorName: z.string().default("anonymous"),
+  /** Authenticated user id (profiles.id); absent in keyless dev. */
+  authorId: z.string().optional(),
   /** The player's original words, kept verbatim. */
   raw: z.string(),
   /** LLM-formatted (or naive-fallback) presentation. */
