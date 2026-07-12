@@ -7,11 +7,20 @@ import { shipIsOwned } from "@/shared/recap";
 
 type Tab = "sheet" | "ship" | "map" | "clocks";
 
-export default function Sidebar({ state }: { state: CampaignState }) {
+export default function Sidebar({
+  state,
+  mobileOpen = false,
+  onClose,
+}: {
+  state: CampaignState;
+  /** Mobile slide-over drawer control (desktop rail ignores these). */
+  mobileOpen?: boolean;
+  onClose?: () => void;
+}) {
   const [tab, setTab] = useState<Tab>("sheet");
 
-  return (
-    <aside className="hidden w-80 shrink-0 flex-col border-l border-edge bg-panel/40 md:flex">
+  const body = (
+    <>
       <div className="flex border-b border-edge text-xs">
         {(["sheet", "ship", "map", "clocks"] as Tab[]).map((t) => (
           <button
@@ -33,7 +42,39 @@ export default function Sidebar({ state }: { state: CampaignState }) {
         {tab === "map" && <MapTab state={state} />}
         {tab === "clocks" && <ClocksTab state={state} />}
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop: fixed right rail. */}
+      <aside className="hidden w-80 shrink-0 flex-col border-l border-edge bg-panel/40 md:flex">
+        {body}
+      </aside>
+
+      {/* Mobile: slide-over drawer, opened by the header ☰ button. */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 md:hidden" onClick={onClose}>
+          <div className="absolute inset-0 bg-ink/70" />
+          <aside
+            className="absolute right-0 top-0 flex h-full w-80 max-w-[85%] flex-col border-l border-edge bg-panel"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-edge px-3 py-2">
+              <span className="text-xs uppercase tracking-wide text-neutral-500">Character</span>
+              <button
+                onClick={onClose}
+                className="px-2 py-1 text-neutral-400 transition hover:text-accent"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            {body}
+          </aside>
+        </div>
+      )}
+    </>
   );
 }
 

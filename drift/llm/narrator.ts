@@ -67,6 +67,82 @@ const MAX_TOOL_ROUNDS = 12;
 const SINK_TOOLS = new Set(["offer_choices", "log_world_event"]);
 
 /**
+ * Guarantee the history we send to the model is structurally valid: every
+ * tool_use is immediately followed by its tool_result, no orphan tool_results,
+ * no trailing tool exchange left hanging, and the array starts on a user turn.
+ *
+ * This is defense-in-depth. The write path below no longer persists a dangling
+ * tool_use, but sessions saved by older code did (a sink-terminal turn kept the
+ * offer_choices tool_use with no tool_result) — sending that to Anthropic 400s
+ * with "tool_use ids were found without tool_result blocks". Sanitizing on read
+ * repairs those histories so a single bad turn can't wedge a campaign, and works
+ * across providers (DeepSeek `call_*` ids and Anthropic `toolu_*` ids alike).
+ */
+export function sanitizeHistory(history: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  const out: Anthropic.MessageParam[] = [];
+  for (let i = 0; i < history.length; i++) {
+    const m = history[i];
+    if (m.role === "assistant" && Array.isArray(m.content)) {
+      const toolUses = m.content.filter(
+        (b): b is Anthropic.ToolUseBlockParam => b.type === "tool_use",
+      );
+      if (toolUses.length) {
+        const next = history[i + 1];
+        const resultIds = new Set<string>(
+          next && Array.isArray(next.content)
+            ? next.content.flatMap((b) => (b.type === "tool_result" ? [b.tool_use_id] : []))
+            : [],
+        );
+        if (!toolUses.every((b) => resultIds.has(b.id))) {
+          // A tool_use has no matching result → drop every tool_use, keep text.
+          const text = m.content.filter((b) => b.type === "text");
+          if (text.length) out.push({ role: "assistant", content: text });
+          continue;
+        }
+      }
+      out.push(m);
+      continue;
+    }
+    if (m.role === "user" && Array.isArray(m.content)) {
+      // Drop orphan tool_results (no matching tool_use in the previous kept msg).
+      const prev = out[out.length - 1];
+      const prevIds = new Set<string>(
+        prev && prev.role === "assistant" && Array.isArray(prev.content)
+          ? prev.content.flatMap((b) => (b.type === "tool_use" ? [b.id] : []))
+          : [],
+      );
+      const kept = m.content.filter((b) => b.type !== "tool_result" || prevIds.has(b.tool_use_id));
+      if (kept.length) out.push({ role: "user", content: kept });
+      continue;
+    }
+    out.push(m);
+  }
+  // Unwind a trailing tool exchange with no assistant reply after it, so history
+  // ends on an assistant turn and the appended player message never produces two
+  // user messages in a row.
+  for (;;) {
+    const last = out[out.length - 1];
+    const onlyToolResults =
+      !!last &&
+      last.role === "user" &&
+      Array.isArray(last.content) &&
+      last.content.length > 0 &&
+      last.content.every((b) => b.type === "tool_result");
+    if (!onlyToolResults) break;
+    out.pop();
+    const prev = out[out.length - 1];
+    if (prev && prev.role === "assistant" && Array.isArray(prev.content)) {
+      out.pop();
+      const text = prev.content.filter((b) => b.type === "text");
+      if (text.length) out.push({ role: "assistant", content: text });
+    }
+  }
+  // Anthropic requires the first message to be a user turn.
+  while (out.length && out[0].role !== "user") out.shift();
+  return out;
+}
+
+/**
  * Cheapest-first routing: DeepSeek is the routine narrator whenever its key is
  * configured; otherwise Haiku. Cinematic turns escalate to Sonnet (when an
  * Anthropic key exists — resolveModel degrades it back to DeepSeek if not).
@@ -142,7 +218,7 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
   const contextSlice = buildContextSlice(input.state, input.playerText, input.focusIds);
 
   const messages: Anthropic.MessageParam[] = [
-    ...input.history,
+    ...sanitizeHistory(input.history),
     {
       role: "user",
       content: `${contextSlice}\n\n---\nPLAYER: ${input.playerText}`,
@@ -262,10 +338,20 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
     // Round-trip elimination: if every tool this round was a sink (its result is a
     // bare ack) and we already have narration to return, stop here instead of
     // calling the model again just to consume acks. This is the common routine
-    // beat — narrate + offer_choices — and halves its API calls. We keep the
-    // narration text; we simply don't feed the useless results back.
+    // beat — narrate + offer_choices — and halves its API calls.
     const allSinks = toolUses.length > 0 && toolUses.every((b) => SINK_TOOLS.has(b.name));
-    if (allSinks && narrationParts.length > 0) break;
+    if (allSinks && narrationParts.length > 0) {
+      // We're ending the turn without another model call, so the sink tool_result
+      // is never sent. Do NOT persist the dangling tool_use into history — there'd
+      // be no tool_result after it and the next turn would 400. Keep only the
+      // assistant's text (the sink results are bookkeeping the narrator never
+      // needs to see again).
+      const idx = newMessages.length - 1; // the assistant message pushed above
+      const textOnly = respContent.filter((b) => b.type === "text");
+      if (textOnly.length) newMessages[idx] = { role: "assistant", content: textOnly };
+      else newMessages.splice(idx, 1);
+      break;
+    }
 
     const toolMsg: Anthropic.MessageParam = { role: "user", content: toolResults };
     messages.push(toolMsg);
