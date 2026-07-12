@@ -17,8 +17,11 @@ function buildLoanerShip(campaignId: string, loaner: LoanerDef): Ship {
     campaignId,
     name: loaner.name,
     shipClass: loaner.shipClass,
-    hp: 14,
-    maxHp: 14,
+    // A weak-but-viable starter: enough hull to survive a scrape, one light gun,
+    // no shield (that's an earned upgrade). Its real defense is running — the
+    // burst drive is charged. Threats are scaled to it by narrator guidance.
+    hp: 18,
+    maxHp: 18,
     ac: 12,
     evasiveAcBonus: 2,
     damageReduction: 0,
@@ -26,7 +29,7 @@ function buildLoanerShip(campaignId: string, loaner: LoanerDef): Ship {
     hasShield: false,
     shieldReady: false,
     hasPointDefense: false,
-    burstDriveReady: false,
+    burstDriveReady: true,
     dcModifier: 0,
     buyoutRemaining: 0, // ownership is milestone-earned, not credit-bought
     notes: loaner.notes,

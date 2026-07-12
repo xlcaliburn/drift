@@ -1,0 +1,25 @@
+{
+  "projectId": "fe677d28-3fe5-40f5-940b-4c69bec0ad63",
+  "pkg": "@drift/ui",
+  "globalName": "DriftUI",
+  "shape": "package",
+  "buildCmd": "npm run build --prefix ds",
+  "cssEntry": "dist/styles.css",
+  "docsDir": "../.design-sync/docs-stubs",
+  "readmeHeader": ".design-sync/conventions.md",
+  "provider": {
+    "component": "DriftRoot",
+    "props": { "className": "p-4" }
+  },
+  "overrides": {
+    "Modal": { "cardMode": "single", "viewport": "560x600" },
+    "AppHeader": { "cardMode": "column" },
+    "Tabs": { "cardMode": "column" }
+  },
+  "componentSrcMap": {
+    "layoutVocabulary": null,
+    "TextInput": "src/components/inputs.tsx",
+    "TextArea": "src/components/inputs.tsx",
+    "Select": "src/components/inputs.tsx"
+  }
+}

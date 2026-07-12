@@ -27,13 +27,13 @@ export const tools: Anthropic.Tool[] = [
   {
     name: "resolve_attack",
     description:
-      "Resolve one attack. For ship combat, target an enemy spawned by spawn_encounter (by id) or 'lark'. Applies the interaction matrix, shields, PD, and crit rules.",
+      "Resolve one attack. For ship combat, target an enemy spawned by spawn_encounter (by id) or the player's ship ('ship' or its id from the entity-ids line). Applies the interaction matrix, shields, PD, and crit rules.",
     input_schema: {
       type: "object",
       properties: {
         attackerSide: { type: "string", enum: ["player", "enemy"] },
         scale: { type: "string", enum: ["ship", "personal"] },
-        attackerId: { type: "string", description: "'lark' / character id / enemy id — used to source the attack modifier" },
+        attackerId: { type: "string", description: "'ship' (or ship id) / character id / enemy id — used to source the attack modifier" },
         attackMod: { type: "integer", description: "override the attack modifier if the attacker has no stored one" },
         weaponType: { type: "string", enum: ["kinetic", "energy", "missile", "ion"] },
         damage: { type: "string", description: "dice, e.g. '2d8'" },
@@ -71,7 +71,7 @@ export const tools: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: {
-        targetId: { type: "string", description: "character id or 'lark'" },
+        targetId: { type: "string", description: "character id, or the player's ship ('ship' or its id)" },
         field: { type: "string", enum: ["hp", "credits", "stims", "missiles", "loyalty"] },
         delta: { type: "integer" },
         reason: { type: "string" },

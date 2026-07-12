@@ -194,10 +194,10 @@ export const factionOpenings: FactionOpening[] = [
     ],
     loaner: {
       name: "The Tally",
-      shipClass: "hauler",
+      shipClass: "scout",
       weaponName: "Defensive turret",
       notes:
-        "Meridian consignment hull — a courier skiff on the trade house's books. Fly their cargo and keep it safe, and the title comes off their ledger and onto yours.",
+        "Meridian consignment hull — a light courier skiff on the trade house's books. Fly their cargo and keep it safe, and the title comes off their ledger and onto yours.",
     },
     seed: {
       startLocation: "Meridian Ring — the legitimate trade houses, depots, and clean docks of the Crown-held ring",

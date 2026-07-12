@@ -12,6 +12,12 @@ import {
   type EngineEvent,
 } from "@/engine";
 import { enemyTiers, shipClasses } from "@/content";
+import { shipIsOwned, shipThreadId } from "@/shared/recap";
+
+/** Standing at or below this with your parent faction, while still flying their
+ *  loaner, gets the ship repossessed (see adjustRep). A real betrayal — starting
+ *  parent rep is +1, so this only fires after you turn hard on your own side. */
+const SHIP_SEIZE_REP = -2;
 
 /**
  * Bridges narrator tool calls to deterministic engine functions, accumulating
@@ -38,6 +44,12 @@ export class TurnRuntime {
 
   private char(id: string): Character | undefined {
     return this.state.characters.find((c) => c.id === id);
+  }
+
+  /** Does this target id refer to the player's ship? Accepts the real ship id,
+   *  the generic "ship" token, and legacy "lark" (the fixture's ship id). */
+  private isShipTarget(id: string): boolean {
+    return !!this.state.ship && (id === this.state.ship.id || id === "ship" || id === "lark");
   }
 
   execute(name: string, input: Record<string, unknown>): unknown {
@@ -117,10 +129,10 @@ export class TurnRuntime {
     let target: CombatTarget;
     let commit: (hpAfter: number, shieldReady: boolean) => void;
 
-    if (targetId === "lark" && this.state.ship) {
-      const s = this.state.ship;
+    if (this.isShipTarget(targetId)) {
+      const s = this.state.ship!;
       target = {
-        id: "lark",
+        id: s.id,
         name: s.name,
         hp: s.hp,
         ac: s.ac,
@@ -222,12 +234,12 @@ export class TurnRuntime {
     const field = String(input.field);
     const delta = Number(input.delta);
 
-    if (targetId === "lark" && this.state.ship) {
-      const s = this.state.ship;
+    if (this.isShipTarget(targetId)) {
+      const s = this.state.ship!;
       if (field === "hp") {
         const hp = Math.max(0, Math.min(s.maxHp, s.hp + delta));
         this.state = { ...this.state, ship: { ...s, hp } };
-        this.events.push({ type: "resource", breakdown: `Lark HP ${s.hp}→${hp}`, field, delta });
+        this.events.push({ type: "resource", breakdown: `${s.name} HP ${s.hp}→${hp}`, field, delta });
         return { field, value: hp };
       }
       if (field === "missiles") {
@@ -237,7 +249,7 @@ export class TurnRuntime {
           ...this.state,
           ship: { ...s, weapons: s.weapons.map((w) => (w.type === "missile" ? { ...w, ammo: val } : w)) },
         };
-        this.events.push({ type: "resource", breakdown: `Lark missiles → ${val}`, field, delta });
+        this.events.push({ type: "resource", breakdown: `${s.name} missiles → ${val}`, field, delta });
         return { field, value: val };
       }
     }
@@ -285,6 +297,39 @@ export class TurnRuntime {
       factionRep: this.state.factionRep.map((r) => (r.factionId === factionId ? { ...r, rep: to } : r)),
     };
     this.events.push({ type: "rep", breakdown: `Rep ${factionId}: ${from}→${to}`, factionId, from, to });
+
+    // Loaner repossession: crater your standing with the faction whose ship you
+    // fly — before you've earned the title — and they pull it. Deterministic
+    // consequence (like a clock milestone); the narrator must narrate it.
+    const pc = this.state.characters.find((c) => c.kind === "pc");
+    if (
+      pc?.parentFactionId === factionId &&
+      to <= SHIP_SEIZE_REP &&
+      this.state.ship &&
+      !shipIsOwned(this.state)
+    ) {
+      const shipName = this.state.ship.name;
+      const factionName = this.state.factions.find((f) => f.id === factionId)?.name ?? "Your faction";
+      this.state = {
+        ...this.state,
+        ship: undefined,
+        threads: this.state.threads.map((t) =>
+          t.id === shipThreadId(this.state.campaign.id)
+            ? {
+                ...t,
+                title: "Earn a hull of your own",
+                body: `${factionName} repossessed ${shipName} when your standing with them cratered. You're grounded — beg and borrow passage until you can get a hull that answers to you alone.`,
+              }
+            : t,
+        ),
+      };
+      this.events.push({
+        type: "note",
+        breakdown: `${factionName} repossessed ${shipName} — standing cratered to ${to}. You are grounded.`,
+      });
+      return { factionId, from, to, shipSeized: { name: shipName, by: factionId } };
+    }
+
     return { factionId, from, to };
   }
 
