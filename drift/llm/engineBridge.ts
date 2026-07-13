@@ -14,9 +14,16 @@ import {
 import { enemyTiers, shipClasses, economy } from "@/content";
 import { awardTick } from "@/engine/progression";
 import { rollDamage, maxDice } from "@/engine/dice";
-import { spawnCombatEnemies, playerAttack, enemyAttack, type SpawnSpec } from "@/engine/combatEngine";
+import {
+  spawnCombatEnemies,
+  spawnCombatShips,
+  playerAttack,
+  enemyAttack,
+  type SpawnSpec,
+  type ShipSpawnSpec,
+} from "@/engine/combatEngine";
 import { fleeDC, threatLevel } from "@/shared/combat";
-import type { CombatState, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
+import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
 
@@ -598,42 +605,54 @@ export class TurnRuntime {
     return "continue";
   }
 
-  /**
-   * Start a fight: spawn enemies, resolve surprise (ambush = a free enemy volley
-   * before the player acts; you-ambush = a free opening strike is left to the
-   * player's first round). Returns the CombatState + opening lines.
-   */
-  startCombat(
-    specs: SpawnSpec[],
+  /** Begin a fight from pre-spawned enemies; resolve enemy surprise (ambush = a
+   *  free enemy volley before the player acts; you-ambush → an opening edge). */
+  private beginCombat(
     scale: "personal" | "ship",
+    enemies: CombatEnemy[],
     surprise: "player" | "enemy" | "none",
   ): { combat: CombatState; lines: string[]; outcome: CombatOutcome } {
-    const enemies = spawnCombatEnemies(specs, this.rng);
     const combat: CombatState = {
       active: true,
       round: 1,
       scale,
       enemies,
       playerCoverAc: 0,
-      playerAimBonus: surprise === "player" ? 2 : 0, // your ambush → aim on the opener
+      playerAimBonus: surprise === "player" ? 2 : 0,
       fleeAttempts: 0,
     };
-    const lines = [`⚔ Combat — ${enemies.map((e) => e.name).join(", ")}.`];
+    const lines = [`⚔ ${scale === "ship" ? "Ship combat" : "Combat"} — ${enemies.map((e) => e.name).join(", ")}.`];
     let outcome: CombatOutcome = "continue";
     if (surprise === "enemy") {
       lines.push("Ambushed — they fire first.");
-      outcome = this.enemyVolley(combat, lines);
+      outcome = scale === "ship" ? this.enemyShipVolley(combat, false, lines) : this.enemyVolley(combat, lines);
       if (outcome !== "continue") combat.active = false;
     }
     return { combat, lines, outcome };
   }
 
-  /**
-   * Resolve one round: the player's action, then (if the fight continues) the
-   * enemy volley, then the end check. Pure w.r.t. the CombatState arg (returns a
-   * new one) but mutates player HP through the runtime's applyDamage/heal.
-   */
+  /** Start a personal (on-foot) fight. */
+  startCombat(specs: SpawnSpec[], surprise: "player" | "enemy" | "none") {
+    return this.beginCombat("personal", spawnCombatEnemies(specs, this.rng), surprise);
+  }
+
+  /** Start a ship-scale fight. */
+  startShipCombat(specs: ShipSpawnSpec[], surprise: "player" | "enemy" | "none") {
+    return this.beginCombat("ship", spawnCombatShips(specs, this.rng), surprise);
+  }
+
+  /** Resolve one round — dispatch by scale. Pure w.r.t. the CombatState arg
+   *  (returns a new one) but mutates player/ship HP through the runtime. */
   resolveCombatRound(
+    combat: CombatState,
+    action: CombatAction,
+  ): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
+    return combat.scale === "ship"
+      ? this.resolveShipRound(combat, action)
+      : this.resolvePersonalRound(combat, action);
+  }
+
+  private resolvePersonalRound(
     combat: CombatState,
     action: CombatAction,
   ): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
@@ -723,6 +742,174 @@ export class TurnRuntime {
     // Enemy volley (halts if the player drops).
     const next: CombatState = { ...combat, enemies, playerAimBonus: aim, playerCoverAc: cover, fleeAttempts };
     const outcome = this.enemyVolley(next, lines);
+    if (outcome === "continue") {
+      next.round += 1;
+      return { combat: next, lines, outcome, loot: 0 };
+    }
+    return { combat: { ...next, active: false }, lines, outcome, loot: 0 };
+  }
+
+  // ── Ship-scale combat ──────────────────────────────────────────────────────
+
+  /** Apply hull damage to the player's ship. Hull 0 = DISABLED (adrift), not
+   *  death — the aftermath is narrated (boarded / captured / towed). */
+  private applyShipDamage(amount: number) {
+    const s = this.state.ship;
+    if (!s || amount <= 0) return { hpAfter: s?.hp ?? 0, taken: 0, disabled: false };
+    const before = s.hp;
+    const hp = Math.max(0, before - amount);
+    this.state = { ...this.state, ship: { ...s, hp } };
+    const disabled = hp === 0 && before > 0;
+    this.events.push({
+      type: "resource",
+      breakdown: `${s.name} hull ${before}→${hp}${disabled ? " · DISABLED" : ""}`,
+      field: "hp",
+      delta: -amount,
+    });
+    return { hpAfter: hp, taken: amount, disabled };
+  }
+
+  /** Enemy ships fire on the player's hull; halts the instant it's disabled. */
+  private enemyShipVolley(combat: CombatState, evasive: boolean, lines: string[]): CombatOutcome {
+    const pc = this.pc();
+    for (const enemy of combat.enemies) {
+      const swings = enemy.multiAttack ? 2 : 1;
+      for (let i = 0; i < swings; i++) {
+        const s = this.state.ship;
+        if (!s || s.hp <= 0) return "disabled";
+        const res = resolveShipAttack(
+          {
+            attackerSide: "enemy",
+            attackMod: enemy.atk,
+            weaponType: enemy.weaponType ?? "kinetic",
+            damage: enemy.damage,
+            target: {
+              id: s.id,
+              name: s.name,
+              hp: s.hp,
+              ac: s.ac,
+              armored: s.damageReduction > 0,
+              shieldReady: s.hasShield && s.shieldReady,
+              isEvasive: evasive,
+              hasPointDefense: s.hasPointDefense,
+            },
+          },
+          this.rng,
+        );
+        lines.push(`💢 ${enemy.name}: ${res.breakdown}`);
+        if (res.targetShieldReadyAfter !== (s.hasShield && s.shieldReady)) {
+          this.state = { ...this.state, ship: { ...s, shieldReady: res.targetShieldReadyAfter } };
+        }
+        if (res.hit && res.damageDealt > 0) {
+          const harm = this.applyShipDamage(res.damageDealt);
+          lines.push(`💥 Hull takes ${harm.taken}${harm.disabled ? " · DISABLED" : ""}`);
+          if (harm.disabled) return "disabled";
+        }
+      }
+    }
+    // Combat left the PC untouched — an environment threat (E-6) never triggers here.
+    void pc;
+    return "continue";
+  }
+
+  private resolveShipRound(
+    combat: CombatState,
+    action: CombatAction,
+  ): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
+    const lines: string[] = [];
+    const s = this.state.ship;
+    if (!s) {
+      return { combat: { ...combat, active: false }, lines: ["You have no ship to fight in."], outcome: "escaped", loot: 0 };
+    }
+    const pc = this.pc()!;
+    const gunneryMod = computeModifier(pc, "gunnery");
+    const combatLevel = Math.max(
+      0,
+      ...["gunnery", "piloting"].map((k) => pc.skills.find((x) => x.name === k)?.level ?? 0),
+    );
+    let enemies = combat.enemies.map((e) => ({ ...e }));
+    let evasive = combat.playerCoverAc > 0;
+    let fleeAttempts = combat.fleeAttempts;
+
+    switch (action.type) {
+      case "attack": {
+        const enemy = enemies.find((e) => e.id === action.enemyId && e.hp > 0) ?? enemies.find((e) => e.hp > 0);
+        if (enemy) {
+          const w = s.weapons[0];
+          if (w?.type === "missile" && (w.ammo ?? 0) <= 0) {
+            lines.push("Missile racks are dry.");
+          } else {
+            const res = resolveShipAttack(
+              {
+                attackerSide: "player",
+                attackMod: gunneryMod,
+                weaponType: (w?.type as "kinetic") ?? "kinetic",
+                damage: w?.damage ?? "1d8",
+                target: {
+                  id: enemy.id,
+                  name: enemy.name,
+                  hp: enemy.hp,
+                  ac: enemy.ac,
+                  armored: enemy.armored,
+                  shieldReady: enemy.shieldReady,
+                  isEvasive: enemy.isEvasive,
+                  hasPointDefense: enemy.hasPointDefense,
+                },
+              },
+              this.rng,
+            );
+            lines.push(`🎯 ${res.breakdown}`);
+            enemy.hp = res.targetHpAfter;
+            enemy.shieldReady = res.targetShieldReadyAfter;
+            if (res.targetHpAfter <= 0) lines.push(`☠ ${enemy.name} is wrecked.`);
+            if (w?.type === "missile") {
+              this.state = {
+                ...this.state,
+                ship: { ...s, weapons: s.weapons.map((x) => (x.type === "missile" ? { ...x, ammo: Math.max(0, (x.ammo ?? 0) - 1) } : x)) },
+              };
+            }
+          }
+        }
+        evasive = false;
+        break;
+      }
+      case "cover":
+        evasive = true;
+        lines.push("🛡 Evasive maneuvers — throwing off their targeting.");
+        break;
+      case "flee": {
+        if (s.burstDriveReady) {
+          lines.push("💨 Burst drive fires — you punch clear of the engagement.");
+          this.state = { ...this.state, ship: { ...s, burstDriveReady: false } };
+          return { combat: { ...combat, active: false }, lines, outcome: "escaped", loot: 0 };
+        }
+        const dc = fleeDC(threatLevel(enemies), combatLevel, fleeAttempts);
+        const mod = computeModifier(pc, "piloting");
+        const d20 = this.rng.int(1, 20);
+        const total = d20 + mod;
+        fleeAttempts += 1;
+        const escaped = total >= dc;
+        lines.push(`🎲 Break off: d20(${d20})+${mod} = ${total} vs DC ${dc} → ${escaped ? "clear" : "they stay on you"}`);
+        if (escaped) return { combat: { ...combat, active: false }, lines, outcome: "escaped", loot: 0 };
+        evasive = false;
+        break;
+      }
+    }
+
+    enemies = enemies.filter((e) => e.hp > 0);
+    if (enemies.length === 0) {
+      const [lo, hi] = LOOT_BAND[combat.enemies[0]?.tier ?? "T2"];
+      const loot = this.rng.int(lo, hi);
+      this.state = {
+        ...this.state,
+        characters: this.state.characters.map((x) => (x.id === pc.id ? { ...x, credits: (x.credits ?? 0) + loot } : x)),
+      };
+      lines.push(`💰 Enemy driven off / destroyed — salvage worth ¢${loot}.`);
+      return { combat: { ...combat, enemies, active: false }, lines, outcome: "victory", loot };
+    }
+
+    const next: CombatState = { ...combat, enemies, playerCoverAc: evasive ? 1 : 0, playerAimBonus: 0, fleeAttempts };
+    const outcome = this.enemyShipVolley(next, evasive, lines);
     if (outcome === "continue") {
       next.round += 1;
       return { combat: next, lines, outcome, loot: 0 };

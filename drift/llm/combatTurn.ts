@@ -55,6 +55,7 @@ function endChoices(outcome: CombatOutcome): ChoiceOption[] {
   if (outcome === "dead") return [];
   if (outcome === "victory") return [{ label: "Search the wreckage" }, { label: "Move on" }];
   if (outcome === "escaped") return [{ label: "Catch your breath" }, { label: "Keep moving" }];
+  if (outcome === "disabled") return [{ label: "Assess the damage" }, { label: "Signal for help" }];
   return [{ label: "Take stock" }]; // downed — aftermath is narrated
 }
 
@@ -74,6 +75,7 @@ export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnR
 
   const pc = runtime.state.characters.find((c) => c.kind === "pc");
   const stims = pc?.stims ?? 0;
+  const burstReady = !!runtime.state.ship?.burstDriveReady;
 
   // 2. Narrate the round from the engine results (model narrates only).
   const status =
@@ -116,7 +118,8 @@ export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnR
   }
   const narration = stripInlineMenu(raw.trim()) || status;
 
-  const choices = outcome === "continue" && nextCombat.active ? combatActions(nextCombat, stims) : endChoices(outcome);
+  const choices =
+    outcome === "continue" && nextCombat.active ? combatActions(nextCombat, stims, burstReady) : endChoices(outcome);
 
   return {
     narration,

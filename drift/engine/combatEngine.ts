@@ -1,6 +1,6 @@
 import type { RNG } from "./rng";
 import { rollDamage, maxDice } from "./dice";
-import { enemyTiers } from "@/content";
+import { enemyTiers, shipClasses } from "@/content";
 import type { CombatEnemy, CombatTier } from "@/shared/combat";
 
 /**
@@ -46,6 +46,56 @@ export function spawnCombatEnemies(specs: SpawnSpec[], rng: RNG): CombatEnemy[] 
         damage: t.damage,
         shieldReady: spec.tier === "T2" || spec.tier === "T3",
         multiAttack: !!t.multiAttack,
+      });
+    }
+  }
+  return out;
+}
+
+export type ShipClass = keyof typeof shipClasses.classes;
+export interface ShipSpawnSpec {
+  shipClass: ShipClass;
+  count?: number;
+  name?: string;
+  tier?: CombatTier;
+}
+
+/** Rough gunnery-attack bonus for an enemy ship of a class. */
+const SHIP_ATK: Record<string, number> = { scout: 4, fighter: 5, hauler: 4, gunship: 6, corvette: 7 };
+
+/** Build enemy SHIPS from the ship-class tables (hp/ac/weapon/defenses). */
+export function spawnCombatShips(specs: ShipSpawnSpec[], rng: RNG): CombatEnemy[] {
+  const out: CombatEnemy[] = [];
+  let n = 0;
+  for (const spec of specs) {
+    const cls = shipClasses.classes[spec.shipClass] as unknown as {
+      label: string;
+      hpRange: [number, number];
+      acRange: [number, number];
+      weapon: { type: string; damage: string };
+      defenses: string[];
+      multiAttack?: boolean;
+    };
+    if (!cls) continue;
+    const count = Math.max(1, Math.min(4, spec.count ?? 1));
+    for (let i = 0; i < count; i++) {
+      const hp = rng.int(cls.hpRange[0], cls.hpRange[1]);
+      const ac = rng.int(cls.acRange[0], cls.acRange[1]);
+      out.push({
+        id: `e-${++n}`,
+        name: count > 1 ? `${spec.name ?? cls.label} ${i + 1}` : spec.name ?? cls.label,
+        tier: spec.tier ?? "T2",
+        hp,
+        maxHp: hp,
+        ac,
+        atk: SHIP_ATK[spec.shipClass] ?? 5,
+        damage: cls.weapon.damage,
+        weaponType: cls.weapon.type as CombatEnemy["weaponType"],
+        shieldReady: cls.defenses.includes("shields"),
+        hasPointDefense: cls.defenses.includes("pd"),
+        isEvasive: cls.defenses.includes("evasion"),
+        armored: cls.defenses.includes("armor"),
+        multiAttack: !!cls.multiAttack,
       });
     }
   }

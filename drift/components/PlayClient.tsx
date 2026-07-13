@@ -86,7 +86,8 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
         if (d.combat?.active) {
           setCombat(d.combat);
           const stims = d.state.characters.find((c: { kind: string }) => c.kind === "pc")?.stims ?? 0;
-          setChoices(d.combat.enemies ? combatActions(d.combat, stims) : []);
+          const burstReady = !!d.state.ship?.burstDriveReady;
+          setChoices(d.combat.enemies ? combatActions(d.combat, stims, burstReady) : []);
         } else if (!restored.length) {
           setChoices(normalizeChoices(buildOpeningChoices(d.state)));
         }

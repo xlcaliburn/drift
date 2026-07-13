@@ -8,7 +8,7 @@ import { sanitizeHistory, trimToLastSentence } from "./narrator";
 import { NarrationExtractor } from "./jsonStream";
 import { parseTurnPlan, repairTurnPlan, type TurnPlan, type CheckSpec, type ChoiceOption } from "@/shared/turnPlan";
 import type { CombatState } from "@/shared/combat";
-import type { SpawnSpec } from "@/engine/combatEngine";
+import type { SpawnSpec, ShipClass } from "@/engine/combatEngine";
 import { stripInlineMenu } from "@/shared/narration";
 import { graduatedTutorialThisTurn, inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
 
@@ -73,6 +73,9 @@ export interface JsonTurnResult {
 /** JSON envelope + a ~90-word narration fits comfortably; the prose budget is
  *  enforced by the prompt (the 450-token spirit), the envelope needs headroom. */
 const JSON_MAX_TOKENS = 600;
+
+/** Default enemy ship class when the model gives only a tier for a ship fight. */
+const TIER_TO_CLASS: Record<"T1" | "T2" | "T3", string> = { T1: "scout", T2: "fighter", T3: "gunship" };
 
 function defaultModel(): string {
   return resolveModel(process.env.NARRATOR_MODEL ?? "deepseek-chat");
@@ -320,9 +323,25 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   if (plan.combatStart && pc) {
     toolCalls.push("combat_start");
     const cs = plan.combatStart;
-    const specs: SpawnSpec[] = [{ tier: cs.tier, count: cs.count ?? undefined, name: cs.name ?? undefined }];
-    // Ship-scale combat is not built yet — resolve everything as personal for v1.
-    const started = runtime.startCombat(specs, "personal", cs.surprise ?? "none");
+    const surprise = cs.surprise ?? "none";
+    // Ship-scale needs a ship to fly; otherwise resolve on foot.
+    const started =
+      cs.scale === "ship" && input.state.ship
+        ? runtime.startShipCombat(
+            [
+              {
+                shipClass: (cs.shipClass ?? TIER_TO_CLASS[cs.tier]) as ShipClass,
+                count: cs.count ?? undefined,
+                name: cs.name ?? undefined,
+                tier: cs.tier,
+              },
+            ],
+            surprise,
+          )
+        : runtime.startCombat(
+            [{ tier: cs.tier, count: cs.count ?? undefined, name: cs.name ?? undefined }] as SpawnSpec[],
+            surprise,
+          );
     combat = started.combat.active ? started.combat : null; // a surprise volley could end it instantly
     if (started.lines.length) emit(started.lines);
   }

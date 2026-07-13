@@ -17,10 +17,15 @@ export interface CombatEnemy {
   atk: number;
   /** Damage dice, e.g. "2d8". */
   damage: string;
-  /** T2+ may carry a shield that negates the first hit. */
+  /** T2+ / shielded ships negate the first hit. */
   shieldReady: boolean;
-  /** T3 elites attack twice. */
+  /** T3 elites / corvettes attack twice. */
   multiAttack: boolean;
+  // ── Ship-scale only (undefined for personal enemies) ──
+  weaponType?: "kinetic" | "energy" | "missile" | "ion";
+  isEvasive?: boolean;
+  hasPointDefense?: boolean;
+  armored?: boolean;
 }
 
 export interface CombatState {
@@ -41,8 +46,9 @@ export interface CombatAction {
   type: CombatActionType;
   enemyId?: string;
 }
-/** How the round ended (or didn't). */
-export type CombatOutcome = "continue" | "victory" | "escaped" | "downed" | "dead";
+/** How the round ended (or didn't). "disabled" is the ship-scale analog of
+ *  "downed" — hull at 0, adrift, aftermath narrated (not instant death). */
+export type CombatOutcome = "continue" | "victory" | "escaped" | "downed" | "dead" | "disabled";
 
 /** The player's derived combat profile for the current scale. */
 export interface PlayerCombatant {
@@ -60,11 +66,18 @@ export interface PlayerCombatant {
 export function combatActions(
   combat: CombatState,
   stims: number,
+  burstReady = false,
 ): { label: string; combatAction: CombatAction }[] {
+  const verb = combat.scale === "ship" ? "Fire on" : "Attack";
   const actions: { label: string; combatAction: CombatAction }[] = combat.enemies.map((e) => ({
-    label: `Attack ${e.name} (${e.hp}/${e.maxHp})`,
+    label: `${verb} ${e.name} (${e.hp}/${e.maxHp})`,
     combatAction: { type: "attack", enemyId: e.id },
   }));
+  if (combat.scale === "ship") {
+    actions.push({ label: "Evasive maneuvers (+AC)", combatAction: { type: "cover" } });
+    actions.push({ label: burstReady ? "Burst-drive away" : "Break off and run", combatAction: { type: "flee" } });
+    return actions;
+  }
   actions.push({ label: "Take aim (+2 next hit)", combatAction: { type: "aim" } });
   actions.push({ label: "Take cover (+2 AC)", combatAction: { type: "cover" } });
   if (stims > 0) actions.push({ label: `Use stim (${stims} left)`, combatAction: { type: "stim" } });

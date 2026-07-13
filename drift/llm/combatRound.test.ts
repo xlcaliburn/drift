@@ -91,7 +91,7 @@ describe("resolveCombatRound", () => {
 describe("startCombat", () => {
   it("spawns enemies; an ambush hits the player before they act", () => {
     const rt = new TurnRuntime(fighter(20), maxRng);
-    const { combat, outcome } = rt.startCombat([{ tier: "T2", count: 1 }], "personal", "enemy");
+    const { combat, outcome } = rt.startCombat([{ tier: "T2", count: 1 }], "enemy");
     expect(combat.enemies).toHaveLength(1);
     expect(pcHp(rt)).toBeLessThan(20); // took the ambush volley
     expect(["continue", "downed", "dead"]).toContain(outcome);
@@ -99,7 +99,7 @@ describe("startCombat", () => {
 
   it("a no-surprise start leaves HP untouched until the player acts", () => {
     const rt = new TurnRuntime(fighter(20), maxRng);
-    rt.startCombat([{ tier: "T2", count: 2 }], "personal", "none");
+    rt.startCombat([{ tier: "T2", count: 2 }], "none");
     expect(pcHp(rt)).toBe(20);
   });
 });

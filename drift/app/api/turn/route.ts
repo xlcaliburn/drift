@@ -120,11 +120,12 @@ export async function POST(req: NextRequest) {
         // use the model's choices, falling back to generic actions if it gave none.
         const resultCombat = result.combat ?? null;
         const pcStims = result.state.characters.find((c) => c.kind === "pc")?.stims ?? 0;
+        const burstReady = !!result.state.ship?.burstDriveReady;
         const normalized: ChoiceOption[] = result.choices.map((c) =>
           typeof c === "string" ? { label: c } : c,
         );
         const choices: ChoiceOption[] = resultCombat?.active
-          ? combatActions(resultCombat, pcStims)
+          ? combatActions(resultCombat, pcStims, burstReady)
           : normalized.length === 0 && !result.sceneEnded
             ? buildFallbackChoices(result.state).map((label) => ({ label }))
             : normalized;

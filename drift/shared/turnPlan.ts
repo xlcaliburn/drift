@@ -63,6 +63,8 @@ export const CombatStartSpec = z.object({
   count: optionalNullable(z.coerce.number().int().min(1).max(4)),
   name: optionalNullable(z.string()),
   scale: optionalNullable(z.enum(["personal", "ship"])),
+  /** For ship fights: the enemy hull class (defaults from tier). */
+  shipClass: optionalNullable(z.enum(["scout", "fighter", "hauler", "gunship", "corvette"])),
   surprise: optionalNullable(z.enum(["player", "enemy", "none"])),
 });
 export type CombatStartSpec = z.infer<typeof CombatStartSpec>;
