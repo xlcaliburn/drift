@@ -332,3 +332,41 @@ be built to accommodate them but will not implement them:
 - **D-5 ship scope:** personal v1 only (recommended) vs personal + ship now.
 - **F-1 confirm:** accept "early combat = flee-or-die"?
 - Whether to write **CREW.md** / **ITEMS.md** designs before or after combat v1.
+
+---
+
+# Review round 2 — final resolutions (2026-07-13)
+
+All decisions are now locked. This doc is build-ready.
+
+- **F-1 CONFIRMED:** early combat is flee-or-die by design. Obligations that
+  follow: the narration must telegraph lethal danger, and an outmatched player
+  always gets a visible, easy flee option (escape-by-disparity guarantees the
+  math side).
+- **D-5: BOTH scales in v1.** Personal and ship combat ship together on the one
+  CombatState loop (`scale: "personal" | "ship"`). Ship specifics:
+  - Enemies from `shipClasses` + tiers (existing spawn logic).
+  - Player actions: fire per mounted weapon (missiles consume ammo), evasive
+    (+AC), shield cell (via items), **flee = burst drive** — if
+    `burstDriveReady`, flee auto-succeeds vs equal-or-lower threat (drive then
+    spent); otherwise the escape-by-disparity formula (threat = ship class
+    tier). The starter loaner's whole identity is "its defense is running."
+  - Hull 0 ≠ auto-death: ship is **disabled/adrift** → aftermath beat
+    (boarded, captured, towed, vacuum peril) — the ship-scale analog of the
+    downed halt rule. Death still reachable through what follows, never as a
+    silent hull-zero consequence.
+- **D-7: RETIRE the tool loop.** Verdict on "is there any point keeping it?" —
+  **No.** Reasoning: (1) its only remaining jobs were combat (now engine-owned)
+  and cinematic turns (Sonnet follows the JSON contract *better* than DeepSeek,
+  so cinematic = JSON path with the Sonnet model); (2) it's the architecture
+  whose failure modes (narrate-without-rolling, inline menus) caused every bug
+  this week; (3) keeping it means maintaining two prompts, two auditing shapes,
+  and the tool_use history sanitizer forever. What stays: `TurnRuntime` /
+  engineBridge (the combat handler and JSON path both drive it), and
+  `sanitizeHistory` (legacy persisted histories still contain tool blocks).
+  Retirement lands WITH combat v1 (the `isSetPiece` routing dies the same
+  moment the combat handler takes over combat text).
+- **Docs-first order confirmed:** COMBAT.md + **CREW.md** + **ITEMS.md** are
+  written and reviewable. Build sequence: **combat v1 (both scales) → items v1
+  (consumables/slots/loot) → crew v1 (recruitment/upkeep)** — each behind its
+  own migration, each independently shippable.
