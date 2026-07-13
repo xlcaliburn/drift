@@ -122,6 +122,10 @@ and re-rendering the persisted dice log on reload.
 ## Docs map
 
 - `ARCHITECTURE.md` — why it's built this way (token economics, engine/narrator split)
+- `COMBAT.md` / `CREW.md` / `ITEMS.md` — build-ready designs: multi-turn combat
+  (both scales, escape-by-disparity, tool-loop retirement), crew recruitment +
+  scaling upkeep, item catalog + consumables + inventory slots. Build order:
+  combat → items → crew.
 - `IMPLEMENTATION.md` — milestone-by-milestone build plan
 - `MULTIPLAYER.md` — shared-world season design (factions, dossiers, ledgers)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design
