@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { CampaignState } from "@/shared/schemas";
 import { skillProgress } from "@/engine";
 import { skillReference } from "@/content";
+import { backgrounds, ambitions } from "@/content/creation";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_DIRECTIVE, TUTORIAL_JSON_DIRECTIVE } from "@/shared/tutorial";
 
@@ -285,6 +286,21 @@ export function buildContextSlice(
   }
   const moralLine = pc?.moralCode ? `PC's line they won't cross: ${pc.moralCode}.` : "";
 
+  // Identity — the PC's past and their drive. Creation bakes these into gear and
+  // backstory but they weren't re-fed at play time, so the narrator couldn't pull
+  // on them. Surface background + ambition each turn as material for scenes, NPCs,
+  // and personal hooks (the ambition's blurb is the emotional lever).
+  const bgLabel = pc?.background ? backgrounds.find((b) => b.id === pc.background)?.label ?? pc.background : "";
+  const amb = pc?.ambition ? ambitions.find((a) => a.id === pc.ambition) : undefined;
+  const identityBits = [
+    bgLabel ? `background: ${bgLabel}` : "",
+    amb ? `ambition: ${amb.label} — ${amb.description}` : "",
+  ].filter(Boolean);
+  const identityLine =
+    pc && identityBits.length
+      ? `PC identity — ${identityBits.join("; ").replace(/\.$/, "")}. Pull on this past and this drive when framing scenes, NPCs, and personal hooks; surface it naturally, don't recite it.`
+      : "";
+
   return [
     // While the player is still on training wheels, lead with the tutorial
     // directive so it outranks the static style rules for this beat.
@@ -294,6 +310,7 @@ export function buildContextSlice(
     ...(seasonLine ? [seasonLine] : []),
     ``,
     `PC skills (id: ${pc?.id ?? "pc"}): ${pc ? pc.skills.map(skillProgress).join(" · ") : "—"}`,
+    ...(identityLine ? [identityLine] : []),
     ...(moralLine ? [moralLine] : []),
     `Party & PC vitals:`,
     ...state.characters.map((c) => `  ${vitals(c)} (id: ${c.id})`),
