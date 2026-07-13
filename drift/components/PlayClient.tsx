@@ -422,9 +422,17 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             )}
 
             {dead ? (
-              <div className="rounded-lg border border-bad/50 bg-bad/5 px-4 py-3 text-center text-[15px] text-bad">
-                ☠ {state?.characters.find((c) => c.kind === "pc")?.name ?? "This character"} has died — their story
-                ends here.
+              <div className="flex flex-col items-center gap-3 rounded-lg border border-bad/50 bg-bad/5 px-4 py-4 text-center">
+                <p className="text-[15px] text-bad">
+                  ☠ {state?.characters.find((c) => c.kind === "pc")?.name ?? "This character"} has died — their story
+                  ends here.
+                </p>
+                <a
+                  href="/create"
+                  className="rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-ink transition hover:opacity-90"
+                >
+                  Create a new character →
+                </a>
               </div>
             ) : (
               <div className="flex gap-2">

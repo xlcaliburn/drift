@@ -284,7 +284,7 @@ export const Campaign = z.object({
   universeId: z.string(),
   name: z.string(),
   playerId: z.string().optional(),
-  status: z.enum(["active", "archived"]).default("active"),
+  status: z.enum(["active", "archived", "deceased"]).default("active"),
   currentLocationId: z.string().optional(),
   tendaysElapsed: z.number().int().min(0).default(0),
   narratorModel: z.string().optional(),

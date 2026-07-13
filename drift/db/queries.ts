@@ -220,7 +220,8 @@ export async function getOwnedCampaign(
   const { data: camps, error } = await db
     .from("campaigns")
     .select("id,name,tendays_elapsed,created_at")
-    .eq("player_id", playerId);
+    .eq("player_id", playerId)
+    .neq("status", "deceased"); // a dead character no longer blocks a new one
   if (error || !camps || camps.length === 0) return null;
   if (camps.length === 1) return { id: String(camps[0].id), name: String(camps[0].name) };
 

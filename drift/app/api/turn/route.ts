@@ -166,9 +166,15 @@ export async function POST(req: NextRequest) {
         const canonicalUser =
           `PLAYER: ${playerText}` +
           (engineSummary.length ? `\n[ENGINE: ${engineSummary.join(" · ")}]` : "");
+        // On death the campaign is marked deceased — it stops counting as the
+        // player's live campaign (create-gate ignores it), so they can start a
+        // new character while the ended one stays visible as a memorial.
+        const persistedState = pcDied
+          ? { ...result.state, campaign: { ...result.state.campaign, status: "deceased" as const } }
+          : result.state;
         const updatedSession = {
           ...session,
-          state: result.state,
+          state: persistedState,
           // Keep the last ~10 exchanges verbatim; older context is carried by scene
           // summaries. Smaller window = fewer input tokens every turn.
           history: [
