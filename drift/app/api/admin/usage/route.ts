@@ -130,6 +130,27 @@ export async function GET(req: NextRequest) {
     m.costUsd += inc.costUsd;
   }
 
+  for (const u of byUser.values()) u.byModel.sort((a, b) => b.costUsd - a.costUsd);
   const users = [...byUser.values()].sort((a, b) => b.costUsd - a.costUsd);
-  return NextResponse.json({ month: monthLabel, users });
+
+  // Global by-model aggregate across every user (top-level "where did spend go").
+  const totalsByModel: UsageByModel[] = [];
+  for (const u of users) {
+    for (const m of u.byModel) {
+      let t = totalsByModel.find((x) => x.model === m.model);
+      if (!t) {
+        t = { model: m.model, turns: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 };
+        totalsByModel.push(t);
+      }
+      t.turns += m.turns;
+      t.inputTokens += m.inputTokens;
+      t.outputTokens += m.outputTokens;
+      t.cacheReadTokens += m.cacheReadTokens;
+      t.cacheWriteTokens += m.cacheWriteTokens;
+      t.costUsd += m.costUsd;
+    }
+  }
+  totalsByModel.sort((a, b) => b.costUsd - a.costUsd);
+
+  return NextResponse.json({ month: monthLabel, users, totalsByModel });
 }

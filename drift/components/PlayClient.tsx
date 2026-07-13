@@ -1,11 +1,23 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { CampaignState } from "@/shared/schemas";
 import type { ChatEntry } from "@/shared/chat";
 import { buildOpeningRecap, buildOpeningChoices } from "@/shared/recap";
 import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import Sidebar from "./Sidebar";
+
+/** On load, show only the tail of the transcript — from the Nth-most-recent
+ *  player message onward — so you rejoin in recent context, not the whole log. */
+function lastExchanges(transcript: ChatEntry[], n: number): ChatEntry[] {
+  const playerIdxs: number[] = [];
+  transcript.forEach((e, i) => {
+    if (e.role === "player") playerIdxs.push(i);
+  });
+  if (playerIdxs.length <= n) return transcript;
+  return transcript.slice(playerIdxs[playerIdxs.length - n]);
+}
 
 export default function PlayClient({ campaignId }: { campaignId: string }) {
   const [state, setState] = useState<CampaignState | null>(null);
@@ -17,6 +29,8 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
   // but no text yet (waiting on first token). Committed to `chat` on done.
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [hasApiKey, setHasApiKey] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [choicesCollapsed, setChoicesCollapsed] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showSheet, setShowSheet] = useState(false); // mobile sidebar drawer
   const [feedbackText, setFeedbackText] = useState("");
@@ -38,10 +52,12 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
         }
         setState(d.state);
         setHasApiKey(d.hasApiKey);
+        setIsAdmin(Boolean(d.isAdmin));
 
         // The opening recap + starter choices are derived from stored state — free.
         const recap: ChatEntry = { role: "recap", text: buildOpeningRecap(d.state) };
-        const restored: ChatEntry[] = d.transcript?.length ? d.transcript : [];
+        // Show only the last 5 exchanges on load — recent context, not the whole log.
+        const restored: ChatEntry[] = d.transcript?.length ? lastExchanges(d.transcript, 5) : [];
         const notice: ChatEntry[] =
           !d.hasApiKey && !restored.length
             ? [
@@ -182,6 +198,14 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
         </span>
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
           {!hasApiKey && <span className="hidden text-sm text-bad sm:inline">narration disabled</span>}
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="rounded-md border border-accent/50 bg-accent/10 px-2.5 py-1.5 text-xs font-semibold text-accent transition hover:bg-accent/20"
+            >
+              Admin
+            </Link>
+          )}
           <button
             onClick={() => setShowFeedback(true)}
             className="rounded-md border border-edge px-2.5 py-1.5 text-xs text-neutral-400 transition hover:border-accent hover:text-accent"
@@ -283,19 +307,34 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
           </div>
 
           <div className="mx-auto w-full max-w-3xl border-t border-edge px-5 py-4">
-            {/* Suggested actions — click to act, or type your own below. */}
+            {/* Suggested actions — click to act, or type your own below. The tab
+                collapses this row so the narration above is easier to read on a
+                small screen. */}
             {choices.length > 0 && !busy && (
-              <div className="mb-3 flex flex-wrap gap-2">
-                {choices.map((c, i) => (
-                  <button
-                    key={i}
-                    onClick={() => send(c)}
-                    disabled={!hasApiKey}
-                    className="rounded-full border border-edge bg-panel px-4 py-2 text-left text-[15px] text-neutral-200 transition hover:border-accent hover:text-accent disabled:opacity-40"
-                  >
-                    {c}
-                  </button>
-                ))}
+              <div className="mb-3">
+                <button
+                  onClick={() => setChoicesCollapsed((v) => !v)}
+                  className="mb-2 inline-flex items-center gap-1.5 rounded-md border border-edge px-2.5 py-1 text-xs text-neutral-400 transition hover:border-accent hover:text-accent"
+                  aria-expanded={!choicesCollapsed}
+                >
+                  <span className="text-[10px]">{choicesCollapsed ? "▸" : "▾"}</span>
+                  Suggested actions
+                  <span className="text-neutral-600">({choices.length})</span>
+                </button>
+                {!choicesCollapsed && (
+                  <div className="flex flex-wrap gap-2">
+                    {choices.map((c, i) => (
+                      <button
+                        key={i}
+                        onClick={() => send(c)}
+                        disabled={!hasApiKey}
+                        className="rounded-full border border-edge bg-panel px-4 py-2 text-left text-[15px] text-neutral-200 transition hover:border-accent hover:text-accent disabled:opacity-40"
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

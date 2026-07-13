@@ -1,5 +1,7 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import type { CampaignState } from "./schemas";
 import { openingFor } from "@/content/openings";
+import { inTutorial, TUTORIAL_CHOICE_COUNT } from "./tutorial";
 
 /** Stable id of the ship-ownership ("earn the title" / "earn a hull") thread. */
 export const shipThreadId = (campaignId: string) => `th-ship-${campaignId}`;
@@ -40,7 +42,7 @@ export function buildOpeningRecap(state: CampaignState): string {
   const active = state.threads.filter((t) => t.status === "active");
 
   const lines: string[] = [];
-  lines.push("WHERE THINGS STAND  (recap — free, no tokens spent)");
+  lines.push("WHERE THINGS STAND");
 
   if (state.campaign.situation) lines.push(state.campaign.situation);
 
@@ -81,12 +83,53 @@ export function buildOpeningRecap(state: CampaignState): string {
 export function buildOpeningChoices(state: CampaignState): string[] {
   const pc = state.characters.find((c) => c.kind === "pc");
   const opening = openingFor(pc?.parentFactionId);
-  if (opening && isFreshStart(state)) {
-    return [...opening.firstMoves, "Look around and take stock"].slice(0, 4);
-  }
 
-  const active = state.threads.filter((t) => t.status === "active");
-  const choices = active.slice(0, 3).map((t) => t.title);
-  choices.push("Look around and take stock");
-  return choices.slice(0, 4);
+  const base =
+    opening && isFreshStart(state)
+      ? [...opening.firstMoves, "Look around and take stock"]
+      : (() => {
+          const active = state.threads.filter((t) => t.status === "active");
+          return [...active.slice(0, 3).map((t) => t.title), "Look around and take stock"];
+        })();
+
+  // Tutorial: the opening screen must honor the same binary-choice gating the
+  // narrator's offer_choices does (which is clamped in engineBridge). Present a
+  // single clear decision — the on-rails first move vs. a low-stakes look-around —
+  // so a brand-new player never lands on a branching menu (e.g. "broker the deal").
+  if (inTutorial(state)) {
+    return [base[0], "Look around and take stock"].slice(0, TUTORIAL_CHOICE_COUNT);
+  }
+  return base.slice(0, 4);
+}
+
+/**
+ * The in-world OPENING NARRATION — the cold-open the "DM" delivers before the
+ * player's first action, derived from stored state (the campaign situation + the
+ * starting quest framing). Pure and free. Distinct from buildOpeningRecap (which
+ * is the meta "where things stand" panel); this reads as actual narration.
+ */
+export function buildOpeningNarration(state: CampaignState): string {
+  const parts: string[] = [];
+  if (state.campaign.situation) parts.push(state.campaign.situation);
+  const start = state.threads.find(
+    (t) => t.id === `th-start-${state.campaign.id}` && t.status === "active",
+  );
+  if (start?.body) parts.push(start.body);
+  return parts.join("\n\n").trim();
+}
+
+/**
+ * Seed the narrator's message history with the opening beat so the player's FIRST
+ * action isn't sent to the model with empty history (which made the model re-offer
+ * the just-accepted job). A lone assistant message would be stripped by
+ * sanitizeHistory (history must start on a user turn), so we frame it as a
+ * scene-start user directive + the assistant's opening narration.
+ */
+export function buildOpeningHistory(state: CampaignState): Anthropic.MessageParam[] {
+  const opening = buildOpeningNarration(state);
+  if (!opening) return [];
+  return [
+    { role: "user", content: "[The campaign opens — set the scene and pose the first decision.]" },
+    { role: "assistant", content: opening },
+  ];
 }

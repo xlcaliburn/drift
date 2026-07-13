@@ -42,7 +42,18 @@ export async function getSession(campaignId: string): Promise<SessionData | null
     try {
       const { getServiceClient, loadCampaignState } = await import("@/db/queries");
       const state = await loadCampaignState(getServiceClient(), campaignId);
-      const session: SessionData = { state, history: [], transcript: [], log: [], scenes: [], focusIds: [] };
+      const { buildOpeningHistory } = await import("@/shared/recap");
+      // Seed the opening beat into history so a cold-loaded campaign (in-memory
+      // history is not persisted — M7) still grounds the model's first turn and
+      // doesn't re-narrate the opening job.
+      const session: SessionData = {
+        state,
+        history: buildOpeningHistory(state),
+        transcript: [],
+        log: [],
+        scenes: [],
+        focusIds: [],
+      };
       store.set(campaignId, session);
       return session;
     } catch (e) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { UsageByUser } from "@/app/api/admin/usage/route";
+import type { UsageByUser, UsageByModel } from "@/app/api/admin/usage/route";
 
 const fmtTokens = (n: number) =>
   n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n);
@@ -21,6 +21,7 @@ function shiftMonth(month: string, delta: number): string {
 export default function AdminUsagePage() {
   const [month, setMonth] = useState(currentMonth());
   const [users, setUsers] = useState<UsageByUser[]>([]);
+  const [totalsByModel, setTotalsByModel] = useState<UsageByModel[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -29,6 +30,7 @@ export default function AdminUsagePage() {
       .then((r) => r.json())
       .then((data) => {
         setUsers(data.users ?? []);
+        setTotalsByModel(data.totalsByModel ?? []);
         setLoaded(true);
       });
   }, [month]);
@@ -72,6 +74,24 @@ export default function AdminUsagePage() {
             total estimated
           </div>
 
+          {/* Global spend broken down by model — where the money actually went. */}
+          {totalsByModel.length > 0 && (
+            <div className="mt-3 rounded-lg border border-edge bg-panel/50 p-4">
+              <div className="mb-2 text-xs uppercase tracking-wide text-neutral-500">By model (all players)</div>
+              <div className="space-y-1.5">
+                {totalsByModel.map((m) => (
+                  <div key={m.model} className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="font-mono text-xs text-neutral-300">{m.model}</span>
+                    <span className="text-neutral-400">
+                      {m.turns} turns · in {fmtTokens(m.inputTokens)} · out {fmtTokens(m.outputTokens)} ·{" "}
+                      <span className="font-semibold text-neutral-200">${m.costUsd.toFixed(4)}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="mt-3 space-y-3">
             {users.map((u) => {
               const pctCost =
@@ -104,11 +124,9 @@ export default function AdminUsagePage() {
                     )}
                     <span className="text-neutral-600"> / {fmtTokens(u.monthlyTokenBudget)} cap</span>
                   </div>
-                  <details className="mt-2">
-                    <summary className="cursor-pointer text-xs text-neutral-500 hover:text-neutral-300">
-                      by model
-                    </summary>
-                    <div className="mt-2 space-y-1">
+                  <div className="mt-2 border-t border-edge/60 pt-2">
+                    <div className="mb-1 text-[11px] uppercase tracking-wide text-neutral-600">by model</div>
+                    <div className="space-y-1">
                       {u.byModel.map((m) => (
                         <div key={m.model} className="flex justify-between font-mono text-xs text-neutral-400">
                           <span>{m.model}</span>
@@ -119,7 +137,7 @@ export default function AdminUsagePage() {
                         </div>
                       ))}
                     </div>
-                  </details>
+                  </div>
                 </div>
               );
             })}

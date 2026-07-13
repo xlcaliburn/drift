@@ -1,9 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import type { CampaignState } from "@/shared/schemas";
+import type { CampaignState, Skill } from "@/shared/schemas";
 import { tickMax } from "@/engine/progression";
 import { shipIsOwned } from "@/shared/recap";
+import skillsMeta from "@/content/skills.json";
+
+/** Every skill in the game, merged with the character's levels (0 if unlearned),
+ *  learned first — so the sheet shows the full range the player can attempt, not
+ *  just what they've trained. */
+function allSkillRows(owned: Skill[]): Skill[] {
+  const bySkill = new Map(owned.map((s) => [s.name, s]));
+  return Object.keys(skillsMeta.skills)
+    .map((name) => bySkill.get(name) ?? { name, level: 0, ticks: 0 })
+    .sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
+}
 
 type Tab = "sheet" | "ship" | "map" | "clocks";
 
@@ -113,7 +124,7 @@ function SheetTab({ state }: { state: CampaignState }) {
           <div className="flex items-center justify-between">
             <span className="font-semibold text-neutral-100">{c.name}</span>
             <span className="text-neutral-500">
-              {c.kind === "pc" ? "PC" : `loyalty ${c.loyalty}/5`}
+              {c.kind === "pc" ? "You" : `loyalty ${c.loyalty}/5`}
             </span>
           </div>
           <div className="mt-1 flex items-center gap-2">
@@ -121,31 +132,35 @@ function SheetTab({ state }: { state: CampaignState }) {
             <Bar value={c.hp} max={c.maxHp} tone={c.hp / c.maxHp < 0.34 ? "bg-bad" : "bg-good"} />
           </div>
           <div className="mt-1 text-neutral-500">
-            AC {c.ac}
+            Armor Class {c.ac}
             {c.credits !== undefined && ` · ¢${c.credits}`}
             {c.fragile && <span className="text-bad"> · FRAGILE</span>}
           </div>
           {c.kind === "pc" && (
             <div className="mt-2 border-t border-edge pt-2">
-              <div className="mb-1.5 text-[11px] uppercase tracking-wide text-neutral-500">Skills</div>
+              <div className="mb-1.5 text-[11px] uppercase tracking-wide text-neutral-500">
+                Skills <span className="text-neutral-600">— all you can attempt</span>
+              </div>
               <div className="space-y-2">
-                {c.skills
-                  .filter((s) => s.level > 0 || s.ticks > 0)
-                  .sort((a, b) => b.level - a.level || a.name.localeCompare(b.name))
-                  .map((s) => (
-                    <div key={s.name}>
+                {allSkillRows(c.skills).map((s) => {
+                  const learned = s.level > 0 || s.ticks > 0;
+                  return (
+                    <div key={s.name} className={learned ? "" : "opacity-45"}>
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="text-[13px] text-neutral-200">{humanizeSkill(s.name)}</span>
                         <span className="shrink-0 tabular-nums text-[11px] text-neutral-500">
-                          Lv&nbsp;{s.level}
-                          <span className="text-neutral-600"> · {s.ticks}/{tickMax(s.level)}</span>
+                          Level&nbsp;{s.level}
+                          {learned && <span className="text-neutral-600"> · {s.ticks}/{tickMax(s.level)}</span>}
                         </span>
                       </div>
-                      <div className="mt-1">
-                        <Bar value={s.ticks} max={tickMax(s.level)} height="h-1" />
-                      </div>
+                      {learned && (
+                        <div className="mt-1">
+                          <Bar value={s.ticks} max={tickMax(s.level)} height="h-1" />
+                        </div>
+                      )}
                     </div>
-                  ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -180,7 +195,7 @@ function ShipTab({ state }: { state: CampaignState }) {
           <Bar value={s.hp} max={s.maxHp} tone={s.hp / s.maxHp < 0.34 ? "bg-bad" : "bg-good"} />
         </div>
         <div className="mt-2 space-y-1 text-neutral-400">
-          <div>AC {s.ac} (+{s.evasiveAcBonus} evasive) · DR {s.damageReduction}</div>
+          <div>Armor Class {s.ac} (+{s.evasiveAcBonus} evasive) · Damage Reduction {s.damageReduction}</div>
           <div>Shield: {s.shieldReady ? "ready" : "spent"} · Burst: {s.burstDriveReady ? "ready" : "used"}</div>
           <div>Missiles: {missiles}</div>
         </div>

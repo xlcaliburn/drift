@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { AiCallRow } from "@/app/api/admin/ai-calls/route";
+import type { AiCallRow, AiCallUser } from "@/app/api/admin/ai-calls/route";
 
 const KINDS = ["", "turn", "creation", "summary"] as const;
 
@@ -22,19 +22,25 @@ function latencyClass(ms: number): string {
  */
 export default function AdminAiCallsPage() {
   const [kind, setKind] = useState<(typeof KINDS)[number]>("");
+  const [userId, setUserId] = useState("");
+  const [users, setUsers] = useState<AiCallUser[]>([]);
   const [calls, setCalls] = useState<AiCallRow[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     setLoaded(false);
-    const q = kind ? `?kind=${kind}` : "";
-    fetch(`/api/admin/ai-calls${q}`)
+    const params = new URLSearchParams();
+    if (kind) params.set("kind", kind);
+    if (userId) params.set("userId", userId);
+    const q = params.toString();
+    fetch(`/api/admin/ai-calls${q ? `?${q}` : ""}`)
       .then((r) => r.json())
       .then((data) => {
         setCalls(data.calls ?? []);
+        setUsers(data.users ?? []);
         setLoaded(true);
       });
-  }, [kind]);
+  }, [kind, userId]);
 
   const avgLatency = calls.length
     ? Math.round(calls.reduce((s, c) => s + c.latencyMs, 0) / calls.length)
@@ -46,20 +52,35 @@ export default function AdminAiCallsPage() {
         <p className="text-sm text-neutral-400">
           Every model call, newest first. Latency, tokens, tools, and truncated prompt/response.
         </p>
-        <div className="flex gap-1 text-xs">
-          {KINDS.map((k) => (
-            <button
-              key={k || "all"}
-              onClick={() => setKind(k)}
-              className={`rounded-md border px-2 py-1 transition ${
-                kind === k
-                  ? "border-accent text-accent"
-                  : "border-edge text-neutral-400 hover:text-neutral-200"
-              }`}
-            >
-              {k || "all"}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {/* Filter by player — pick one to read their calls in sequence. */}
+          <select
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            className="rounded-md border border-edge bg-ink px-2 py-1 text-neutral-300 outline-none focus:border-accent"
+          >
+            <option value="">all players</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.email}
+              </option>
+            ))}
+          </select>
+          <div className="flex gap-1">
+            {KINDS.map((k) => (
+              <button
+                key={k || "all"}
+                onClick={() => setKind(k)}
+                className={`rounded-md border px-2 py-1 transition ${
+                  kind === k
+                    ? "border-accent text-accent"
+                    : "border-edge text-neutral-400 hover:text-neutral-200"
+                }`}
+              >
+                {k || "all"}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

@@ -4,6 +4,7 @@ import { buildCharacterFromCreation } from "@/engine";
 import { finalizeCreation, quickCreationNotes } from "@/llm/creationFinalize";
 import { buildNewCampaignState } from "@/lib/newCampaign";
 import { getSession, setSession, persistSession, hasSupabase } from "@/lib/state";
+import { buildOpeningHistory } from "@/shared/recap";
 import { requireApprovedUser, isDevUser } from "@/lib/auth";
 import { getServiceClient, getOwnedCampaign } from "@/db/queries";
 import { recordAiCall } from "@/lib/audit";
@@ -65,7 +66,16 @@ export async function POST(req: NextRequest) {
   // Build state on the STATIC faction opening (generated opening arrives later).
   // Own the campaign. The keyless-dev stub id never reaches the DB.
   const state = buildNewCampaignState(base, playerId, undefined);
-  setSession(campaignId, { state, history: [], transcript: [], log: [], scenes: [], focusIds: [] });
+  // Seed the opening beat into history at creation so the player's first action
+  // is grounded (prevents the narrator re-offering the just-accepted opening job).
+  setSession(campaignId, {
+    state,
+    history: buildOpeningHistory(state),
+    transcript: [],
+    log: [],
+    scenes: [],
+    focusIds: [],
+  });
   await persistSession(campaignId, state);
 
   // Background flesh-out: personalized backstory/voice/opening + audit. Runs
@@ -89,10 +99,12 @@ export async function POST(req: NextRequest) {
         drives: finalize.moralCode || base.drives,
         voiceNotes: finalize.voiceNotes || base.voiceNotes,
       };
-      if (session.history.length === 0) {
-        // No turn yet: safe to rebuild from scratch with the enriched character +
-        // personalized opening (deterministic from the character; nothing to lose).
+      if (session.transcript.length === 0) {
+        // No turn yet (history is pre-seeded with the opening, so check the
+        // transcript instead): safe to rebuild from scratch with the enriched
+        // character + personalized opening, and re-seed history from it.
         session.state = buildNewCampaignState(enriched, playerId, finalize.opening);
+        session.history = buildOpeningHistory(session.state);
       } else {
         // Play already in motion: patch only the character's narrative fields so
         // we don't overwrite HP/credits/threads mutated by turns taken meanwhile.

@@ -4,6 +4,11 @@ import { hasSupabase } from "@/lib/state";
 
 export const runtime = "nodejs";
 
+export interface AiCallUser {
+  id: string;
+  email: string;
+}
+
 export interface AiCallRow {
   id: string;
   createdAt: string;
@@ -41,6 +46,7 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(200, Math.max(1, Number(sp.get("limit") ?? 100)));
   const kind = sp.get("kind");
   const campaignId = sp.get("campaignId");
+  const userId = sp.get("userId");
 
   const { getServiceClient } = await import("@/db/queries");
   const db = getServiceClient();
@@ -54,6 +60,14 @@ export async function GET(req: NextRequest) {
     .limit(limit);
   if (kind) query = query.eq("kind", kind);
   if (campaignId) query = query.eq("campaign_id", campaignId);
+  if (userId) query = query.eq("user_id", userId);
+
+  // The player roster for the filter dropdown (independent of the current filter).
+  const usersRes = await db.from("profiles").select("id,email").order("email");
+  const users: AiCallUser[] = (usersRes.data ?? []).map((p) => ({
+    id: String(p.id),
+    email: String(p.email),
+  }));
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -89,5 +103,5 @@ export async function GET(req: NextRequest) {
     error: r.error ? String(r.error) : null,
   }));
 
-  return NextResponse.json({ calls });
+  return NextResponse.json({ calls, users });
 }

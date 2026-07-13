@@ -29,5 +29,6 @@ export async function GET(req: NextRequest) {
     log: session.log.slice(-100),
     hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY),
     persistent: hasSupabase(),
+    isAdmin: auth.user.role === "admin",
   });
 }
