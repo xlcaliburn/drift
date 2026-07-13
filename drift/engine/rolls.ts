@@ -2,6 +2,7 @@ import type { Character } from "@/shared/schemas";
 import { skillAttribute, economy } from "@/content";
 import type { RNG } from "./rng";
 import type { EngineEvent } from "./events";
+import { skillProficiency } from "./progression";
 
 export interface CheckInput {
   character: Character;
@@ -65,7 +66,7 @@ export function computeModifier(
   const attrMod = character.attributes[attrKey] ?? 0;
   const sk = character.skills.find((s) => s.name === skill);
   const level = sk?.level ?? 0;
-  return attrMod + level + passive + situationalMod;
+  return attrMod + skillProficiency(level) + passive + situationalMod;
 }
 
 export function rollCheck(input: CheckInput, rng: RNG): CheckResult {

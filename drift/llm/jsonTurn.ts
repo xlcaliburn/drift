@@ -77,6 +77,15 @@ const JSON_MAX_TOKENS = 600;
 /** Default enemy ship class when the model gives only a tier for a ship fight. */
 const TIER_TO_CLASS: Record<"T1" | "T2" | "T3", string> = { T1: "scout", T2: "fighter", T3: "gunship" };
 
+/** Gun skills are acts of violence, not skill checks — invoking one opens a
+ *  fight (see openFightFromSkill). smallArms → on-foot, gunnery → ship. */
+const COMBAT_SKILLS = new Set(["smallArms", "gunnery"]);
+
+/** A bare gun-skill check carries only a rough DC; read it as enemy toughness. */
+function dcToTier(dc: number): "T1" | "T2" | "T3" {
+  return dc >= 17 ? "T3" : dc >= 13 ? "T2" : "T1";
+}
+
 function defaultModel(): string {
   return resolveModel(process.env.NARRATOR_MODEL ?? "deepseek-chat");
 }
@@ -138,19 +147,51 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   // Last resolved action check (skill + outcome) — shades payout rolls: a
   // successful negotiation this turn lands in the upper half of the band.
   let lastRoll: { skill: string; outcome?: string } | null = null;
+  // Combat spawned this turn (via a gun-skill reroute or the model's combatStart).
+  let combat: CombatState | null = null;
+
+  // A gun skill (smallArms/gunnery) is an act of violence, not a skill check:
+  // reroute it into the combat engine — spawn the target (you drew first, so a
+  // surprise edge) and resolve the OPENING SHOT (roll-to-hit → damage), then the
+  // beat continues as normal multi-turn combat. This guarantees gun skills run
+  // through real attack/AC/damage math instead of a self-only roll_check.
+  function openFightFromSkill(skill: string, dc: number): CombatState | null {
+    const tier = dcToTier(dc);
+    const useShip = skill === "gunnery" && !!input.state.ship;
+    const started = useShip
+      ? runtime.startShipCombat([{ shipClass: TIER_TO_CLASS[tier] as ShipClass, count: 1, tier }], "player")
+      : runtime.startCombat([{ tier, count: 1 }] as SpawnSpec[], "player");
+    const lines = [...started.lines];
+    let cbt = started.combat;
+    const firstEnemy = cbt.enemies.find((e) => e.hp > 0);
+    if (cbt.active && firstEnemy) {
+      const round = runtime.resolveCombatRound(cbt, { type: "attack", enemyId: firstEnemy.id });
+      lines.push(...round.lines);
+      cbt = round.combat;
+    }
+    engineLines.push(`ENGINE RESULT: ${lines.join(" · ")}`);
+    emit(lines);
+    return cbt.active ? cbt : null;
+  }
+
   if (input.preCheck && pc) {
-    toolCalls.push("roll_check");
-    const res = runtime.execute("roll_check", {
-      characterId: pc.id,
-      skill: input.preCheck.skill,
-      dc: input.preCheck.dc,
-      stakes: input.preCheck.stakes,
-      failDamage: input.preCheck.failDamage,
-    }) as RollResult;
-    if (res.breakdown) {
-      lastRoll = { skill: input.preCheck.skill, outcome: res.outcome };
-      engineLines.push(engineContextLine(res));
-      emit(rollDisplayLines(res));
+    if (COMBAT_SKILLS.has(input.preCheck.skill)) {
+      toolCalls.push("combat_start");
+      combat = openFightFromSkill(input.preCheck.skill, input.preCheck.dc);
+    } else {
+      toolCalls.push("roll_check");
+      const res = runtime.execute("roll_check", {
+        characterId: pc.id,
+        skill: input.preCheck.skill,
+        dc: input.preCheck.dc,
+        stakes: input.preCheck.stakes,
+        failDamage: input.preCheck.failDamage,
+      }) as RollResult;
+      if (res.breakdown) {
+        lastRoll = { skill: input.preCheck.skill, outcome: res.outcome };
+        engineLines.push(engineContextLine(res));
+        emit(rollDisplayLines(res));
+      }
     }
   }
 
@@ -244,7 +285,11 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   let narration = plan.narration;
 
   // ── Mid-turn roll: the model says the CURRENT action needs a check. ────────
-  if (plan.roll && !input.preCheck && pc) {
+  // A gun skill here opens a fight instead (same reroute as a clicked check).
+  if (plan.roll && !input.preCheck && pc && !combat && COMBAT_SKILLS.has(plan.roll.skill)) {
+    toolCalls.push("combat_start");
+    combat = openFightFromSkill(plan.roll.skill, plan.roll.dc);
+  } else if (plan.roll && !input.preCheck && pc && !combat) {
     toolCalls.push("roll_check");
     const res = runtime.execute("roll_check", {
       characterId: pc.id,
@@ -318,9 +363,9 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     runtime.execute("end_scene", plan.sceneEnd as Record<string, unknown>);
   }
 
-  // ── Combat begins: the engine spawns enemies and takes over next turn. ─────
-  let combat: CombatState | null = null;
-  if (plan.combatStart && pc) {
+  // ── Combat begins: the engine spawns enemies and takes over next turn.
+  //    (Skipped if a gun-skill reroute already started the fight this turn.) ──
+  if (plan.combatStart && pc && !combat) {
     toolCalls.push("combat_start");
     const cs = plan.combatStart;
     const surprise = cs.surprise ?? "none";

@@ -30,8 +30,8 @@ describe("computeModifier — reproduces the Quick Reference Card", () => {
 });
 
 describe("computeModifier — derivation fallback (no QRC override)", () => {
-  it("Denna piloting = reflex(0) + level 2 = 2", () => {
-    expect(computeModifier(denna, "piloting")).toBe(2);
+  it("Denna piloting = reflex(0) + prof(level 2)=+1 = 1", () => {
+    expect(computeModifier(denna, "piloting")).toBe(1);
   });
   it("Denna navigation = intellect(2) + level 1 = 3", () => {
     expect(computeModifier(denna, "navigation")).toBe(3);

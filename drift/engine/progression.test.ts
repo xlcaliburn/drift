@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { awardTick, nextLevelCost, tickMax } from "./progression";
+import { awardTick, nextLevelCost, tickMax, skillProficiency, MAX_SKILL_LEVEL } from "./progression";
+import type { Character } from "@/shared/schemas";
 import { vess } from "@/engine/__fixtures__/vessCampaign";
 
 describe("tick / level-up math", () => {
@@ -41,5 +42,34 @@ describe("tick / level-up math", () => {
     const before = vess.skills.find((s) => s.name === "gunnery")!.ticks;
     awardTick(vess, "gunnery", new Set());
     expect(vess.skills.find((s) => s.name === "gunnery")!.ticks).toBe(before);
+  });
+});
+
+describe("compressed proficiency (bounded accuracy)", () => {
+  it("maps level 0–10 to a bounded +0…+5 (ceil(level/2))", () => {
+    const bonuses = Array.from({ length: 11 }, (_, l) => skillProficiency(l));
+    expect(bonuses).toEqual([0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
+  });
+
+  it("never exceeds +5, even above the cap", () => {
+    expect(skillProficiency(20)).toBe(5);
+    expect(skillProficiency(-3)).toBe(0);
+  });
+});
+
+describe("level cap", () => {
+  const maxed = (): Character =>
+    ({
+      ...vess,
+      skills: [{ name: "gunnery", level: MAX_SKILL_LEVEL, ticks: tickMax(MAX_SKILL_LEVEL) - 1 }],
+    }) as Character;
+
+  it("does not level past the cap; the bar sits full", () => {
+    const res = awardTick(maxed(), "gunnery", new Set());
+    const sk = res.character.skills.find((s) => s.name === "gunnery")!;
+    expect(sk.level).toBe(MAX_SKILL_LEVEL);
+    expect(res.leveledUp).toBe(false);
+    expect(sk.ticks).toBe(tickMax(MAX_SKILL_LEVEL)); // clamped, not overflowing
+    expect(res.event.breakdown).toContain("maxed");
   });
 });

@@ -61,9 +61,9 @@ describe("unique skill — passive buff", () => {
   const c = buildCharacterFromCreation(base, { id: "p1", campaignId: "camp1" });
 
   it("adds the passive bonus to the targeted skill", () => {
-    // piloting: reflex(3) + level 2 + passive 2 = 7
+    // piloting: reflex(3) + prof(level 2)=+1 + passive 2 = 6
     expect(passiveBonus(c, "piloting")).toBe(2);
-    expect(computeModifier(c, "piloting")).toBe(7);
+    expect(computeModifier(c, "piloting")).toBe(6);
   });
 
   it("does not buff other skills", () => {

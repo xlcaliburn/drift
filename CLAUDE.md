@@ -77,6 +77,17 @@ freeform tool loop is RETIRED — all turns run the JSON path (cinematic = Sonne
 Engine-clamped money (`award_payout` bands), immediate skill ticks, real-stakes
 damage/death all landed alongside. Money/repair: `content/economy.json`.
 
+**Bounded-accuracy leveling + gun-skill reroute:** skill levels run 0–10 (cap in
+`progression.MAX_SKILL_LEVEL`; tick cost stays quadratic) but the d20 bonus is a
+*compressed* `skillProficiency(level)` = `ceil(level/2)` → +0…+5, NOT raw level —
+so a maxed specialist reliably clears routine DCs without swamping the die, and
+combat hit-rolls (same modifier) stay tense. Don't reintroduce raw `level` into
+`computeModifier`. And a `smallArms`/`gunnery` **check is auto-rerouted into the
+combat engine** (`jsonTurn.openFightFromSkill`): it spawns the target and resolves
+an opening shot (roll-to-hit → damage), then flows into multi-turn combat — gun
+skills never resolve as a self-only `roll_check`. This is the player-triggered
+half of the I-2 backstop.
+
 **Next up (build order, docs are ready):** **items v1** (`ITEMS.md` — catalog +
 consumables + slots + loot + dock services/debt) → **crew v1** (`CREW.md` —
 recruitment + scaling upkeep). Then the shared-world runtime / `WORLD_SYSTEMS.md`
