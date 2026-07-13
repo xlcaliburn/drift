@@ -1,18 +1,18 @@
 # DRIFT — Status & Resume Notes
 
-*Snapshot for picking work back up. Last updated 2026-07-12.*
+*Snapshot for picking work back up. Last updated 2026-07-13.*
 
 ## TL;DR
 
-The app is **built, playable, and persistent**. Engine is fully tested (64 tests).
+The app is **built, playable, and persistent**. Engine is fully tested (75 tests).
 **Supabase persistence + Google auth + a user/admin system are now wired**:
 players sign in with Google, land pending until you approve them, see only their
 own campaigns, and are hard-capped by a per-user monthly token/cost budget. You
 manage users, spend, and feature requests at `/admin`.
 
-**What still needs you (external dashboards — code can't do it):** set up the
-Google OAuth provider in Google Cloud + Supabase, add the localhost redirect URL,
-sign in once, then claim the 3 seeded campaigns. See *Open action items* below.
+**Google OAuth is now live** and **play sessions are durable** (M7 done): the chat
+transcript, dice log, and narrator history persist to `campaign_runtime` and
+restore on refresh/restart — no more "refresh sends me back to the start."
 
 ## How to run / verify
 
@@ -102,38 +102,23 @@ persisted to the `feature_requests` table (with `author_id`) → you review at
 
 ## Open action items (need you)
 
-1. **Finish Google OAuth setup (external dashboards — the only thing blocking
-   real logins).** The DB migration is already applied to the `drift` Supabase
-   project (`mgsogqnrpvoblqxkfgge`): `profiles`, `turn_usage`, the sign-in
-   trigger, campaign-ownership FK, and `feature_requests.author_id` all exist.
-   What's left:
-   - Google Cloud console → OAuth client (web) → redirect URI
-     `https://mgsogqnrpvoblqxkfgge.supabase.co/auth/v1/callback`.
-   - Supabase → Auth → Providers → enable Google with that client id/secret.
-   - Supabase → Auth → URL Configuration → add `http://localhost:3000/auth/callback`
-     (and the deployed origin's `/auth/callback` when you deploy).
-   - Sign in once as michaelchunkitwong@gmail.com → the trigger makes you
-     admin+approved. Then claim the 3 seeded campaigns (still `player_id is null`):
-     `update campaigns set player_id = (select id from profiles where role='admin' limit 1) where player_id is null;`
+Google OAuth and the GitHub-push credential are both resolved. Nothing external is
+currently blocking. (For reference: the Supabase MCP connector is authenticated, so
+DB migrations run directly via `apply_migration` to project `mgsogqnrpvoblqxkfgge`.)
 
-2. **GitHub push blocked (403).** Repo `github.com/xlcaliburn/drift.git`; this
-   machine's cached credential is for account **todomichael**, not xlcaliburn.
-   Fix: Windows Credential Manager → Windows Credentials → remove the `github.com`
-   entry → `git push` (re-auth as xlcaliburn in the browser). Or add todomichael
-   as a collaborator. Untracked-but-safe extras to add when ready: `.mcp.json`,
-   `.agents/`, `skills-lock.json`.
+## Next build phase — shared-world runtime & world systems
 
-## Next build phase — durable transcripts & shared-world runtime
-
-Persistence + auth + budgets are done. Remaining, in rough order:
-1. **Durable transcript/dice log.** `lib/state.ts` persists campaign state (HP,
-   credits, rep, clocks, threads) but the chat transcript + dice log + per-scene
-   snapshot still live only in the in-memory session — a server restart loses the
-   narrative history (not the mechanical state). Persist scenes/turns/rolls; add
-   an `updated_at` version check to avoid last-write-wins on concurrent turns.
+Persistence + auth + budgets + **durable transcripts (M7)** are done. Remaining, in
+rough order:
+1. **M8 — retrieval tuning.** Entity retrieval in `promptBuilder.retrieveEntities`
+   is naive keyword matching; tune what NPCs/threads get pulled into context so the
+   narrator "remembers" the right things.
 2. **Shared-world runtime** (see below) — dossiers, ledgers, cross-campaign reads.
 3. **World systems** — the exploration/artifacts/consequence-web design in
    `WORLD_SYSTEMS.md` (artifact vertical slice first).
+
+Small deferred items: optimistic-lock guard on `campaign_runtime` (`updated_at` is
+written but not checked), and re-rendering the persisted dice log on reload.
 
 ## Then — shared-world runtime (engine-side, mostly DB-independent)
 
@@ -165,10 +150,10 @@ Persistence + auth + budgets are done. Remaining, in rough order:
 - DeepSeek's multi-turn tool-calling is less disciplined than Claude's; failure
   mode is a turn that narrates without rolling. Can't corrupt state (engine is the
   only mutator), but tighten the prompt if it shows up.
-- **Transcript + dice log are still in-memory** (mechanical state persists;
-  narrative history doesn't) → a server restart loses the chat scrollback until
-  #1 in the next build phase lands. Created characters + feature requests DO
-  persist now. The Vess example campaign regenerates from seed.
+- **Transcript, dice log, and narrator history now persist** (M7) to
+  `campaign_runtime`, restored on cold load — a refresh/restart resumes the latest
+  run. The in-memory cache in `lib/state.ts` is still the per-turn fast path; the
+  DB snapshot is the durable source. The Vess example campaign regenerates from seed.
 - `profiles`/`turn_usage` have RLS enabled with **no policies** (deny-all) —
   intentional (all access is server-side via the service key). Supabase's security
   advisor flags this; it's expected, not a bug. Add policies only if/when the

@@ -116,7 +116,12 @@ export default function AdminAiCallsPage() {
                     {c.costUsd.toFixed(5)}
                   </span>
                   {c.rounds != null && (
-                    <span className="text-xs text-neutral-500">{c.rounds} rounds</span>
+                    <span
+                      className="text-xs text-neutral-500"
+                      title="Model round-trips in the tool-use loop this turn: each tool the model calls makes the engine run it and call the model again. 1 = narrate-and-done; more = rolls/combat."
+                    >
+                      {c.rounds} rounds
+                    </span>
                   )}
                   {c.fellBack && <span className="text-xs text-bad">fell back</span>}
                   {c.error && <span className="text-xs text-bad">error</span>}
@@ -125,34 +130,53 @@ export default function AdminAiCallsPage() {
                   </span>
                 </summary>
 
-                <div className="mt-3 space-y-2 text-xs">
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-neutral-500">
-                    {c.email && <span>user: {c.email}</span>}
-                    {c.campaignId && <span>campaign: {c.campaignId}</span>}
-                    {c.stopReason && <span>stop: {c.stopReason}</span>}
-                    {c.systemChars != null && <span>system: {fmtTokens(c.systemChars)} chars</span>}
-                    <span>{new Date(c.createdAt).toLocaleString()}</span>
-                  </div>
-                  {c.toolCalls.length > 0 && (
-                    <div className="text-neutral-400">
-                      tools:{" "}
-                      <span className="font-mono text-neutral-300">{c.toolCalls.join(" → ")}</span>
+                <div className="mt-3 space-y-3">
+                  {/* Play preview — rendered like the player's own chat so you can
+                      see what they saw: their action (right), then the narration. */}
+                  <div className="rounded-lg border border-edge bg-ink/40 p-3">
+                    <div className="mb-2 text-[10px] uppercase tracking-wide text-neutral-600">
+                      as the player saw it{c.kind !== "turn" ? " (preview)" : ""}
                     </div>
-                  )}
-                  {c.error && (
-                    <pre className="whitespace-pre-wrap rounded bg-ink p-2 text-bad">{c.error}</pre>
-                  )}
-                  <div>
-                    <div className="mb-1 text-neutral-500">prompt</div>
-                    <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded bg-ink p-2 text-neutral-300">
-                      {c.promptPreview ?? "—"}
-                    </pre>
+                    <div className="space-y-2">
+                      {c.promptPreview && (
+                        <div className="text-right">
+                          <div className="inline-block max-w-[85%] whitespace-pre-wrap rounded-2xl bg-edge px-3 py-2 text-[13px] text-neutral-50">
+                            {c.promptPreview}
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <div className="inline-block max-w-[90%] whitespace-pre-wrap rounded-2xl bg-panel px-3 py-2 text-[14px] leading-relaxed text-neutral-100">
+                          {c.responsePreview ?? "—"}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="mb-1 text-neutral-500">response</div>
-                    <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded bg-ink p-2 text-neutral-300">
-                      {c.responsePreview ?? "—"}
-                    </pre>
+
+                  {/* Details box — the telemetry / mechanical side of the call. */}
+                  <div className="rounded-md border border-edge bg-ink/50 p-2 text-xs text-neutral-500">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {c.email && <span>user: {c.email}</span>}
+                      {c.campaignId && <span>campaign: {c.campaignId}</span>}
+                      <span>
+                        model: <span className="font-mono text-neutral-400">{c.model}</span>
+                      </span>
+                      <span title="Model round-trips in the tool-use loop this turn (1 = narrate-and-done; more = rolls/combat).">
+                        rounds: {c.rounds ?? "—"}
+                      </span>
+                      {c.stopReason && <span>stop: {c.stopReason}</span>}
+                      {c.systemChars != null && <span>system: {fmtTokens(c.systemChars)} chars</span>}
+                      <span>{new Date(c.createdAt).toLocaleString()}</span>
+                    </div>
+                    {c.toolCalls.length > 0 && (
+                      <div className="mt-1 text-neutral-400">
+                        tools:{" "}
+                        <span className="font-mono text-neutral-300">{c.toolCalls.join(" → ")}</span>
+                      </div>
+                    )}
+                    {c.error && (
+                      <pre className="mt-1 whitespace-pre-wrap rounded bg-ink p-2 text-bad">{c.error}</pre>
+                    )}
                   </div>
                 </div>
               </details>

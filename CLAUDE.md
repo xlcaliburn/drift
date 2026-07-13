@@ -26,27 +26,36 @@ Every roll returns a full auditable breakdown (`d20(14) +8 = 22 vs DC 15 → suc
 ## Commands (run from `drift/`)
 
 ```bash
-npm test          # 64 engine tests — no keys needed
+npm test          # 75 engine/llm tests — no keys needed
 npm run dev       # http://localhost:3000
-npm run build     # REQUIRED before any commit
+npm run build     # required before a commit — but see the gotcha below
+npx tsc --noEmit  # fast typecheck; never touches .next
 ```
 
 Without Supabase env vars → keyless in-memory mode (no login, stub dev admin,
-nothing persists). With them → Google sign-in required. Stale `.next` after code
-changes shows up as phantom errors: `rm -rf .next && npm run dev` + hard refresh.
-Never run two dev servers against the same `.next` dir.
+nothing persists). With them → Google sign-in required.
+
+**Verifying while the dev server is running:** `npm run build` fights the running
+dev server for the `.next` dir and fails with *spurious* errors (`/api/turn`,
+`/_document`, page-collection) — it's not your code. Verify with `npx tsc --noEmit`
++ `npm test`; only `npm run build` after stopping the dev server. Stale `.next`
+after code changes shows as phantom errors: `rm -rf .next && npm run dev` + hard
+refresh. Never run two dev servers against the same `.next` dir, and don't
+`rm -rf .next` while one is running.
 
 ## Current state
 
-M0–M6 done: engine, character creation + unique skills, narrator tool-loop, play
-UI, Supabase persistence, Google auth, admin panel, per-user monthly budgets
-(default 2M tokens / $5). Full milestone table + resume detail: **`STATUS.md`**.
+M0–M7 done: engine, character creation + unique skills, narrator tool-loop, play
+UI, Supabase persistence, Google auth (OAuth live), admin panel, per-user monthly
+budgets (default 2M tokens / $5), and **durable play sessions** — transcript, dice
+log, and narrator history persist to `campaign_runtime` and restore on cold load
+(migration 006). Full milestone table + resume detail: **`STATUS.md`**.
 
-**Next up — M7, durable transcripts.** Mechanical state (HP, credits, clocks,
-threads) persists, but the **chat transcript + dice log still live only in
-memory** — a server restart loses narrative scrollback (not mechanical state).
-Persist scenes/turns/rolls; add an `updated_at` version check to avoid
-last-write-wins on concurrent turns.
+**Next up:** M8 retrieval tuning (naive keyword entity match in `promptBuilder`),
+the shared-world runtime (dossiers / ledgers / cross-campaign reads), or the
+`WORLD_SYSTEMS.md` artifact vertical slice. Small deferred items: optimistic-lock
+guard on `campaign_runtime` (`updated_at` is written but not yet checked), and
+re-rendering the persisted dice log on reload.
 
 ## Locked decisions (don't re-litigate)
 
@@ -78,16 +87,22 @@ last-write-wins on concurrent turns.
   GitHub default branch — branch off it, PR into it, delete feature branches
   after merge. (The old `feat/persistence-and-creation` branch was fully merged
   into `main` and retired.)
-- Push may 403: this machine's cached credential is for account `todomichael`,
-  not `xlcaliburn`. Fix via Windows Credential Manager (remove the `github.com`
-  entry, re-auth), or add `todomichael` as a collaborator.
+- Push works (the earlier `todomichael` vs `xlcaliburn` 403 is resolved). If it
+  recurs, clear the `github.com` entry in Windows Credential Manager and re-auth.
+- Commit messages via the Bash tool: use repeated `-m` flags. PowerShell
+  here-strings (`@'…'@`) are not Bash syntax and leak a stray `@` into the message.
 
-## External setup that only the user can do (not code)
+## DB & migrations
 
-- **Google OAuth**: DB migration is applied. Still need the Google Cloud OAuth
-  client + enable Google in Supabase + add `http://localhost:3000/auth/callback`
-  redirect, then sign in once (trigger grants admin+approved) and claim the 3
-  seeded campaigns (`player_id is null`). Steps in `STATUS.md` → Open action items.
+- The **Supabase MCP connector is authenticated** — run migrations directly with
+  `apply_migration` (project `mgsogqnrpvoblqxkfgge`, the "drift" project — not the
+  "Life Scorecard" one) and verify with `list_tables`. Don't assume it's
+  unavailable from a session-start reminder; test with `list_projects` first.
+- Migrations are hand-run SQL in `drift/db/migrations/` (not CLI-managed).
+  `.env.local` has only the PostgREST **service key** (can't run DDL) and no direct
+  Postgres connection string, so the MCP connector is the way to apply them.
+- **Google OAuth is fully set up and live** — players sign in with Google; new
+  accounts land pending until approved at `/admin`.
 
 ## Docs map
 
