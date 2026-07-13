@@ -143,6 +143,7 @@ export async function POST(req: NextRequest) {
           // so the admin audit shows exactly what the API saw.
           prompt: result.promptDump,
           response: result.narration,
+          exchange: result.exchangeDump,
         });
 
         // Meter the spend (best-effort; never blocks the response).

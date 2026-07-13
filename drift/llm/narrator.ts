@@ -42,6 +42,9 @@ export interface TurnResult {
   /** The exact request sent to the model this turn (system + messages), rendered
    *  as text for the admin audit — "what was actually fed to the API". */
   promptDump: string;
+  /** The round-by-round tool-loop exchange (assistant text + tool calls + tool
+   *  results) for multi-round turns; empty for single-round turns. */
+  exchangeDump: string;
   /** Full assistant/user message pairs generated this turn, for history. */
   newMessages: Anthropic.MessageParam[];
   usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
@@ -192,10 +195,9 @@ export function hasDuplication(text: string): boolean {
   return false;
 }
 
-/** Render the exact request sent to the model (system + messages) as readable
- *  text for the admin audit — "what was actually fed to the API" this turn. */
-function renderRequest(system: Anthropic.TextBlockParam[], messages: Anthropic.MessageParam[]): string {
-  const sys = system.map((b) => b.text).join("\n\n");
+/** Render a list of messages as readable text (tool_use calls and tool_result
+ *  payloads inlined) for the admin audit. */
+function renderMessages(messages: Anthropic.MessageParam[]): string {
   const render = (m: Anthropic.MessageParam): string => {
     const role = m.role.toUpperCase();
     if (typeof m.content === "string") return `[${role}]\n${m.content}`;
@@ -210,7 +212,13 @@ function renderRequest(system: Anthropic.TextBlockParam[], messages: Anthropic.M
     });
     return `[${role}]\n${parts.join("\n")}`;
   };
-  return `=== SYSTEM ===\n${sys}\n\n=== MESSAGES ===\n${messages.map(render).join("\n\n")}`;
+  return messages.map(render).join("\n\n");
+}
+
+/** The exact request sent to the model (system + messages) — "what was fed to
+ *  the API" — for the admin audit. */
+function renderRequest(system: Anthropic.TextBlockParam[], messages: Anthropic.MessageParam[]): string {
+  return `=== SYSTEM ===\n${system.map((b) => b.text).join("\n\n")}\n\n=== MESSAGES ===\n${renderMessages(messages)}`;
 }
 
 /** Cheap heuristic: does the player's action read like a combat / set-piece beat? */
@@ -454,9 +462,14 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
   // mid-word.
   if (lastStopReason === "max_tokens") narration = trimToLastSentence(narration);
 
+  // For multi-round turns, capture the full round-by-round exchange for the audit
+  // (single-round turns are just the narration, already shown as the response).
+  const exchangeDump = rounds > 1 ? renderMessages(newMessages) : "";
+
   return {
     narration,
     promptDump,
+    exchangeDump,
     state: runtime.state,
     events: runtime.events,
     worldEvents: runtime.worldEvents,

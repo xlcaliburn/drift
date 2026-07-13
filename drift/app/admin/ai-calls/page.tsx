@@ -221,8 +221,18 @@ function CallDetails({ c }: { c: AiCallRow }) {
           {c.promptPreview ?? "—"}
         </pre>
       </div>
+      {c.exchangeDump && (
+        <div>
+          <div className="mb-1 text-neutral-500">
+            tool-loop rounds{c.rounds != null ? ` (${c.rounds})` : ""} — assistant text, tool calls, and results each round
+          </div>
+          <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap rounded bg-ink p-2 text-[11px] leading-relaxed text-neutral-300">
+            {c.exchangeDump}
+          </pre>
+        </div>
+      )}
       <div>
-        <div className="mb-1 text-neutral-500">returned</div>
+        <div className="mb-1 text-neutral-500">returned (final narration)</div>
         <pre className="max-h-[30vh] overflow-auto whitespace-pre-wrap rounded bg-ink p-2 text-[11px] leading-relaxed text-neutral-300">
           {c.responsePreview ?? "—"}
         </pre>

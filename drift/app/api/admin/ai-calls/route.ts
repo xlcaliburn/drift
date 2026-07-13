@@ -29,6 +29,7 @@ export interface AiCallRow {
   systemChars: number | null;
   promptPreview: string | null;
   responsePreview: string | null;
+  exchangeDump: string | null;
   error: string | null;
 }
 
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
   let query = db
     .from("ai_calls")
     .select(
-      "id,created_at,user_id,campaign_id,kind,model,latency_ms,input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,cost_usd,rounds,tool_calls,stop_reason,fell_back,system_chars,prompt_preview,response_preview,error",
+      "id,created_at,user_id,campaign_id,kind,model,latency_ms,input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,cost_usd,rounds,tool_calls,stop_reason,fell_back,system_chars,prompt_preview,response_preview,exchange_dump,error",
     )
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -100,6 +101,7 @@ export async function GET(req: NextRequest) {
     systemChars: r.system_chars == null ? null : Number(r.system_chars),
     promptPreview: r.prompt_preview ? String(r.prompt_preview) : null,
     responsePreview: r.response_preview ? String(r.response_preview) : null,
+    exchangeDump: r.exchange_dump ? String(r.exchange_dump) : null,
     error: r.error ? String(r.error) : null,
   }));
 

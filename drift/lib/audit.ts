@@ -40,6 +40,8 @@ export interface AiCallEntry {
   /** Raw player/user input and model output — truncated before storage. */
   prompt?: string;
   response?: string;
+  /** Round-by-round tool-loop exchange (multi-round turns only). */
+  exchange?: string;
   /** Set when the call itself failed. */
   error?: string;
 }
@@ -89,6 +91,7 @@ export async function recordAiCall(entry: AiCallEntry): Promise<void> {
       system_chars: entry.systemChars ?? null,
       prompt_preview: capture(entry.prompt) ?? null,
       response_preview: capture(entry.response) ?? null,
+      exchange_dump: capture(entry.exchange) ?? null,
       error: entry.error ?? null,
     });
     if (error) console.error("recordAiCall failed", error);
