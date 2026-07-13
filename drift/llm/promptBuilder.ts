@@ -57,7 +57,7 @@ STAKES ARE REAL: this character can be hurt and can DIE. When an action or situa
 Respond with ONE json object and nothing else:
 {
   "narration": "the beat's prose. No option lists, no dice math, no questions like 'do you A or B?'",
-  "choices": [{"label": "short concrete action", "check": {"skill": "stealth", "dc": 13, "stakes": true, "failDamage": "1d6"}}],
+  "choices": [{"label": "a plain action that just advances the story (NO check — this is the norm)"}, {"label": "a genuinely risky action", "check": {"skill": "stealth", "dc": 13, "stakes": true, "failDamage": "1d6"}}],
   "roll": {"skill": "piloting", "dc": 13, "stakes": true, "failDamage": "2d6"},
   "danger": {"skill": "zeroG", "dc": 13, "damage": "1d6", "note": "plasma vents across the bay"},
   "combatStart": {"tier": "T2", "count": 2, "name": "Sable gunhand", "surprise": "none"},
@@ -70,7 +70,7 @@ Respond with ONE json object and nothing else:
 
 RULES:
 1. "narration" is required. "choices" needs 2-4 entries unless "sceneEnd" is set.
-2. Attach "check" to a choice when that action would be uncertain WITH stakes — the engine rolls it when clicked. Pick the skill from this list by what the action actually is (do NOT guess from the word — e.g. an FTL jump is navigation, not zeroG):
+2. MOST choices have NO check — clicking them just moves the story forward. A check is the EXCEPTION, not the default: attach one only when the action has a genuinely uncertain outcome AND failure costs something real (HP, a blown plan, a burned relationship, lost time, a raised alarm). Talking, asking, looking around, deciding, buying, walking somewhere safe, anything routine → NO check. A typical turn has ZERO or ONE checked choice across all of them; two is already a lot, and never make every choice a check. When you DO attach one, pick the skill from this list by what the action actually is (do NOT guess from the word — e.g. an FTL jump is navigation, not zeroG):
 ${SKILL_REFERENCE}
 DC: 10 easy, 13 pressured, 15 hard, 18 severe. stakes=true only when failure genuinely costs something.
 3. "failDamage" (dice, e.g. "1d6", "2d6") on a check → the engine deals that damage to the PLAYER when the check FAILS. It hurts ONLY the player — it NEVER damages an enemy. Use it for self-endangering risk (a fall, a burn, crossing fire), NOT to represent attacking someone who fights back.
@@ -83,8 +83,8 @@ ${ITEM_REFERENCE}
 9. "worldEvent" when the beat meaningfully shifts a faction's standing. "sceneEnd" when the scene genuinely wraps.
 10. Ground everything in the CURRENT SCENE block; don't contradict it.
 
-EXAMPLE (check, non-combat) — player: "Slip past the dock guard while the crane cycles"
-{"narration":"You hug the container line, matching your steps to the crane's groan. The guard's lamp sweeps across the gap you just left — he lingers, listening.","choices":[{"label":"Freeze in the shadow until the lamp moves on","check":{"skill":"stealth","dc":13,"stakes":true}},{"label":"Slide under the maintenance walkway","check":{"skill":"zeroG","dc":15,"stakes":true}},{"label":"Step out and bluff a dockhand's greeting","check":{"skill":"deception","dc":13,"stakes":true}}]}
+EXAMPLE (a check is the EXCEPTION — most choices carry none) — player: "Ask around the dock about the missing courier"
+{"narration":"The dockmaster's office reeks of burnt coffee and cold solder. A clerk marks a manifest without looking up; two longshoremen by the crate-lift stop talking as you enter.","choices":[{"label":"Ask the clerk who last signed for the courier's cargo"},{"label":"Buy the longshoremen a round and get them talking"},{"label":"Lean on the clerk hard for the manifest","check":{"skill":"intimidation","dc":13,"stakes":true}}]}
 
 EXAMPLE (fight — use combatStart, NOT a check) — player: "Draw and open fire on the two gunhands"
 {"narration":"Your hand's already moving — the pistol clears leather as the nearer gunhand turns, mouth opening to shout. The cargo bay goes loud and bright.","combatStart":{"tier":"T2","count":2,"name":"gunhand","surprise":"player"}}`;
