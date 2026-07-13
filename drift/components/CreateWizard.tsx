@@ -58,6 +58,8 @@ export default function CreateWizard() {
   const [err, setErr] = useState("");
   const [result, setResult] = useState<CreateResult | null>(null);
   const [dismissed, setDismissed] = useState<string[]>([]);
+  // Set when the API rejects a second character (one-per-player): links back to it.
+  const [existingCampaignId, setExistingCampaignId] = useState<string | null>(null);
 
   // Poll for the background AI flesh-out (see /api/create): once the review
   // screen is up, swap the templated backstory/voice for the personalized ones
@@ -165,8 +167,10 @@ export default function CreateWizard() {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (data.error) setErr(data.error);
-      else {
+      if (data.error) {
+        setErr(data.error);
+        if (data.existingCampaignId) setExistingCampaignId(data.existingCampaignId);
+      } else {
         setResult(data as CreateResult);
         setDismissed([]);
         setStep(5);
@@ -240,9 +244,13 @@ export default function CreateWizard() {
   const steps = ["The world", "Your faction", "Who you are", "Your signature", "Review", "Meet"];
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-10">
-      {/* progress */}
-      <div className="mb-8 flex items-center gap-2 text-xs text-neutral-500">
+    <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10">
+      {/* progress — compact "Step N of M" on mobile, full breadcrumb on ≥sm */}
+      <div className="mb-6 text-xs text-neutral-500 sm:hidden">
+        Step {Math.min(step + 1, steps.length)} of {steps.length} ·{" "}
+        <span className="font-semibold text-accent">{steps[step]}</span>
+      </div>
+      <div className="mb-8 hidden flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-500 sm:flex">
         {steps.map((s, i) => (
           <div key={s} className="flex items-center gap-2">
             <span className={i === step ? "font-semibold text-accent" : i < step ? "text-good" : ""}>{s}</span>
@@ -250,6 +258,19 @@ export default function CreateWizard() {
           </div>
         ))}
       </div>
+
+      {/* One-per-player rejection (e.g. two tabs racing): offer the existing one. */}
+      {existingCampaignId && (
+        <div className="mb-6 rounded-lg border border-accent/40 bg-accent/5 p-4 text-sm">
+          <p className="text-accent">⚠ {err || "You already have a character."}</p>
+          <button
+            onClick={() => router.push(`/play/${existingCampaignId}`)}
+            className="mt-3 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink"
+          >
+            Go to your character →
+          </button>
+        </div>
+      )}
 
       {/* Step 0 — world */}
       {step === 0 && (
@@ -398,7 +419,7 @@ export default function CreateWizard() {
 
           {usKind === "passive" ? (
             <div className="rounded-lg border border-edge bg-panel/40 p-4">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <Field label="Buff a">
                   <select value={pTargetType} onChange={(e) => { setPTargetType(e.target.value as "skill" | "attribute"); setPTarget(e.target.value === "skill" ? "piloting" : "reflex"); }} className={inputClass}>
                     <option value="skill">Skill</option>

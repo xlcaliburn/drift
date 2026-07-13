@@ -139,6 +139,27 @@ export async function listCampaigns(
 }
 
 /**
+ * The player's existing character (campaign), oldest first, or null if they
+ * have none. Used to enforce one-character-per-player: creation is blocked when
+ * this returns non-null, and callers redirect the player to it. Oldest wins as
+ * the canonical keeper so an accidental later duplicate never shadows it.
+ */
+export async function getOwnedCampaign(
+  db: SupabaseClient,
+  playerId: string,
+): Promise<{ id: string; name: string } | null> {
+  const { data, error } = await db
+    .from("campaigns")
+    .select("id,name")
+    .eq("player_id", playerId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return { id: String(data.id), name: String(data.name) };
+}
+
+/**
  * Cheap ownership lookup (indexed single-column select) so /play can check
  * access without loading the whole campaign state. Returns undefined for
  * unowned (seeded) campaigns, null when the campaign doesn't exist.

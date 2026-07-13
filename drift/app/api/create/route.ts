@@ -3,8 +3,9 @@ import { CreationInput } from "@/shared/multiplayer";
 import { buildCharacterFromCreation } from "@/engine";
 import { finalizeCreation, quickCreationNotes } from "@/llm/creationFinalize";
 import { buildNewCampaignState } from "@/lib/newCampaign";
-import { getSession, setSession, persistSession } from "@/lib/state";
+import { getSession, setSession, persistSession, hasSupabase } from "@/lib/state";
 import { requireApprovedUser, isDevUser } from "@/lib/auth";
+import { getServiceClient, getOwnedCampaign } from "@/db/queries";
 import { recordAiCall } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -25,6 +26,23 @@ export async function POST(req: NextRequest) {
   const auth = await requireApprovedUser();
   if (auth.error) return auth.error;
   const user = auth.user;
+
+  // One character per player (for now). Enforced here at the API so it can't be
+  // bypassed by hitting the endpoint directly. Skipped in keyless dev (no owner)
+  // and for admins (who may hold seeded/unowned worlds). A DB partial-unique
+  // index on campaigns(player_id) backs this at the storage layer.
+  if (hasSupabase() && !isDevUser(user) && user.role !== "admin") {
+    const existing = await getOwnedCampaign(getServiceClient(), user.id);
+    if (existing) {
+      return NextResponse.json(
+        {
+          error: "You already have a character. Only one per player for now.",
+          existingCampaignId: existing.id,
+        },
+        { status: 409 },
+      );
+    }
+  }
 
   const body = await req.json().catch(() => null);
   const parsed = CreationInput.safeParse(body);
