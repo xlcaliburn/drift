@@ -56,6 +56,17 @@ log, and narrator history persist to `campaign_runtime` and restore on cold load
 overlap > objective floor), capped and tested; `focusIds` carries entities the
 player *named* into the next turn for short-term continuity (no self-pin).
 
+**Structured JSON turns (cheap-model discipline):** routine turns run
+`llm/jsonTurn.ts` — the model returns a validated `TurnPlan`
+(`shared/turnPlan.ts`: narration + choices [+ attached checks] + roll/worldEvent/
+sceneEnd), DeepSeek json_object mode, validator → one retry → repair. A clicked
+choice's check is **pre-rolled by the engine** (dice shown as 🎲 system lines,
+tick awarded immediately — `campaign_runtime.ticked_this_scene` holds the
+per-scene cap). History is CANONICAL (action + `[ENGINE: …]` summary / cleaned
+narration only — never raw model output; prevents few-shot contamination).
+Narration still streams via `llm/jsonStream.ts`. Combat set-pieces keep the tool
+loop in `narrator.ts`. Don't add prose rules for things the engine can enforce.
+
 **Next up:** the shared-world runtime (dossiers / ledgers / cross-campaign reads)
 or the `WORLD_SYSTEMS.md` artifact vertical slice. Small deferred items:
 optimistic-lock guard on `campaign_runtime` (`updated_at` written but not checked),

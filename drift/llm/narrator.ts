@@ -16,6 +16,8 @@ export interface TurnInput {
   playerText: string;
   /** Entity ids to force into context (from the previous scene's refs). */
   focusIds?: string[];
+  /** Shared per-scene tick-cap set ("charId:skill"); mutated in place. */
+  tickedSet?: Set<string>;
   /** Force the pricier "cinematic" model (Sonnet) for this turn. */
   cinematic?: boolean;
   model?: string;
@@ -277,7 +279,9 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
   // for genuine set pieces. These caps are a backstop; the prompt asks for concision.
   const maxTokens = model.includes("sonnet") || model.includes("opus") ? 900 : 450;
 
-  const runtime = new TurnRuntime(input.state, input.rng ?? liveRng);
+  const runtime = new TurnRuntime(input.state, input.rng ?? liveRng, {
+    tickedThisScene: input.tickedSet,
+  });
 
   const system = buildSystem(input.state);
   const retrieved = retrieveEntities(input.state, input.playerText, input.focusIds);

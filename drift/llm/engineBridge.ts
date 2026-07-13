@@ -12,6 +12,7 @@ import {
   type EngineEvent,
 } from "@/engine";
 import { enemyTiers, shipClasses } from "@/content";
+import { awardTick } from "@/engine/progression";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
 
@@ -30,17 +31,22 @@ export class TurnRuntime {
   rng: RNG;
   events: EngineEvent[] = [];
   enemies = new Map<string, CombatTarget>();
-  private tickedRolls: { characterId: string; skill: string }[] = [];
   private clockAdvances: { clockId: string; amount: number; reason: string }[] = [];
   worldEvents: WorldEvent[] = [];
   /** Suggested clickable actions offered by the narrator this turn. */
   choices: string[] = [];
   private enemyCounter = 0;
   sceneEndReport: ReturnType<typeof runSceneEnd> | null = null;
+  /** Skills already ticked this scene, as "characterId:skill" keys. Ticks are
+   *  awarded IMMEDIATELY on a qualifying roll (leveling must not depend on the
+   *  narrator remembering end_scene); this set enforces the 1/skill/scene cap
+   *  across turns and is persisted by the session, reset at scene end. */
+  tickedThisScene: Set<string>;
 
-  constructor(state: CampaignState, rng: RNG = liveRng) {
+  constructor(state: CampaignState, rng: RNG = liveRng, opts?: { tickedThisScene?: Set<string> }) {
     this.state = state;
     this.rng = rng;
+    this.tickedThisScene = opts?.tickedThisScene ?? new Set();
   }
 
   private char(id: string): Character | undefined {
@@ -98,14 +104,34 @@ export class TurnRuntime {
       this.rng,
     );
     this.events.push(res.event);
+    // Award the skill tick IMMEDIATELY (was: batched to end_scene, which cheap
+    // narrators rarely call — so nobody leveled). The per-character set enforces
+    // the max-1-tick-per-skill-per-scene cap across the whole scene.
+    let tick: string | undefined;
     if (res.tickEligible) {
-      this.tickedRolls.push({ characterId: character.id, skill: String(input.skill) });
+      const skillName = String(input.skill);
+      const perChar = new Set(
+        [...this.tickedThisScene]
+          .filter((k) => k.startsWith(`${character.id}:`))
+          .map((k) => k.slice(character.id.length + 1)),
+      );
+      const award = awardTick(character, skillName, perChar);
+      if (award.ticked) {
+        this.tickedThisScene.add(`${character.id}:${skillName}`);
+        this.state = {
+          ...this.state,
+          characters: this.state.characters.map((c) => (c.id === character.id ? award.character : c)),
+        };
+        this.events.push(award.event);
+        tick = award.event.breakdown;
+      }
     }
     return {
       breakdown: res.breakdown,
       total: res.total,
       outcome: res.outcome,
       tickEligible: res.tickEligible,
+      ...(tick ? { tick } : {}),
     };
   }
 
@@ -391,13 +417,16 @@ export class TurnRuntime {
       paying: Boolean(input.paying),
       dockings: input.dockings ? Number(input.dockings) : 0,
       arrivedAtLocationId: input.arrivedAtLocationId ? String(input.arrivedAtLocationId) : undefined,
-      tickedRolls: this.tickedRolls,
+      // Ticks are awarded immediately in rollCheck now; nothing left to batch.
+      tickedRolls: [],
       clockAdvances: this.clockAdvances,
       combatEnded: Boolean(input.combatEnded),
       tendaysDelta: input.tendaysDelta ? Number(input.tendaysDelta) : 0,
     });
     this.state = report.state;
     this.sceneEndReport = report;
+    // New scene → the per-scene tick cap resets.
+    this.tickedThisScene.clear();
     this.events.push(...report.events);
     return {
       title: input.title,

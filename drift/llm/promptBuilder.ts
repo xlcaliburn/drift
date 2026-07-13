@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { CampaignState } from "@/shared/schemas";
 import { skillProgress } from "@/engine";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
-import { inTutorial, TUTORIAL_CHOICE_DIRECTIVE } from "@/shared/tutorial";
+import { inTutorial, TUTORIAL_CHOICE_DIRECTIVE, TUTORIAL_JSON_DIRECTIVE } from "@/shared/tutorial";
 
 /**
  * DM style rules — the voice of the game. Kept static and marked for prompt
@@ -32,6 +32,49 @@ const DM_STYLE = `You are the DM of DRIFT, a brutal space-opera TTRPG. Voice and
 - LOSING THE LOANER: if the player turns hard on their own faction and their standing craters, the faction repossesses the loaner — the engine does this automatically when their parent-faction rep drops low (adjust_rep returns "shipSeized"), and you MUST narrate the repossession and their sudden grounding. It's a real, earned consequence of betraying the people who lent them the hull.
 - SHIP-COMBAT SCALING: the starter loaner is a weak, unshielded hull, not a warship — scale ship-scale threats to the ship the player actually flies, NOT their personal weight class. A loaner-flying minion faces a lone light craft or an evade/escape situation, never a T2 wolfpack as a fair fight. Running (the burst drive) is a legitimate and often correct answer; make fleeing a real option, not a failure. Introduce heavier ship threats only once they fly something that can take them.
 - THE FAULT LINE is the season's rising pressure — a Crown–Sable war grinding the whole board toward a reckoning. It advances on its own with time, no matter what the player does. Weave its current phase into the world (see the SEASON line each turn), and read it through the lens of the player's own faction.`;
+
+/**
+ * Slim system prompt for STRUCTURED (JSON) turns — cheap-model discipline.
+ * ~8 invariant rules + voice + the JSON contract + ONE demonstrated turn.
+ * Everything conditional (tutorial, engine results) rides the user message,
+ * where recency dominates for small models. Mechanics the engine can enforce
+ * are NOT prompted for here — the engine enforces them.
+ */
+const JSON_DM_STYLE = `You are the DM of DRIFT, a brutal space-opera TTRPG. The engine rolls all dice and tracks all numbers — you write the story and propose options as data.
+
+VOICE: second person, present tense. Vivid but economical — a beat is 2-4 sentences, ~90 words. Consequences stick; no plot armor; the world moves on its own. NPCs treat an unproven newcomer accordingly. Never invent dice results or numbers. Never repeat a sentence you already wrote.
+
+Respond with ONE json object and nothing else:
+{
+  "narration": "the beat's prose. No option lists, no dice math, no questions like 'do you A or B?'",
+  "choices": [{"label": "short concrete action", "check": {"skill": "stealth", "dc": 13, "stakes": true}}],
+  "roll": {"skill": "piloting", "dc": 13, "stakes": true},
+  "worldEvent": {"headline": "..."},
+  "sceneEnd": {"title": "...", "paying": true, "dockings": 1},
+  "clockAdvances": [{"clockId": "...", "amount": 1, "reason": "..."}]
+}
+
+RULES:
+1. "narration" is required. "choices" needs 2-4 entries unless "sceneEnd" is set.
+2. Attach "check" to a choice when that action would be uncertain WITH stakes — the engine rolls it when clicked. Skills: piloting, gunnery, smallArms, melee, stealth, streetwise, negotiation, deception, intimidation, mechanics, electronics, navigation, zeroG, survival, perception. DC: 10 easy, 13 pressured, 15 hard, 18 severe. stakes=true only when failure genuinely costs something.
+3. "roll" is ONLY for when the player's CURRENT typed action itself needs a check. If the message contains an ENGINE RESULT line, that roll already happened — narrate its outcome and do NOT request another.
+4. "worldEvent" when the beat meaningfully shifts a faction's standing. "sceneEnd" when the current scene genuinely wraps (job concluded, arrival complete, combat over).
+5. Ground everything in the CURRENT SCENE block; don't contradict it.
+
+EXAMPLE — player: "Slip past the dock guard while the crane cycles"
+{"narration":"You hug the container line, matching your steps to the crane's groan. The guard's lamp sweeps across the gap you just left — he lingers, listening.","choices":[{"label":"Freeze in the shadow until the lamp moves on","check":{"skill":"stealth","dc":13,"stakes":true}},{"label":"Slide under the maintenance walkway","check":{"skill":"zeroG","dc":15,"stakes":true}},{"label":"Step out and bluff a dockhand's greeting","check":{"skill":"deception","dc":13,"stakes":true}}]}`;
+
+/** System blocks for a structured JSON turn: slim contract + universe primer. */
+export function buildJsonSystem(state: CampaignState): Anthropic.TextBlockParam[] {
+  return [
+    { type: "text", text: JSON_DM_STYLE, cache_control: { type: "ephemeral" } },
+    {
+      type: "text",
+      text: `UNIVERSE PRIMER\n${state.universe.primer}\n\nSTYLE ADDENDUM\n${state.universe.styleRules ?? ""}`,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+}
 
 /** Build the cached system blocks: style rules + universe primer. */
 export function buildSystem(state: CampaignState): Anthropic.TextBlockParam[] {
@@ -177,6 +220,8 @@ export function buildContextSlice(
   playerText: string,
   focusIds: string[] = [],
   retrieved?: { npcs: CampaignState["npcs"]; threads: CampaignState["threads"] },
+  /** JSON-turn variant: tutorial directive phrased for fields, not tools. */
+  jsonMode = false,
 ): string {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
   const { npcs, threads } = retrieved ?? retrieveEntities(state, playerText, focusIds);
@@ -224,7 +269,7 @@ export function buildContextSlice(
   return [
     // While the player is still on training wheels, lead with the tutorial
     // directive so it outranks the static style rules for this beat.
-    ...(inTutorial(state) ? [TUTORIAL_CHOICE_DIRECTIVE, ``] : []),
+    ...(inTutorial(state) ? [jsonMode ? TUTORIAL_JSON_DIRECTIVE : TUTORIAL_CHOICE_DIRECTIVE, ``] : []),
     `CURRENT SCENE`,
     `Location: ${loc ? `${loc.name} — ${loc.description}` : "unknown"}`,
     ...(seasonLine ? [seasonLine] : []),

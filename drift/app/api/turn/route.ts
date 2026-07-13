@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runTurn } from "@/llm/narrator";
+import { runTurn, isSetPiece } from "@/llm/narrator";
+import { runJsonTurn } from "@/llm/jsonTurn";
 import { getSession, setSession, persistSession } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
 import { recordAiCall } from "@/lib/audit";
 import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { buildFallbackChoices } from "@/shared/recap";
+import { CheckSpec, type ChoiceOption } from "@/shared/turnPlan";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -31,6 +33,8 @@ export async function POST(req: NextRequest) {
   const playerText: string = (body.playerText ?? "").toString().trim();
   const campaignId: string = (body.campaignId ?? "").toString();
   const cinematic: boolean = Boolean(body.cinematic);
+  // Check attached to the clicked choice (engine pre-rolls it). Invalid → ignored.
+  const preCheck = body.check ? CheckSpec.safeParse(body.check).data : undefined;
   if (!campaignId) {
     return NextResponse.json({ error: "campaignId is required" }, { status: 400 });
   }
@@ -74,29 +78,56 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
 
       try {
-        const result = await runTurn({
+        // Shared per-scene tick-cap set — mutated in place by the engine bridge,
+        // persisted back after the turn, reset when a scene ends.
+        const tickedSet = new Set(session.tickedThisScene);
+
+        // Path selection: combat set-pieces still run the freeform tool loop
+        // (spawn/resolve machinery); everything else — including any clicked
+        // choice with an attached check — runs the structured JSON turn.
+        const useToolLoop = !preCheck && (cinematic || isSetPiece(playerText));
+
+        const common = {
           state: session.state,
           history: session.history,
           playerText,
           focusIds: session.focusIds,
-          cinematic,
-          onDelta: (text) => send({ type: "token", text }),
-        });
+          tickedSet,
+          onDelta: (text: string) => send({ type: "token", text }),
+        };
+        const result = useToolLoop
+          ? await runTurn({ ...common, cinematic })
+          : await runJsonTurn({
+              ...common,
+              preCheck,
+              // Dice/tick lines stream to the client the moment the engine rolls.
+              onEngine: (lines) => send({ type: "engine", lines }),
+            });
 
-        // Quick-select safety net: if the narrator ended a routine beat without
-        // calling offer_choices (DeepSeek drops it intermittently), the chips would
-        // vanish. Backfill deterministic, thread-derived choices — but not during
-        // combat (a menu mid-fight is wrong) or when the scene just ended.
+        // Quick-select safety net: never leave a routine beat without choices.
         const inCombat = result.telemetry.toolCalls.some(
           (t) => t === "spawn_encounter" || t === "resolve_attack",
         );
-        const choices =
-          result.choices.length === 0 && !result.sceneEnded && !inCombat
-            ? buildFallbackChoices(result.state)
-            : result.choices;
+        const normalized: ChoiceOption[] = (result.choices as (string | ChoiceOption)[]).map(
+          (c) => (typeof c === "string" ? { label: c } : c),
+        );
+        const choices: ChoiceOption[] =
+          normalized.length === 0 && !result.sceneEnded && !inCombat
+            ? buildFallbackChoices(result.state).map((label) => ({ label }))
+            : normalized;
+
+        // Engine result lines (dice + ticks) become system transcript lines so a
+        // refresh shows the same mechanics the player saw live.
+        const engineLines = result.events
+          .filter((e) => e.type === "roll" || e.type === "tick")
+          .map((e) => ({
+            role: "system" as const,
+            text: `${e.type === "roll" ? "🎲" : "⬆"} ${e.breakdown}`,
+          }));
 
         const transcriptAdds = [
           { role: "player" as const, text: playerText },
+          ...engineLines,
           { role: "dm" as const, text: result.narration || "…" },
           ...(result.sceneEnded
             ? [{ role: "system" as const, text: "— scene ended · checklist applied —" }]
@@ -108,17 +139,34 @@ export async function POST(req: NextRequest) {
             : []),
         ];
 
+        // CANONICAL history — never feed raw model output back as context (one
+        // prose-menu violation would become few-shot evidence for every later
+        // turn). The user side carries the action + a compact engine summary;
+        // the assistant side carries only the cleaned narration.
+        const engineSummary = result.events
+          .filter((e) => e.type === "roll" || e.type === "tick")
+          .map((e) => e.breakdown)
+          .slice(0, 6);
+        const canonicalUser =
+          `PLAYER: ${playerText}` +
+          (engineSummary.length ? `\n[ENGINE: ${engineSummary.join(" · ")}]` : "");
         const updatedSession = {
           ...session,
           state: result.state,
           // Keep the last ~10 exchanges verbatim; older context is carried by scene
-          // summaries (M7). Smaller window = fewer input tokens every turn.
-          history: [...session.history, ...result.newMessages].slice(-20),
+          // summaries. Smaller window = fewer input tokens every turn.
+          history: [
+            ...session.history,
+            { role: "user" as const, content: canonicalUser },
+            { role: "assistant" as const, content: result.narration || "…" },
+          ].slice(-20),
           // Full display transcript is kept so a browser refresh rehydrates the chat.
           transcript: [...session.transcript, ...transcriptAdds].slice(-400),
           log: [...session.log, ...result.events].slice(-500),
           // Carry the entities named this turn into next turn's retrieval focus.
           focusIds: result.focusIds,
+          // Per-scene tick cap (engine cleared the set if the scene ended).
+          tickedThisScene: [...tickedSet],
         };
         setSession(campaignId, updatedSession);
 

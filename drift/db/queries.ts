@@ -115,6 +115,8 @@ export interface CampaignRuntime {
   history: Anthropic.MessageParam[];
   log: EngineEvent[];
   focusIds: string[];
+  /** Skills already ticked this scene ("characterId:skill" keys). */
+  tickedThisScene: string[];
   updatedAt?: string;
 }
 
@@ -125,7 +127,7 @@ export async function loadCampaignRuntime(
 ): Promise<CampaignRuntime | null> {
   const { data, error } = await db
     .from("campaign_runtime")
-    .select("transcript,history,log,focus_ids,updated_at")
+    .select("transcript,history,log,focus_ids,ticked_this_scene,updated_at")
     .eq("campaign_id", campaignId)
     .maybeSingle();
   if (error || !data) return null;
@@ -134,6 +136,7 @@ export async function loadCampaignRuntime(
     history: (data.history as Anthropic.MessageParam[]) ?? [],
     log: (data.log as EngineEvent[]) ?? [],
     focusIds: (data.focus_ids as string[]) ?? [],
+    tickedThisScene: (data.ticked_this_scene as string[]) ?? [],
     updatedAt: data.updated_at ? String(data.updated_at) : undefined,
   };
 }
@@ -142,7 +145,7 @@ export async function loadCampaignRuntime(
 export async function saveCampaignRuntime(
   db: SupabaseClient,
   campaignId: string,
-  rt: Pick<CampaignRuntime, "transcript" | "history" | "log" | "focusIds">,
+  rt: Pick<CampaignRuntime, "transcript" | "history" | "log" | "focusIds" | "tickedThisScene">,
 ): Promise<void> {
   await db.from("campaign_runtime").upsert({
     campaign_id: campaignId,
@@ -150,6 +153,7 @@ export async function saveCampaignRuntime(
     history: rt.history,
     log: rt.log,
     focus_ids: rt.focusIds,
+    ticked_this_scene: rt.tickedThisScene,
     updated_at: new Date().toISOString(),
   });
 }

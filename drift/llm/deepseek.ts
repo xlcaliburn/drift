@@ -160,6 +160,8 @@ export async function deepseekChat(params: {
   system: Anthropic.TextBlockParam[];
   tools?: Anthropic.Tool[];
   messages: Anthropic.MessageParam[];
+  /** Force a single JSON object response (DeepSeek json_object mode). */
+  jsonMode?: boolean;
 }): Promise<NormalizedResponse> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) throw new Error("DEEPSEEK_API_KEY is not set");
@@ -171,6 +173,7 @@ export async function deepseekChat(params: {
     temperature: TEMPERATURE,
     frequency_penalty: FREQUENCY_PENALTY,
     presence_penalty: PRESENCE_PENALTY,
+    ...(params.jsonMode ? { response_format: { type: "json_object" } } : {}),
     messages: [
       { role: "system", content: systemToString(params.system) },
       ...messagesToOpenAI(params.messages),
@@ -257,6 +260,8 @@ export async function deepseekChatStream(params: {
   tools?: Anthropic.Tool[];
   messages: Anthropic.MessageParam[];
   onDelta?: (text: string) => void;
+  /** Force a single JSON object response (DeepSeek json_object mode). */
+  jsonMode?: boolean;
 }): Promise<NormalizedResponse> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) throw new Error("DEEPSEEK_API_KEY is not set");
@@ -268,6 +273,7 @@ export async function deepseekChatStream(params: {
     temperature: TEMPERATURE,
     frequency_penalty: FREQUENCY_PENALTY,
     presence_penalty: PRESENCE_PENALTY,
+    ...(params.jsonMode ? { response_format: { type: "json_object" } } : {}),
     stream: true,
     stream_options: { include_usage: true },
     messages: [

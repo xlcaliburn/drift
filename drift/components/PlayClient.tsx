@@ -7,7 +7,17 @@ import type { ChatEntry } from "@/shared/chat";
 import { buildOpeningRecap, buildOpeningChoices } from "@/shared/recap";
 import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { stripInlineMenu } from "@/shared/narration";
+import type { ChoiceOption } from "@/shared/turnPlan";
 import Sidebar from "./Sidebar";
+
+/** Choices may arrive as plain strings (opening/fallback) or objects with an
+ *  attached engine check (structured turns) — normalize to objects. */
+function normalizeChoices(list: unknown): ChoiceOption[] {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((c) => (typeof c === "string" ? { label: c } : (c as ChoiceOption)))
+    .filter((c) => c && typeof c.label === "string" && c.label.length > 0);
+}
 
 /** On load, show only the tail of the transcript — from the Nth-most-recent
  *  player message onward — so you rejoin in recent context, not the whole log. */
@@ -23,7 +33,7 @@ function lastExchanges(transcript: ChatEntry[], n: number): ChatEntry[] {
 export default function PlayClient({ campaignId }: { campaignId: string }) {
   const [state, setState] = useState<CampaignState | null>(null);
   const [chat, setChat] = useState<ChatEntry[]>([]);
-  const [choices, setChoices] = useState<string[]>([]);
+  const [choices, setChoices] = useState<ChoiceOption[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   // Live narration while a turn streams in. null = not streaming; "" = streaming
@@ -70,7 +80,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
               ]
             : [];
         setChat([recap, ...restored, ...notice]);
-        if (!restored.length) setChoices(buildOpeningChoices(d.state));
+        if (!restored.length) setChoices(normalizeChoices(buildOpeningChoices(d.state)));
       });
   }, [campaignId]);
 
@@ -80,8 +90,8 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
     if (atBottom) chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat, choices, streamingText, atBottom]);
 
-  async function send(actionText?: string) {
-    const text = (actionText ?? input).trim();
+  async function send(action?: ChoiceOption) {
+    const text = (action?.label ?? input).trim();
     if (!text || busy) return;
     setInput("");
     setChoices([]);
@@ -93,7 +103,8 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
       const res = await fetch("/api/turn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaignId, playerText: text }),
+        // A choice's attached check rides along — the engine pre-rolls it.
+        body: JSON.stringify({ campaignId, playerText: text, check: action?.check }),
       });
 
       // Gating errors (budget/auth/not-found) come back as plain JSON, not a stream.
@@ -119,10 +130,11 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
           let evt: {
             type: string;
             text?: string;
+            lines?: string[];
             error?: string;
             narration?: string;
             state?: CampaignState;
-            choices?: string[];
+            choices?: unknown;
             sceneEnded?: boolean;
             tutorialGraduated?: boolean;
           };
@@ -134,10 +146,21 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
           if (evt.type === "token") {
             streamed += evt.text ?? "";
             setStreamingText(streamed);
+          } else if (evt.type === "engine") {
+            // Engine output (dice rolls, skill ticks) — shown the moment it
+            // happens, before/while the narration streams.
+            const lines = Array.isArray(evt.lines) ? evt.lines : [];
+            setChat((c) => [
+              ...c,
+              ...lines.map((l, i) => ({
+                role: "system" as const,
+                text: `${i === 0 ? "🎲" : "⬆"} ${l}`,
+              })),
+            ]);
           } else if (evt.type === "done") {
             setChat((c) => [...c, { role: "dm", text: evt.narration || stripInlineMenu(streamed) || "…" }]);
             if (evt.state) setState(evt.state);
-            setChoices(Array.isArray(evt.choices) ? evt.choices : []);
+            setChoices(normalizeChoices(evt.choices));
             if (evt.sceneEnded) {
               setChat((c) => [...c, { role: "system", text: "— scene ended · checklist applied —" }]);
             }
@@ -353,8 +376,10 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                         onClick={() => send(c)}
                         disabled={!hasApiKey}
                         className="rounded-full border border-edge bg-panel px-4 py-2 text-left text-[15px] text-neutral-200 transition hover:border-accent hover:text-accent disabled:opacity-40"
+                        title={c.check ? `Skill check: ${c.check.skill} vs DC ${c.check.dc}` : undefined}
                       >
-                        {c}
+                        {c.label}
+                        {c.check && <span className="ml-1.5 text-xs text-accent/80">🎲 {c.check.skill}</span>}
                       </button>
                     ))}
                   </div>

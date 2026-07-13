@@ -55,6 +55,12 @@ export const TUTORIAL_CHOICE_DIRECTIVE =
   `action (e.g. "Take the job" / "Walk away") — no negotiation, no branching menus, no more ` +
   `than ${TUTORIAL_CHOICE_COUNT}. The engine will clamp to ${TUTORIAL_CHOICE_COUNT} regardless.`;
 
+/** JSON-turn variant of the tutorial directive (no tool vocabulary). */
+export const TUTORIAL_JSON_DIRECTIVE =
+  `TUTORIAL — first ${TUTORIAL_QUEST_TARGET} quests: frame this beat around ONE clear decision. ` +
+  `"choices" must contain EXACTLY ${TUTORIAL_CHOICE_COUNT} options, a yes/no or go/no-go on a ` +
+  `single course of action. The engine clamps to ${TUTORIAL_CHOICE_COUNT} regardless.`;
+
 /**
  * One-time transition beat shown when the tutorial ends. Styled like the other
  * system transition lines in the transcript (em-dashes, lowercase, middot).

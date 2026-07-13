@@ -21,6 +21,8 @@ export interface SessionData {
   scenes: Scene[];
   /** Rolling entity focus carried from the previous scene's refs. */
   focusIds: string[];
+  /** Skills already ticked this scene ("characterId:skill") — per-scene cap. */
+  tickedThisScene: string[];
 }
 
 const store = new Map<string, SessionData>();
@@ -59,6 +61,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               log: runtime.log,
               scenes: [],
               focusIds: runtime.focusIds,
+              tickedThisScene: runtime.tickedThisScene,
             }
           : {
               state,
@@ -67,6 +70,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               log: [],
               scenes: [],
               focusIds: [],
+              tickedThisScene: [],
             };
       store.set(campaignId, session);
       return session;
@@ -103,6 +107,7 @@ export async function persistSession(campaignId: string, session: SessionData): 
       history: session.history,
       log: session.log,
       focusIds: session.focusIds,
+      tickedThisScene: session.tickedThisScene,
     });
   } catch (e) {
     console.error(

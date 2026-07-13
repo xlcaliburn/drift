@@ -119,6 +119,15 @@ threads (entityRefs/title-overlap/objective floor), capped for lean context, wit
 `focusIds` carrying named entities forward one turn for continuity (see
 `llm/retrieval.test.ts`).
 
+**Structured-turn architecture (post-M8):** DeepSeek kept ignoring tool/format
+rules (16 offer_choices vs 2 roll_check in real play; inline prose menus; no
+levelling). Routine turns now use `llm/jsonTurn.ts`: the model fills a validated
+JSON `TurnPlan`; choices carry engine-rolled checks (dice shown as system lines,
+ticks awarded immediately with a persisted per-scene cap); history fed back is
+canonical (cleaned narration + engine summary), never raw output. Combat
+set-pieces still use the freeform tool loop. Migrations 007 (ai_calls exchange
+dump) and 008 (ticked_this_scene) applied.
+
 Small deferred items: optimistic-lock guard on `campaign_runtime` (`updated_at` is
 written but not checked), and re-rendering the persisted dice log on reload.
 

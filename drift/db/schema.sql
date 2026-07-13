@@ -188,6 +188,7 @@ create table if not exists campaign_runtime (
   history     jsonb not null default '[]',
   log         jsonb not null default '[]',
   focus_ids   jsonb not null default '[]',
+  ticked_this_scene jsonb not null default '[]',
   updated_at  timestamptz not null default now()
 );
 
