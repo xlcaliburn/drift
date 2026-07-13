@@ -31,6 +31,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
   const [hasApiKey, setHasApiKey] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [choicesCollapsed, setChoicesCollapsed] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showSheet, setShowSheet] = useState(false); // mobile sidebar drawer
   const [feedbackText, setFeedbackText] = useState("");
@@ -72,9 +73,11 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
       });
   }, [campaignId]);
 
+  // Auto-follow new content only while pinned to the bottom — don't yank the
+  // player down while they've scrolled up to re-read.
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat, choices, streamingText]);
+    if (atBottom) chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat, choices, streamingText, atBottom]);
 
   async function send(actionText?: string) {
     const text = (actionText ?? input).trim();
@@ -263,8 +266,14 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
 
       <div className="flex min-h-0 flex-1">
         {/* Chat pane */}
-        <section className="flex min-w-0 flex-1 flex-col">
-          <div className="scrollbar-thin mx-auto w-full max-w-3xl flex-1 space-y-5 overflow-y-auto px-5 py-6">
+        <section className="relative flex min-w-0 flex-1 flex-col">
+          <div
+            className="scrollbar-thin mx-auto w-full max-w-3xl flex-1 space-y-5 overflow-y-auto px-5 py-6"
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
+            }}
+          >
             {chat.map((e, i) =>
               e.role === "recap" ? (
                 <div
@@ -305,6 +314,20 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             )}
             <div ref={chatEndRef} />
           </div>
+
+          {/* Jump to the latest — shown only when scrolled up from the bottom. */}
+          {!atBottom && (
+            <button
+              onClick={() => {
+                chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                setAtBottom(true);
+              }}
+              className="absolute bottom-24 left-1/2 z-10 -translate-x-1/2 rounded-full border border-edge bg-panel/90 px-3 py-1.5 text-xs text-neutral-200 shadow-lg backdrop-blur transition hover:border-accent hover:text-accent"
+              aria-label="Scroll to latest"
+            >
+              ↓ Latest
+            </button>
+          )}
 
           <div className="mx-auto w-full max-w-3xl border-t border-edge px-5 py-4">
             {/* Suggested actions — click to act, or type your own below. The tab

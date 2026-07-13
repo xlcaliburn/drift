@@ -103,6 +103,22 @@ export function buildOpeningChoices(state: CampaignState): string[] {
 }
 
 /**
+ * Deterministic FALLBACK suggested actions for an in-progress campaign, derived
+ * from active threads. Used when the narrator ends a routine (non-combat) beat
+ * without calling offer_choices — DeepSeek in particular drops it intermittently,
+ * which made the quick-select buttons vanish after a few turns. Free, no tokens.
+ * Tutorial-clamped like the real choices.
+ */
+export function buildFallbackChoices(state: CampaignState): string[] {
+  const active = state.threads.filter((t) => t.status === "active");
+  const choices = [...active.slice(0, 3).map((t) => t.title), "Look around and take stock"];
+  if (inTutorial(state)) {
+    return [choices[0], "Look around and take stock"].slice(0, TUTORIAL_CHOICE_COUNT);
+  }
+  return choices.slice(0, 4);
+}
+
+/**
  * The in-world OPENING NARRATION — the cold-open the "DM" delivers before the
  * player's first action, derived from stored state (the campaign situation + the
  * starting quest framing). Pure and free. Distinct from buildOpeningRecap (which

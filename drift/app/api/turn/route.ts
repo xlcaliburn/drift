@@ -5,6 +5,7 @@ import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
 import { recordAiCall } from "@/lib/audit";
 import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
+import { buildFallbackChoices } from "@/shared/recap";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -82,6 +83,18 @@ export async function POST(req: NextRequest) {
           onDelta: (text) => send({ type: "token", text }),
         });
 
+        // Quick-select safety net: if the narrator ended a routine beat without
+        // calling offer_choices (DeepSeek drops it intermittently), the chips would
+        // vanish. Backfill deterministic, thread-derived choices — but not during
+        // combat (a menu mid-fight is wrong) or when the scene just ended.
+        const inCombat = result.telemetry.toolCalls.some(
+          (t) => t === "spawn_encounter" || t === "resolve_attack",
+        );
+        const choices =
+          result.choices.length === 0 && !result.sceneEnded && !inCombat
+            ? buildFallbackChoices(result.state)
+            : result.choices;
+
         const transcriptAdds = [
           { role: "player" as const, text: playerText },
           { role: "dm" as const, text: result.narration || "…" },
@@ -143,7 +156,7 @@ export async function POST(req: NextRequest) {
           events: result.events,
           state: result.state,
           worldEvents: result.worldEvents,
-          choices: result.choices,
+          choices,
           sceneEnded: result.sceneEnded,
           tutorialGraduated: result.tutorialGraduated,
           model: result.model,

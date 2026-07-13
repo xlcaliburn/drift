@@ -16,6 +16,33 @@ function allSkillRows(owned: Skill[]): Skill[] {
     .sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
 }
 
+/** One-line "what this covers" blurbs for the skill tooltips. */
+const SKILL_INFO: Record<string, string> = {
+  piloting: "Flying ships — dogfights, hard burns, threading debris at speed.",
+  gunnery: "Firing ship-mounted weapons in space combat.",
+  smallArms: "Pistols and rifles — personal ranged fighting.",
+  melee: "Close-quarters fighting — blades, fists, improvised weapons.",
+  stealth: "Moving unseen, hiding, and sleight of hand.",
+  zeroG: "Moving and fighting in zero gravity and vacuum.",
+  streetwise: "Reading the underworld — contacts, rumors, black markets.",
+  negotiation: "Bargaining, brokering deals, and talking people around.",
+  deception: "Lies, disguises, cons, and bluffing.",
+  intimidation: "Bending others with threats and force of presence.",
+  mechanics: "Repairing and jury-rigging machinery and hulls.",
+  electronics: "Hacking, wiring, security systems, and sensors.",
+  navigation: "Plotting jumps and lanes — and not getting lost.",
+  survival: "Enduring hostile environments and scavenging to live.",
+  perception: "Noticing details — spotting danger, traps, and tells.",
+};
+
+/** Tooltip text for a skill: what it covers + its governing attribute. */
+function skillTooltip(name: string): string {
+  const attr = skillsMeta.skills[name as keyof typeof skillsMeta.skills]?.attribute ?? "reflex";
+  const a = attr.charAt(0).toUpperCase() + attr.slice(1);
+  const desc = SKILL_INFO[name];
+  return desc ? `${desc} (governed by ${a})` : `Governed by ${a}.`;
+}
+
 type Tab = "sheet" | "ship" | "map" | "clocks";
 
 export default function Sidebar({
@@ -132,7 +159,13 @@ function SheetTab({ state }: { state: CampaignState }) {
             <Bar value={c.hp} max={c.maxHp} tone={c.hp / c.maxHp < 0.34 ? "bg-bad" : "bg-good"} />
           </div>
           <div className="mt-1 text-neutral-500">
-            Armor Class {c.ac}
+            <span
+              className="cursor-help underline decoration-dotted decoration-neutral-700 underline-offset-2"
+              title="How hard you are to hit — an attack roll must meet or beat it to land (10 + Reflex + armor)."
+            >
+              Armor Class
+            </span>{" "}
+            {c.ac}
             {c.credits !== undefined && ` · ¢${c.credits}`}
             {c.fragile && <span className="text-bad"> · FRAGILE</span>}
           </div>
@@ -147,7 +180,12 @@ function SheetTab({ state }: { state: CampaignState }) {
                   return (
                     <div key={s.name} className={learned ? "" : "opacity-45"}>
                       <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-[13px] text-neutral-200">{humanizeSkill(s.name)}</span>
+                        <span
+                          className="cursor-help text-[13px] text-neutral-200 underline decoration-dotted decoration-neutral-600 underline-offset-2"
+                          title={skillTooltip(s.name)}
+                        >
+                          {humanizeSkill(s.name)}
+                        </span>
                         <span className="shrink-0 tabular-nums text-[11px] text-neutral-500">
                           Level&nbsp;{s.level}
                           {learned && <span className="text-neutral-600"> · {s.ticks}/{tickMax(s.level)}</span>}
