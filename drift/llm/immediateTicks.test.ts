@@ -73,23 +73,23 @@ describe("immediate tick award on qualifying rolls", () => {
     expect(roll(rt, { stakes: false }).tick).toBeUndefined();
   });
 
-  it("deals failDamage on a failed check (real stakes)", () => {
-    // d20=1 → total 1+2 vs DC 13 → failure → 4 damage.
+  it("deals failDamage on a failed HAZARD check (real stakes), capped to a fraction of max HP", () => {
+    // d20=1 → failure. zeroG is a hazard skill; maxHp 8 → cap = ceil(8*0.34) = 3.
     const rt = new TurnRuntime(stateWithPc(), rollRng(1));
     const res = rt.execute("roll_check", {
       characterId: "pc-1",
-      skill: "stealth",
+      skill: "zeroG",
       dc: 13,
       stakes: true,
       failDamage: "4",
     }) as { outcome: string; damage?: number };
     expect(res.outcome).toBe("failure");
-    expect(res.damage).toBe(4);
-    expect(rt.state.characters[0].hp).toBe(4); // 8 → 4
+    expect(res.damage).toBe(3); // capped from 4
+    expect(rt.state.characters[0].hp).toBe(5); // 8 → 5
   });
 
-  it("does not deal damage on a successful check", () => {
-    const rt = new TurnRuntime(stateWithPc(), rollRng(20)); // crit success
+  it("a failed ABILITY check (stealth) never deals damage", () => {
+    const rt = new TurnRuntime(stateWithPc(), rollRng(1)); // failure
     const res = rt.execute("roll_check", {
       characterId: "pc-1",
       skill: "stealth",
@@ -97,9 +97,9 @@ describe("immediate tick award on qualifying rolls", () => {
       stakes: true,
       failDamage: "6",
     }) as { outcome: string; damage?: number };
-    expect(res.outcome).toBe("success");
+    expect(res.outcome).toBe("failure");
     expect(res.damage).toBeUndefined();
-    expect(rt.state.characters[0].hp).toBe(8);
+    expect(rt.state.characters[0].hp).toBe(8); // untouched
   });
 
   it("downs at 0 HP, then a further hit kills — death is possible", () => {
@@ -110,18 +110,21 @@ describe("immediate tick award on qualifying rolls", () => {
       id: `t-${i}`, campaignId: "c", title: "done", body: "", status: "resolved", entityRefs: [],
     })) as CampaignState["threads"];
     const rt = new TurnRuntime(s, rollRng(1)); // always fail
-    // First big hit: 8 → 0, DOWNED.
-    const down = rt.execute("roll_check", {
-      characterId: "pc-1", skill: "stealth", dc: 13, stakes: true, failDamage: "8",
-    }) as { downed?: boolean; died?: boolean };
+    // Capped hits (3 each) drive 8 → 5 → 2 → 0, DOWNED.
+    const hit = () =>
+      rt.execute("roll_check", { characterId: "pc-1", skill: "zeroG", dc: 13, stakes: true, failDamage: "9" }) as {
+        downed?: boolean;
+        died?: boolean;
+      };
+    hit();
+    hit();
+    const down = hit();
     expect(down.downed).toBe(true);
     expect(rt.state.characters[0].hp).toBe(0);
     expect(rt.state.characters[0].injuries.some((i) => i.name === "Downed")).toBe(true);
 
     // Struck while down → DEAD.
-    const dead = rt.execute("roll_check", {
-      characterId: "pc-1", skill: "stealth", dc: 13, stakes: true, failDamage: "3",
-    }) as { died?: boolean };
+    const dead = hit();
     expect(dead.died).toBe(true);
     expect(rt.state.characters[0].injuries.some((i) => i.name === "Dead")).toBe(true);
     expect(TurnRuntime.isDead(rt.state.characters[0])).toBe(true);

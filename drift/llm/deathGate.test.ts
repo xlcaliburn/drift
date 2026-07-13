@@ -26,27 +26,53 @@ function pcState(resolved: number): CampaignState {
   } as unknown as CampaignState;
 }
 
-const lethalHit = (rt: TurnRuntime) =>
-  rt.execute("roll_check", { characterId: "pc-1", skill: "stealth", dc: 99, stakes: false, failDamage: "100" });
+// zeroG is a hazard skill, so failure hurts — but the hit is capped to a fraction
+// of max HP, so it takes several to drop a 5-HP character.
+const hazardHit = (rt: TurnRuntime) =>
+  rt.execute("roll_check", { characterId: "pc-1", skill: "zeroG", dc: 99, stakes: false, failDamage: "100" });
+const hitUntilDown = (rt: TurnRuntime) => {
+  for (let i = 0; i < 6 && rt.state.characters[0].hp > 0; i++) hazardHit(rt);
+};
 
 describe("death gate", () => {
-  it("in the tutorial (<3 quests), a second lethal hit only DOWNS — no permadeath", () => {
+  it("in the tutorial (<3 quests), repeated hits DOWN but never kill — no permadeath", () => {
     const rt = new TurnRuntime(pcState(0), minRng);
-    lethalHit(rt); // hp 5 → 0: downed
+    hitUntilDown(rt); // driven to 0 HP: downed
+    expect(rt.state.characters[0].hp).toBe(0);
     expect(rt.state.characters[0].injuries.some((i) => i.name === "Downed")).toBe(true);
-    lethalHit(rt); // struck while down — would kill, but tutorial forbids it
+    hazardHit(rt); // struck while down — would kill, but tutorial forbids it
     const names = rt.state.characters[0].injuries.map((i) => i.name);
     expect(names).toContain("Downed");
     expect(names).not.toContain("Dead");
     expect(TurnRuntime.isDead(rt.state.characters[0])).toBe(false);
   });
 
-  it("after the tutorial (>=3 quests), a second lethal hit KILLS", () => {
+  it("after the tutorial (>=3 quests), a hit while down KILLS", () => {
     const rt = new TurnRuntime(pcState(3), minRng);
-    lethalHit(rt); // downed
+    hitUntilDown(rt); // downed
     expect(rt.state.characters[0].injuries.some((i) => i.name === "Downed")).toBe(true);
-    lethalHit(rt); // dead
+    hazardHit(rt); // struck while down → dead
     expect(TurnRuntime.isDead(rt.state.characters[0])).toBe(true);
+  });
+});
+
+describe("failure damage is gated + capped (D&D-style)", () => {
+  it("a failed ability check (perception) deals NO damage", () => {
+    const rt = new TurnRuntime(pcState(3), minRng); // hp 5, fails vs dc 99
+    rt.execute("roll_check", { characterId: "pc-1", skill: "perception", dc: 99, failDamage: "100" });
+    expect(rt.state.characters[0].hp).toBe(5); // untouched — perception can't hurt you
+  });
+
+  it("a failed hazard check (zeroG) deals damage, capped to a fraction of max HP", () => {
+    const rt = new TurnRuntime(pcState(3), minRng); // hp 5, maxHp 5 → cap = ceil(5*0.34) = 2
+    rt.execute("roll_check", { characterId: "pc-1", skill: "zeroG", dc: 99, failDamage: "100" });
+    expect(rt.state.characters[0].hp).toBe(3); // 5 - 2 (capped), not 5 - 100
+  });
+
+  it("a danger save (hazard flag) deals damage on any skill but stays capped", () => {
+    const rt = new TurnRuntime(pcState(3), minRng);
+    rt.execute("roll_check", { characterId: "pc-1", skill: "perception", dc: 99, failDamage: "100", hazard: true });
+    expect(rt.state.characters[0].hp).toBe(3); // danger vs a trap can hurt even on a perception save — but capped
   });
 });
 

@@ -214,7 +214,9 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       role: "user",
       content:
         `${contextSlice}\n\n---\nPLAYER: ${input.playerText}` +
-        (engineLines.length ? `\n${engineLines.join("\n")}\nNarrate this result — do not request another roll.` : ""),
+        (engineLines.length
+          ? `\n${engineLines.join("\n")}\nNarrate this result. If the engine dealt DAMAGE or a CRITICAL FAILURE, show concretely HOW it went wrong and how they got hurt. Do not request another roll.`
+          : ""),
     },
   ];
   const promptDump = `=== SYSTEM ===\n${system.map((b) => b.text).join("\n\n")}\n\n=== MESSAGES ===\n${messages
@@ -313,7 +315,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       messages.push({ role: "assistant", content: JSON.stringify({ narration: plan.narration }) });
       messages.push({
         role: "user",
-        content: `${engineContextLine(res)}\nNarrate the outcome of this roll and provide choices. Do not request another roll.`,
+        content: `${engineContextLine(res)}\nNarrate the outcome and provide choices. If damage or a critical failure landed, show HOW it went wrong and how they got hurt. Do not request another roll.`,
       });
       const outcome = await plannedCall(true);
       narration = `${plan.narration}\n\n${outcome.narration}`.trim();
@@ -332,6 +334,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       dc: plan.danger.dc,
       stakes: true,
       failDamage: plan.danger.damage,
+      hazard: true, // a danger is a physical hazard save — damage is legitimate (still capped)
     }) as RollResult;
     if (res.breakdown) {
       engineLines.push(engineContextLine(res));

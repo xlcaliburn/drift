@@ -11,7 +11,7 @@ import {
   type CombatTarget,
   type EngineEvent,
 } from "@/engine";
-import { enemyTiers, shipClasses, economy } from "@/content";
+import { enemyTiers, shipClasses, economy, isHazardSkill } from "@/content";
 import { awardTick } from "@/engine/progression";
 import { rollDamage, maxDice } from "@/engine/dice";
 import {
@@ -198,12 +198,20 @@ export class TurnRuntime {
         tick = award.event.breakdown;
       }
     }
-    // Real stakes: a failed roll that carries failDamage HURTS — the engine rolls
-    // the damage and applies it (can down or kill the character).
+    // Real stakes: a failed roll that carries failDamage HURTS — but only from a
+    // PHYSICAL HAZARD (a hazard skill, or an explicit danger save via input.hazard).
+    // A failed ability check (perception, negotiation, mechanics…) never costs HP —
+    // it just fails (D&D: ability checks don't deal damage, saves do). And any hit
+    // is capped at a fraction of max HP, so one bad roll can't gut you (no 5-of-7).
     let harm: { taken: number; hpAfter: number; downed: boolean; died: boolean } | undefined;
     if (res.outcome === "failure" && input.failDamage) {
-      const rolled = rollDamage(String(input.failDamage), this.rng);
-      if (rolled > 0) harm = this.applyDamage(character.id, rolled, `Failed ${String(input.skill)} check.`);
+      const skill = String(input.skill);
+      if (Boolean(input.hazard) || isHazardSkill(skill)) {
+        const rolled = rollDamage(String(input.failDamage), this.rng);
+        const cap = Math.max(1, Math.ceil(character.maxHp * economy.damageRules.failDamageFractionCap));
+        const dealt = Math.min(rolled, cap);
+        if (dealt > 0) harm = this.applyDamage(character.id, dealt, `Failed ${skill} check.`);
+      }
     }
     return {
       breakdown: res.breakdown,

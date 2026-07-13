@@ -37,3 +37,10 @@ export function skillAttribute(skill: string): string {
   const key = skill as keyof typeof skills.skills;
   return skills.skills[key]?.attribute ?? "reflex";
 }
+
+/** Whether failing this skill can physically hurt you (carries failure damage).
+ *  Only hazard skills do — ability checks (perception, negotiation…) never do. */
+export function isHazardSkill(skill: string): boolean {
+  const def = skills.skills[skill as keyof typeof skills.skills] as { hazard?: boolean } | undefined;
+  return def?.hazard === true;
+}
