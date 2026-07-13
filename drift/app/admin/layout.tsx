@@ -11,7 +11,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (user.role !== "admin" || user.status !== "approved") redirect("/");
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
+    <main className="w-full px-4 py-8 sm:px-6 lg:px-8">
       <div className="flex items-start justify-between gap-4">
         <div>
           <Link href="/" className="text-xs text-neutral-500 hover:text-accent">
