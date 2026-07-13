@@ -82,13 +82,13 @@ type RollResult = {
   error?: string;
 };
 
-/** Player-facing lines (dice → tick → damage) for a resolved roll. */
+/** Player-facing lines (dice → tick → damage), pre-prefixed for display. */
 function rollDisplayLines(res: RollResult): string[] {
   const lines: string[] = [];
-  if (res.breakdown) lines.push(res.breakdown);
-  if (res.tick) lines.push(res.tick);
+  if (res.breakdown) lines.push(`🎲 ${res.breakdown}`);
+  if (res.tick) lines.push(`⬆ ${res.tick}`);
   if (res.damage) {
-    lines.push(`Took ${res.damage} damage${res.died ? " — KILLED" : res.downed ? " — DOWNED" : ""}`);
+    lines.push(`💥 Took ${res.damage} damage${res.died ? " — KILLED" : res.downed ? " — DOWNED" : ""}`);
   }
   return lines;
 }
@@ -119,6 +119,9 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
 
   // ── Pre-roll: the clicked choice carried a check — engine resolves it NOW. ──
   const engineLines: string[] = [];
+  // Last resolved action check (skill + outcome) — shades payout rolls: a
+  // successful negotiation this turn lands in the upper half of the band.
+  let lastRoll: { skill: string; outcome?: string } | null = null;
   if (input.preCheck && pc) {
     toolCalls.push("roll_check");
     const res = runtime.execute("roll_check", {
@@ -129,6 +132,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       failDamage: input.preCheck.failDamage,
     }) as RollResult;
     if (res.breakdown) {
+      lastRoll = { skill: input.preCheck.skill, outcome: res.outcome };
       engineLines.push(engineContextLine(res));
       input.onEngine?.(rollDisplayLines(res));
     }
@@ -234,6 +238,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       failDamage: plan.roll.failDamage,
     }) as RollResult;
     if (res.breakdown) {
+      lastRoll = { skill: plan.roll.skill, outcome: res.outcome };
       input.onEngine?.(rollDisplayLines(res));
       messages.push({ role: "assistant", content: JSON.stringify({ narration: plan.narration }) });
       messages.push({
@@ -265,6 +270,21 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   }
 
   // ── Apply the plan's mechanical intents through the engine. ────────────────
+  if (plan.payout && pc) {
+    toolCalls.push("award_payout");
+    const mood =
+      lastRoll?.skill === "negotiation"
+        ? lastRoll.outcome === "success"
+          ? "high"
+          : "low"
+        : undefined;
+    const res = runtime.execute("award_payout", {
+      tier: plan.payout.tier,
+      reason: plan.payout.reason,
+      mood,
+    }) as { amount?: number; tier?: string; error?: string };
+    if (res.amount) input.onEngine?.([`💰 Payment: +¢${res.amount} (${plan.payout.tier})`]);
+  }
   if (plan.worldEvent) {
     toolCalls.push("log_world_event");
     runtime.execute("log_world_event", {

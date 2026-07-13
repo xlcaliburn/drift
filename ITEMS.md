@@ -36,8 +36,13 @@ small and diverse — one item per job):
 | Item | Effect (engine) | Combat use | Price ~ |
 |---|---|---|---|
 | Shield cell | restore `shieldReady` mid-fight | yes (ship) | 90¢ |
-| Hull patch kit | ship heal **1d10+5**, out of combat | no | 80¢ |
+| Hull patch kit | ship heal **1d6+2**, out of combat | no | 80¢ |
 | Missile reload | +2 missiles | no (dock only) | 102¢ (2× missileCost) |
+
+> Pricing rule (ECONOMY.md E-3): **dock repair (¢12/HP) is always the efficient
+> option**; the patch kit (~¢14.5/HP) is the field-emergency premium for when
+> you can't reach a dock. Docks also extend credit — repair can push the
+> balance negative, spawning a dock-debt payoff job rather than a soft-lock.
 
 ### Non-consumable
 - **Weapons/armor**: existing `damage`/`acBonus` gear, now with catalog ids,

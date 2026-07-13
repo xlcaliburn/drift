@@ -11,7 +11,7 @@ import {
   type CombatTarget,
   type EngineEvent,
 } from "@/engine";
-import { enemyTiers, shipClasses } from "@/content";
+import { enemyTiers, shipClasses, economy } from "@/content";
 import { awardTick } from "@/engine/progression";
 import { rollDamage } from "@/engine/dice";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
@@ -125,6 +125,8 @@ export class TurnRuntime {
         return this.logWorldEvent(input);
       case "end_scene":
         return this.endScene(input);
+      case "award_payout":
+        return this.awardPayout(input);
       case "offer_choices":
         return this.offerChoices(input);
       case "dm_override":
@@ -312,10 +314,49 @@ export class TurnRuntime {
     return { enemies: spawned };
   }
 
+  /**
+   * Engine-clamped income (ECONOMY.md): the model names a job tier; the ENGINE
+   * rolls the credits inside that tier's band. A negotiation check resolved this
+   * turn shades the roll: success → upper half, failure → lower half.
+   */
+  private awardPayout(input: Record<string, unknown>) {
+    const tier = String(input.tier) as "T0" | "T1" | "T2" | "T3";
+    const band = economy.jobPayouts[tier];
+    if (!Array.isArray(band)) return { error: `unknown payout tier ${input.tier}` };
+    const pc = this.state.characters.find((c) => c.kind === "pc");
+    if (!pc) return { error: "no player character" };
+    const [lo, hi] = band as [number, number];
+    const mid = Math.round((lo + hi) / 2);
+    const mood = input.mood === "high" ? "high" : input.mood === "low" ? "low" : undefined;
+    const amount = this.rng.int(mood === "high" ? mid : lo, mood === "low" ? mid : hi);
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((c) =>
+        c.id === pc.id ? { ...c, credits: (c.credits ?? 0) + amount } : c,
+      ),
+    };
+    const reason = input.reason ? ` — ${String(input.reason)}` : "";
+    this.events.push({
+      type: "resource",
+      breakdown: `Payment: +¢${amount} (${tier}${reason})`,
+      field: "credits",
+      delta: amount,
+    });
+    return { amount, tier };
+  }
+
   private adjustResource(input: Record<string, unknown>) {
     const targetId = String(input.targetId);
     const field = String(input.field);
-    const delta = Number(input.delta);
+    let delta = Number(input.delta);
+    // Money moves through the engine: model credit GRANTS above the flavor cap
+    // are clamped (real income goes through award_payout's tier bands), and a
+    // single debit can't exceed the per-turn cap (prevents wallet-zeroing).
+    if (field === "credits") {
+      const { flavorGrantCap, maxDebitPerTurn } = economy.jobPayouts;
+      if (delta > flavorGrantCap) delta = flavorGrantCap;
+      if (delta < -maxDebitPerTurn) delta = -maxDebitPerTurn;
+    }
 
     if (this.isShipTarget(targetId)) {
       const s = this.state.ship!;

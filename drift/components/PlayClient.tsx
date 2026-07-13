@@ -147,16 +147,10 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             streamed += evt.text ?? "";
             setStreamingText(streamed);
           } else if (evt.type === "engine") {
-            // Engine output (dice rolls, skill ticks) — shown the moment it
-            // happens, before/while the narration streams.
+            // Engine output (dice, ticks, damage, payment) — pre-prefixed by the
+            // server, shown the moment it happens, before/while narration streams.
             const lines = Array.isArray(evt.lines) ? evt.lines : [];
-            setChat((c) => [
-              ...c,
-              ...lines.map((l, i) => ({
-                role: "system" as const,
-                text: `${i === 0 ? "🎲" : "⬆"} ${l}`,
-              })),
-            ]);
+            setChat((c) => [...c, ...lines.map((l) => ({ role: "system" as const, text: l }))]);
           } else if (evt.type === "done") {
             setChat((c) => [...c, { role: "dm", text: evt.narration || stripInlineMenu(streamed) || "…" }]);
             if (evt.state) setState(evt.state);

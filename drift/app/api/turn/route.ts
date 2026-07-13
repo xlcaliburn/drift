@@ -125,14 +125,21 @@ export async function POST(req: NextRequest) {
             ? buildFallbackChoices(result.state).map((label) => ({ label }))
             : normalized;
 
-        // Engine result lines (dice + ticks) become system transcript lines so a
-        // refresh shows the same mechanics the player saw live.
-        const engineLines = result.events
-          .filter((e) => e.type === "roll" || e.type === "tick")
-          .map((e) => ({
-            role: "system" as const,
-            text: `${e.type === "roll" ? "🎲" : "⬆"} ${e.breakdown}`,
-          }));
+        // Engine result lines (dice, ticks, damage, payment) become system
+        // transcript lines so a refresh shows the same mechanics seen live.
+        const isEngineLine = (e: (typeof result.events)[number]) =>
+          e.type === "roll" ||
+          e.type === "tick" ||
+          (e.type === "resource" &&
+            (("field" in e && e.field === "hp" && Number(e.delta) < 0) ||
+              ("field" in e && e.field === "credits" && Number(e.delta) > 0)));
+        const enginePrefix = (e: (typeof result.events)[number]) =>
+          e.type === "roll" ? "🎲" : e.type === "tick" ? "⬆" : "field" in e && e.field === "credits" ? "💰" : "💥";
+        const engineEvents = result.events.filter(isEngineLine);
+        const engineLines = engineEvents.map((e) => ({
+          role: "system" as const,
+          text: `${enginePrefix(e)} ${e.breakdown}`,
+        }));
 
         const transcriptAdds = [
           { role: "player" as const, text: playerText },
@@ -152,10 +159,7 @@ export async function POST(req: NextRequest) {
         // prose-menu violation would become few-shot evidence for every later
         // turn). The user side carries the action + a compact engine summary;
         // the assistant side carries only the cleaned narration.
-        const engineSummary = result.events
-          .filter((e) => e.type === "roll" || e.type === "tick")
-          .map((e) => e.breakdown)
-          .slice(0, 6);
+        const engineSummary = engineEvents.map((e) => e.breakdown).slice(0, 6);
         const canonicalUser =
           `PLAYER: ${playerText}` +
           (engineSummary.length ? `\n[ENGINE: ${engineSummary.join(" · ")}]` : "");

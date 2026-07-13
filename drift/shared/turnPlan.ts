@@ -63,6 +63,14 @@ export const TurnPlan = z.object({
   roll: optionalNullable(CheckSpec),
   /** An unavoidable hazard the PC must survive this turn (save-or-take-damage). */
   danger: optionalNullable(DangerSpec),
+  /** Job/bounty/deal concluded → the ENGINE rolls the credits inside the tier's
+   *  payout band (ECONOMY.md — the model never sets amounts). */
+  payout: optionalNullable(
+    z.object({
+      tier: z.enum(["T0", "T1", "T2", "T3"]),
+      reason: optionalNullable(z.string()),
+    }),
+  ),
   /** Canon feed entry when the beat shifts a faction's standing. */
   worldEvent: optionalNullable(
     z.object({

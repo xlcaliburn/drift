@@ -119,26 +119,35 @@ code changes. Same policy as CREW C-1 / ITEMS IT-4.
 
 ## ⚠ Flags
 
-- **E-1 (blocking): payout clamp is an engine change** — payout bands + the
-  ±20% negotiation rule + rejection of large model credit grants. Without it
-  the rest of this doc is decorative. Should land with or before items v1.
-- **E-2 (audit needed): time units are inconsistent.** The season/Fault Line is
-  14 in-world *days*; wages are quoted per *tenday* (10 days); the engine
-  tracks `tendaysElapsed` and scene-end passes `tendaysDelta`. If upkeep
-  charges per tenday, a whole season charges upkeep ~1.4 times — i.e. crews are
-  nearly free, breaking CREW.md's pressure entirely. Fix direction: audit what
-  `tendaysDelta` actually means in play, then charge upkeep **pro-rated per
-  in-world day** (tables stay quoted per tenday for readability).
-- **E-3: hull patch kit undercuts dock repair** (¢80 for ~10 HP ≈ 8/HP vs dock
-  18/HP) — field kits would strictly dominate. Reprice: patch kit heals 1d6+2
-  (≈ ¢14.5/HP premium for field convenience), or dock drops to 12/HP with an
-  engineer-crew discount (nice crew synergy).
+- **E-1 — RESOLVED (implemented 2026-07-13).** Money moves through the engine:
+  `TurnPlan.payout {tier}` → `award_payout` rolls inside the band in
+  `content/economy.json` (`jobPayouts`), with negotiation shading (a successful
+  negotiation check the same turn → upper half of the band; failed → lower).
+  Model credit grants via `adjust_resource` are clamped to `flavorGrantCap`
+  (¢50) and debits to `maxDebitPerTurn` (¢500). This also closed a real hole:
+  the structured JSON path previously had **no income mechanism at all**.
+- **E-2 — RESOLVED BY CLARIFICATION.** The 14-day "season" is a **player-time
+  cap** — an arbitrary real-world end date (per MULTIPLAYER.md's fixed season
+  ends) — and is a *different axis* from in-game time (`tendaysElapsed`).
+  Upkeep charges on **in-game tendays** as CREW.md specifies; no conflict.
+  Residual note: the Fault Line clock currently advances off in-game
+  `tendaysDelta` in code — if the season end is meant to be a real-world date,
+  the reckoning trigger needs a wall-clock check at season close (shared-world
+  runtime work), not a change to upkeep.
+- **E-3 — RESOLVED (dock always cheaper + debt instead of soft-lock).**
+  Dock repair drops to **¢12/HP** (content change applied); the hull patch kit
+  heals **1d6+2** (≈ ¢14.5/HP — a field-emergency premium, never the efficient
+  choice). **Docks extend credit:** repair is never refused for lack of funds —
+  the balance goes **negative** (debt). While credits < 0, the engine ensures a
+  "Dock debt" thread and the narrator is directed to offer a simple T0/T1
+  payoff job; payouts auto-clear debt first. (Implementation lands with items
+  v1's dock services, where repair becomes an engine action.)
 - **E-4: double wage charging.** `crewWagePerPayingJob` (¢50/job at scene end)
   and CREW.md's per-tenday wages would BOTH fire. The per-job wage must be
   retired when crew upkeep lands (it becomes the upkeep system).
 - **E-5: trade compounding needs cargo rules** (hold capacity by hull) to be
   engine-honest; until then T2/T3 job gating carries the progression alone.
 - **E-6: variance floor.** Exploration's zero-payout tail must never strand a
-  player unable to afford dock fees + repairs (a soft-locked hull). Guarantee:
-  salvage minimum covers operating costs of the dive (~¢60 floor), and T0
-  errands are always available as recovery income.
+  player unable to afford dock fees + repairs. Largely covered by E-3's dock
+  credit/debt loop; keep the salvage minimum (~¢60 floor) and T0 errands as
+  recovery income so debt spirals stay shallow.

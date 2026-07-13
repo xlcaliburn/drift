@@ -11,8 +11,9 @@ describe("economy", () => {
   it("non-paying, no docking = ¢0", () => {
     expect(applySceneCosts({ paying: false, crewWithWages: 2, dockings: 0 }).creditsDelta).toBe(0);
   });
-  it("repair ¢18/HP and missiles ¢51 ea", () => {
-    expect(repairCost(19)).toBe(342);
+  it("repair ¢12/HP and missiles ¢51 ea", () => {
+    // 12/HP (was 18) — dock repair must undercut field patch kits (ECONOMY.md E-3).
+    expect(repairCost(19)).toBe(228);
     expect(missileCost(3)).toBe(153);
   });
 });
