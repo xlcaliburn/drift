@@ -56,7 +56,7 @@ function skillTooltip(name: string): string {
   return desc ? `${desc} (governed by ${a})` : `Governed by ${a}.`;
 }
 
-type Tab = "sheet" | "map" | "clocks";
+type Tab = "status" | "traits" | "map" | "clocks";
 
 export default function Sidebar({
   state,
@@ -68,12 +68,14 @@ export default function Sidebar({
   mobileOpen?: boolean;
   onClose?: () => void;
 }) {
-  const [tab, setTab] = useState<Tab>("sheet");
+  const [tab, setTab] = useState<Tab>("status");
+  const [showDetails, setShowDetails] = useState(false);
+  const pc = state.characters.find((c) => c.kind === "pc");
 
   const body = (
     <>
       <div className="flex border-b border-edge text-xs">
-        {(["sheet", "map", "clocks"] as Tab[]).map((t) => (
+        {(["status", "traits", "map", "clocks"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -88,10 +90,13 @@ export default function Sidebar({
       </div>
 
       <div className="scrollbar-thin flex-1 overflow-y-auto p-3 text-[13px]">
-        {tab === "sheet" && <SheetTab state={state} />}
+        {tab === "status" && <StatusTab state={state} onDetails={() => setShowDetails(true)} />}
+        {tab === "traits" && <TraitsTab state={state} />}
         {tab === "map" && <MapTab state={state} />}
         {tab === "clocks" && <ClocksTab state={state} />}
       </div>
+
+      {showDetails && pc && <DetailsModal character={pc} onClose={() => setShowDetails(false)} />}
     </>
   );
 
@@ -174,147 +179,226 @@ function TraitRow({ k, v }: { k: string; v?: string }) {
   );
 }
 
-function SheetTab({ state }: { state: CampaignState }) {
+/** Condition label from injuries — the immediate life-and-death state. */
+function condition(injuries?: { name: string }[]): { text: string; className: string } | null {
+  if (injuries?.some((i) => i.name === "Dead")) return { text: "☠ DECEASED", className: "text-bad" };
+  if (injuries?.some((i) => i.name === "Downed")) return { text: "DOWNED", className: "text-bad" };
+  return null;
+}
+
+/** MAIN tab — the most immediate info: HP/condition, weapons + ammo, inventory,
+ *  ship survival state, and where you are / what's live. */
+function StatusTab({ state, onDetails }: { state: CampaignState; onDetails: () => void }) {
+  const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
+  const active = state.threads.filter((t) => t.status === "active");
   return (
     <div className="space-y-4">
-      {state.characters.map((c) => (
-        <div key={c.id} className="rounded border border-edge p-2">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-neutral-100">{c.name}</span>
-            <span className="text-neutral-500">
-              {c.kind === "pc" ? "You" : `loyalty ${c.loyalty}/5`}
-            </span>
-          </div>
-          <div className="mt-1 flex items-center gap-2">
-            <span className="w-14 text-neutral-500">HP {c.hp}/{c.maxHp}</span>
-            <Bar value={c.hp} max={c.maxHp} tone={c.hp / c.maxHp < 0.34 ? "bg-bad" : "bg-good"} />
-          </div>
-          <div className="mt-1 text-neutral-500">
-            <span
-              className="cursor-help underline decoration-dotted decoration-neutral-700 underline-offset-2"
-              title="How hard you are to hit — an attack roll must meet or beat it to land (10 + Reflex + armor)."
-            >
-              Armor Class
-            </span>{" "}
-            {c.ac}
-            {c.credits !== undefined && ` · ¢${c.credits}`}
-            {typeof c.stims === "number" && ` · ${c.stims} stims`}
-            {c.fragile && <span className="text-bad"> · FRAGILE</span>}
-            {c.injuries?.some((i) => i.name === "Dead") ? (
-              <span className="font-semibold text-bad"> · ☠ DECEASED</span>
-            ) : (
-              c.injuries?.some((i) => i.name === "Downed") && (
-                <span className="font-semibold text-bad"> · DOWNED</span>
-              )
-            )}
-          </div>
+      {state.characters.map((c) => {
+        const cond = condition(c.injuries);
+        const weapons = c.gear.filter((g) => g.damage);
+        const inventory = c.gear.filter((g) => !g.damage);
+        return (
+          <div key={c.id} className="rounded border border-edge p-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-neutral-100">{c.name}</span>
+              <span className="text-neutral-500">{c.kind === "pc" ? "You" : `loyalty ${c.loyalty}/5`}</span>
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="w-14 text-neutral-500">HP {c.hp}/{c.maxHp}</span>
+              <Bar value={c.hp} max={c.maxHp} tone={c.hp / c.maxHp < 0.34 ? "bg-bad" : "bg-good"} />
+            </div>
+            <div className="mt-1 text-neutral-500">
+              <span
+                className="cursor-help underline decoration-dotted decoration-neutral-700 underline-offset-2"
+                title="How hard you are to hit — an attack roll must meet or beat it to land (10 + Reflex + armor)."
+              >
+                Armor Class
+              </span>{" "}
+              {c.ac}
+              {c.credits !== undefined && ` · ¢${c.credits}`}
+              {typeof c.stims === "number" && ` · ${c.stims} stims`}
+              {c.fragile && <span className="text-bad"> · FRAGILE</span>}
+              {cond && <span className={`font-semibold ${cond.className}`}> · {cond.text}</span>}
+            </div>
 
-          {c.kind === "pc" && (
-            <>
-              <SheetSection label="Attributes">
-                <div className="grid grid-cols-6 gap-1">
-                  {ATTR_ORDER.map((a) => (
-                    <div key={a} className="rounded border border-edge/60 bg-ink/40 px-1 py-1 text-center" title={cap(a)}>
-                      <div className="text-[9px] uppercase text-neutral-600">{a.slice(0, 3)}</div>
-                      <div className="text-[13px] font-semibold text-neutral-100">{fmtMod(c.attributes[a] ?? 0)}</div>
+            {weapons.length > 0 && (
+              <SheetSection label="Weapons">
+                <div className="space-y-0.5">
+                  {weapons.map((g, i) => (
+                    <div key={i} className="flex justify-between gap-2 text-[12px]" title={g.detail}>
+                      <span className="text-neutral-200">{g.name}</span>
+                      <span className="tabular-nums text-neutral-500">{g.damage}</span>
                     </div>
                   ))}
                 </div>
               </SheetSection>
+            )}
 
-              <SheetSection label="Skills — all you can attempt">
-                <div className="space-y-2">
-                  {allSkillRows(c.skills).map((s) => {
-                    const learned = s.level > 0 || s.ticks > 0;
-                    return (
-                      <div key={s.name} className={learned ? "" : "opacity-45"}>
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span
-                            className="cursor-help text-[13px] text-neutral-200 underline decoration-dotted decoration-neutral-600 underline-offset-2"
-                            title={skillTooltip(s.name)}
-                          >
-                            {humanizeSkill(s.name)}
-                          </span>
-                          <span className="shrink-0 tabular-nums text-[11px] text-neutral-500">
-                            Level&nbsp;{s.level}
-                            {learned && <span className="text-neutral-600"> · {s.ticks}/{tickMax(s.level)}</span>}
-                          </span>
-                        </div>
-                        {learned && (
-                          <div className="mt-1">
-                            <Bar value={s.ticks} max={tickMax(s.level)} height="h-1" />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+            {inventory.length > 0 && (
+              <SheetSection label="Inventory">
+                <div className="flex flex-wrap gap-1">
+                  {inventory.map((g, i) => (
+                    <span
+                      key={i}
+                      className="rounded border border-edge bg-ink/40 px-1.5 py-0.5 text-[11px] text-neutral-300"
+                      title={g.detail}
+                    >
+                      {g.name}
+                    </span>
+                  ))}
                 </div>
               </SheetSection>
+            )}
 
-              {(c.background || c.bias || c.alignment || c.ambition) && (
-                <SheetSection label="Traits">
-                  <div className="space-y-0.5">
-                    <TraitRow k="Background" v={bgLabel(c.background)} />
-                    <TraitRow k="Focus" v={c.bias ? cap(c.bias) : undefined} />
-                    <TraitRow k="Code" v={c.alignment ? cap(c.alignment) : undefined} />
-                    <TraitRow k="Ambition" v={c.ambition ? cap(c.ambition) : undefined} />
-                  </div>
-                </SheetSection>
-              )}
+            {c.kind === "pc" && (
+              <button
+                onClick={onDetails}
+                className="mt-2 w-full rounded border border-edge py-1 text-[11px] uppercase tracking-wide text-neutral-400 transition hover:border-accent hover:text-accent"
+              >
+                Character details
+              </button>
+            )}
+          </div>
+        );
+      })}
 
-              {c.uniqueSkill && (
-                <SheetSection label="Signature">
-                  <p className="text-[13px] text-neutral-200">
-                    <span className="font-semibold">{c.uniqueSkill.name}</span>
-                    <span className="text-accent/80"> · {sigLine(c.uniqueSkill)}</span>
-                  </p>
-                  {c.uniqueSkill.description && (
-                    <p className="mt-0.5 text-[12px] text-neutral-400">{c.uniqueSkill.description}</p>
-                  )}
-                </SheetSection>
-              )}
-
-              {c.moralCode && (
-                <SheetSection label="The line won't cross">
-                  <p className="text-[13px] text-neutral-200">{c.moralCode}</p>
-                </SheetSection>
-              )}
-              {c.voiceNotes && (
-                <SheetSection label="Voice">
-                  <p className="text-[12px] italic text-neutral-400">{c.voiceNotes}</p>
-                </SheetSection>
-              )}
-              {c.backstory && (
-                <SheetSection label="Backstory">
-                  <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-neutral-400">{c.backstory}</p>
-                </SheetSection>
-              )}
-            </>
-          )}
-
-          {c.gear.length > 0 && (
-            <SheetSection label="Equipment">
-              <div className="flex flex-wrap gap-1">
-                {c.gear.map((g, i) => (
-                  <span
-                    key={i}
-                    className="rounded border border-edge bg-ink/40 px-1.5 py-0.5 text-[11px] text-neutral-300"
-                    title={g.detail}
-                  >
-                    {g.name}
-                    {g.damage ? ` (${g.damage})` : ""}
-                  </span>
-                ))}
-              </div>
-            </SheetSection>
-          )}
-        </div>
-      ))}
-
-      {/* Ship lives in the sheet now — one place for the whole character. */}
       <div>
         <div className="mb-1.5 text-[11px] uppercase tracking-wide text-neutral-500">Ship</div>
         <ShipTab state={state} />
+      </div>
+
+      <div className="rounded border border-edge p-2">
+        <div className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">Here &amp; now</div>
+        <div className="text-neutral-200">{loc?.name ?? "Unknown"}</div>
+        {active.slice(0, 4).map((t) => (
+          <div key={t.id} className="mt-0.5 text-[12px] text-neutral-400">
+            • {t.title}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** TRAITS tab — attributes, skills, and who the character is. */
+function TraitsTab({ state }: { state: CampaignState }) {
+  const pc = state.characters.find((c) => c.kind === "pc");
+  if (!pc) return <p className="text-neutral-500">No character.</p>;
+  return (
+    <div className="rounded border border-edge p-2">
+      <div className="font-semibold text-neutral-100">{pc.name}</div>
+
+      <SheetSection label="Attributes">
+        <div className="grid grid-cols-6 gap-1">
+          {ATTR_ORDER.map((a) => (
+            <div key={a} className="rounded border border-edge/60 bg-ink/40 px-1 py-1 text-center" title={cap(a)}>
+              <div className="text-[9px] uppercase text-neutral-600">{a.slice(0, 3)}</div>
+              <div className="text-[13px] font-semibold text-neutral-100">{fmtMod(pc.attributes[a] ?? 0)}</div>
+            </div>
+          ))}
+        </div>
+      </SheetSection>
+
+      <SheetSection label="Skills — all you can attempt">
+        <div className="space-y-2">
+          {allSkillRows(pc.skills).map((s) => {
+            const learned = s.level > 0 || s.ticks > 0;
+            return (
+              <div key={s.name} className={learned ? "" : "opacity-45"}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span
+                    className="cursor-help text-[13px] text-neutral-200 underline decoration-dotted decoration-neutral-600 underline-offset-2"
+                    title={skillTooltip(s.name)}
+                  >
+                    {humanizeSkill(s.name)}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-[11px] text-neutral-500">
+                    Level&nbsp;{s.level}
+                    {learned && <span className="text-neutral-600"> · {s.ticks}/{tickMax(s.level)}</span>}
+                  </span>
+                </div>
+                {learned && (
+                  <div className="mt-1">
+                    <Bar value={s.ticks} max={tickMax(s.level)} height="h-1" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </SheetSection>
+
+      {(pc.background || pc.bias || pc.alignment || pc.ambition) && (
+        <SheetSection label="Traits">
+          <div className="space-y-0.5">
+            <TraitRow k="Background" v={bgLabel(pc.background)} />
+            <TraitRow k="Focus" v={pc.bias ? cap(pc.bias) : undefined} />
+            <TraitRow k="Code" v={pc.alignment ? cap(pc.alignment) : undefined} />
+            <TraitRow k="Ambition" v={pc.ambition ? cap(pc.ambition) : undefined} />
+          </div>
+        </SheetSection>
+      )}
+
+      {pc.uniqueSkill && (
+        <SheetSection label="Signature">
+          <p className="text-[13px] text-neutral-200">
+            <span className="font-semibold">{pc.uniqueSkill.name}</span>
+            <span className="text-accent/80"> · {sigLine(pc.uniqueSkill)}</span>
+          </p>
+          {pc.uniqueSkill.description && (
+            <p className="mt-0.5 text-[12px] text-neutral-400">{pc.uniqueSkill.description}</p>
+          )}
+        </SheetSection>
+      )}
+    </div>
+  );
+}
+
+/** Popup — story & extended info, kept out of the always-on rail. */
+function DetailsModal({
+  character,
+  onClose,
+}: {
+  character: CampaignState["characters"][number];
+  onClose: () => void;
+}) {
+  const c = character;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 p-4" onClick={onClose}>
+      <div
+        className="scrollbar-thin max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-xl border border-edge bg-panel p-5 text-[13px]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-neutral-100">{c.name}</h3>
+          <button onClick={onClose} className="text-neutral-400 hover:text-accent" aria-label="Close">
+            ✕
+          </button>
+        </div>
+        {c.uniqueSkill && (
+          <SheetSection label="Signature">
+            <p className="text-neutral-200">
+              <span className="font-semibold">{c.uniqueSkill.name}</span>
+              <span className="text-accent/80"> · {sigLine(c.uniqueSkill)}</span>
+            </p>
+            {c.uniqueSkill.description && <p className="mt-0.5 text-neutral-400">{c.uniqueSkill.description}</p>}
+          </SheetSection>
+        )}
+        {c.moralCode && (
+          <SheetSection label="The line won't cross">
+            <p className="text-neutral-200">{c.moralCode}</p>
+          </SheetSection>
+        )}
+        {c.voiceNotes && (
+          <SheetSection label="Voice">
+            <p className="italic text-neutral-400">{c.voiceNotes}</p>
+          </SheetSection>
+        )}
+        {c.backstory && (
+          <SheetSection label="Backstory">
+            <p className="whitespace-pre-wrap leading-relaxed text-neutral-300">{c.backstory}</p>
+          </SheetSection>
+        )}
       </div>
     </div>
   );
