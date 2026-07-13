@@ -51,6 +51,23 @@ describe("parseTurnPlan", () => {
     );
     expect(plan).toBeNull();
   });
+
+  it("tolerates null for optional fields (cheap models write check:null)", () => {
+    const { plan, error } = parseTurnPlan(
+      JSON.stringify({
+        narration: "The bay goes still.",
+        choices: [
+          { label: "Demand the recorder", check: { skill: "intimidation", dc: 13, stakes: true } },
+          { label: "Take it and go", check: null },
+        ],
+        roll: null,
+        worldEvent: null,
+      }),
+    );
+    expect(error).toBeUndefined();
+    expect(plan?.choices[1]).toEqual({ label: "Take it and go" });
+    expect(plan?.roll).toBeUndefined();
+  });
 });
 
 describe("repairTurnPlan", () => {
@@ -63,5 +80,18 @@ describe("repairTurnPlan", () => {
 
   it("never returns an empty narration", () => {
     expect(repairTurnPlan("").narration).toBe("…");
+  });
+
+  it("salvages narration + choice labels from JSON that failed validation", () => {
+    const raw = JSON.stringify({
+      narration: "You level the pistol.",
+      choices: [
+        { label: "Fire", check: { skill: "smallArms", dc: 99 } }, // bad DC → whole plan invalid
+        "Hold",
+      ],
+    });
+    const plan = repairTurnPlan(raw);
+    expect(plan.narration).toBe("You level the pistol.");
+    expect(plan.choices.map((c) => c.label)).toEqual(["Fire", "Hold"]); // checks dropped, labels kept
   });
 });

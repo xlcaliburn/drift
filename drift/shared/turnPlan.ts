@@ -13,6 +13,12 @@ import { parseInlineMenu } from "./narration";
  * (world event, scene end, clock) arrives as data the engine validates.
  */
 
+/** Optional field that ALSO tolerates the model emitting `null` (cheap models
+ *  routinely write `"check": null` for "no check" — Zod's .optional() rejects
+ *  null, which would fail the whole turn). Coerces null → undefined. */
+const optionalNullable = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((v) => (v === null ? undefined : v), schema.optional());
+
 /** A skill check the engine resolves: d20 + computed modifier vs DC. */
 export const CheckSpec = z.object({
   skill: z.string().min(1),
@@ -25,7 +31,7 @@ export type CheckSpec = z.infer<typeof CheckSpec>;
 /** A clickable next action; `check` makes clicking it roll before narration. */
 export const ChoiceOption = z.object({
   label: z.string().min(1).max(160),
-  check: CheckSpec.optional(),
+  check: optionalNullable(CheckSpec),
 });
 export type ChoiceOption = z.infer<typeof ChoiceOption>;
 
@@ -41,15 +47,15 @@ export const TurnPlan = z.object({
   /** 2-4 next actions (may be empty when the scene ends). */
   choices: z.array(ChoiceLoose).max(6).default([]),
   /** A check the CURRENT player action itself requires (pre-roll not done). */
-  roll: CheckSpec.optional(),
+  roll: optionalNullable(CheckSpec),
   /** Canon feed entry when the beat shifts a faction's standing. */
-  worldEvent: z
-    .object({
+  worldEvent: optionalNullable(
+    z.object({
       headline: z.string().min(1),
-      detail: z.string().optional(),
+      detail: optionalNullable(z.string()),
       factionIds: z.array(z.string()).default([]),
-    })
-    .optional(),
+    }),
+  ),
   /** Scene wrap — engine runs the checklist (wages, fees, clocks). */
   sceneEnd: z
     .object({
@@ -123,11 +129,27 @@ export function parseTurnPlan(text: string): ParsedPlan {
 }
 
 /**
- * Last-resort repair when the model never produced valid JSON: treat the raw
- * text as narration, strip any inline menu, and reuse its options as choices.
- * The turn stays playable; the artifact never reaches the player.
+ * Last-resort repair when validation failed. First try to salvage from the JSON
+ * object itself — validation often fails on a minor field (a bad `check`) while
+ * `narration`/`choices` are perfectly usable, so pull those out (dropping the
+ * unparseable checks). Only if there's no usable JSON do we treat the text as raw
+ * prose and strip any inline menu. Either way the player gets clean narration +
+ * clickable choices; the raw JSON never reaches them.
  */
 export function repairTurnPlan(text: string): TurnPlan {
+  const obj = extractJsonObject(text);
+  if (obj && typeof obj === "object") {
+    const o = obj as Record<string, unknown>;
+    if (typeof o.narration === "string" && o.narration.trim()) {
+      const choices = Array.isArray(o.choices)
+        ? o.choices
+            .map((c) => (typeof c === "string" ? c : (c as { label?: unknown })?.label))
+            .filter((l): l is string => typeof l === "string" && l.trim().length > 0)
+            .map((label) => ({ label }))
+        : [];
+      return TurnPlan.parse({ narration: o.narration.trim(), choices });
+    }
+  }
   const { narration, choices } = parseInlineMenu(text.trim());
   return TurnPlan.parse({
     narration: narration || "…",
