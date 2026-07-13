@@ -39,6 +39,8 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
   const [combat, setCombat] = useState<CombatState | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // Terminal state — the PC has died; the story is over and input is locked.
+  const [dead, setDead] = useState(false);
   // Live narration while a turn streams in. null = not streaming; "" = streaming
   // but no text yet (waiting on first token). Committed to `chat` on done.
   const [streamingText, setStreamingText] = useState<string | null>(null);
@@ -96,6 +98,12 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
         } else if (!restored.length) {
           setChoices(normalizeChoices(buildOpeningChoices(d.state)));
         }
+        // A refresh after death stays terminal: no choices, input locked.
+        const loadedPc = d.state.characters.find((c: { kind: string }) => c.kind === "pc");
+        if (loadedPc?.injuries?.some((i: { name: string }) => i.name === "Dead")) {
+          setDead(true);
+          setChoices([]);
+        }
       });
   }, [campaignId]);
 
@@ -107,7 +115,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
 
   async function send(action?: ChoiceOption) {
     const text = (action?.label ?? input).trim();
-    if (!text || busy) return;
+    if (!text || busy || dead) return;
     setInput("");
     setChoices([]);
     setChat((c) => [...c, { role: "player", text }]);
@@ -157,6 +165,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             choices?: unknown;
             combat?: CombatState | null;
             sceneEnded?: boolean;
+            dead?: boolean;
             tutorialGraduated?: boolean;
           };
           try {
@@ -176,9 +185,18 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             setChat((c) => [...c, { role: "dm", text: evt.narration || stripInlineMenu(streamed) || "…" }]);
             if (evt.state) setState(evt.state);
             setCombat(evt.combat ?? null);
-            setChoices(normalizeChoices(evt.choices));
-            if (evt.sceneEnded) {
-              setChat((c) => [...c, { role: "system", text: "— scene ended · checklist applied —" }]);
+            if (evt.dead) {
+              // The character has died — end the story: lock input, drop choices,
+              // and show a final beat instead of the scene-end line.
+              setDead(true);
+              setChoices([]);
+              const pcName = evt.state?.characters.find((c) => c.kind === "pc")?.name ?? "You";
+              setChat((c) => [...c, { role: "system", text: `☠ ${pcName} is dead. This character's story has ended.` }]);
+            } else {
+              setChoices(normalizeChoices(evt.choices));
+              if (evt.sceneEnded) {
+                setChat((c) => [...c, { role: "system", text: "— scene ended · checklist applied —" }]);
+              }
             }
             // One-time "training wheels are off" beat when the tutorial just ended.
             if (evt.tutorialGraduated) {
@@ -403,28 +421,35 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
               </div>
             )}
 
-            <div className="flex gap-2">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    send();
-                  }
-                }}
-                rows={2}
-                placeholder={choices.length ? "…or write your own action" : `What does ${state?.characters.find((c) => c.kind === "pc")?.name ?? "you"} do?`}
-                className="flex-1 resize-none rounded-lg border border-edge bg-ink px-4 py-3 text-[16px] outline-none focus:border-accent"
-              />
-              <button
-                onClick={() => send()}
-                disabled={busy || !hasApiKey}
-                className="rounded-lg bg-accent px-6 text-base font-semibold text-ink disabled:opacity-40"
-              >
-                Act
-              </button>
-            </div>
+            {dead ? (
+              <div className="rounded-lg border border-bad/50 bg-bad/5 px-4 py-3 text-center text-[15px] text-bad">
+                ☠ {state?.characters.find((c) => c.kind === "pc")?.name ?? "This character"} has died — their story
+                ends here.
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      send();
+                    }
+                  }}
+                  rows={2}
+                  placeholder={choices.length ? "…or write your own action" : `What does ${state?.characters.find((c) => c.kind === "pc")?.name ?? "you"} do?`}
+                  className="flex-1 resize-none rounded-lg border border-edge bg-ink px-4 py-3 text-[16px] outline-none focus:border-accent"
+                />
+                <button
+                  onClick={() => send()}
+                  disabled={busy || !hasApiKey}
+                  className="rounded-lg bg-accent px-6 text-base font-semibold text-ink disabled:opacity-40"
+                >
+                  Act
+                </button>
+              </div>
+            )}
           </div>
         </section>
 

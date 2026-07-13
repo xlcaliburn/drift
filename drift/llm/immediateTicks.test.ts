@@ -103,7 +103,13 @@ describe("immediate tick award on qualifying rolls", () => {
   });
 
   it("downs at 0 HP, then a further hit kills — death is possible", () => {
-    const rt = new TurnRuntime(stateWithPc(), rollRng(1)); // always fail
+    // Death only outside the tutorial (>=3 resolved quests) — the tutorial is
+    // non-lethal, so give this PC a post-tutorial history.
+    const s = stateWithPc();
+    s.threads = [1, 2, 3].map((i) => ({
+      id: `t-${i}`, campaignId: "c", title: "done", body: "", status: "resolved", entityRefs: [],
+    })) as CampaignState["threads"];
+    const rt = new TurnRuntime(s, rollRng(1)); // always fail
     // First big hit: 8 → 0, DOWNED.
     const down = rt.execute("roll_check", {
       characterId: "pc-1", skill: "stealth", dc: 13, stakes: true, failDamage: "8",

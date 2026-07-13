@@ -92,11 +92,15 @@ export class TurnRuntime {
     let injuries = c.injuries ?? [];
     let downed = false;
     let died = false;
-    if (before === 0) {
+    // No permadeath during the tutorial — the worst that happens is staying
+    // Downed. Real stakes, but a brand-new player can't lose the character in
+    // their first few quests (they shouldn't be able to die learning the ropes).
+    const lethal = !inTutorial(this.state);
+    if (before === 0 && lethal) {
       // Struck while already down → killed.
       died = true;
       injuries = [...injuries.filter((i) => i.name !== "Downed"), { name: "Dead", effect: reason }];
-    } else if (hp === 0) {
+    } else if (hp === 0 || before === 0) {
       downed = true;
       if (!injuries.some((i) => i.name === "Downed")) {
         injuries = [...injuries, { name: "Downed", effect: "critical — bleeding out; one more hit is fatal" }];

@@ -121,15 +121,20 @@ export async function POST(req: NextRequest) {
         // use the model's choices, falling back to generic actions if it gave none.
         const resultCombat = result.combat ?? null;
         const resultPc = result.state.characters.find((c) => c.kind === "pc");
+        // Death ends the story immediately — this turn is the last one. No choices,
+        // no fallbacks; the client goes terminal on the `dead` flag.
+        const pcDied = !!resultPc && (resultPc.injuries ?? []).some((i) => i.name === "Dead");
         const burstReady = !!result.state.ship?.burstDriveReady;
         const normalized: ChoiceOption[] = result.choices.map((c) =>
           typeof c === "string" ? { label: c } : c,
         );
-        const choices: ChoiceOption[] = resultCombat?.active
-          ? combatActions(resultCombat, resultPc ? usableConsumables(resultPc, resultCombat.scale) : [], burstReady)
-          : normalized.length === 0 && !result.sceneEnded
-            ? buildFallbackChoices(result.state).map((label) => ({ label }))
-            : normalized;
+        const choices: ChoiceOption[] = pcDied
+          ? []
+          : resultCombat?.active
+            ? combatActions(resultCombat, resultPc ? usableConsumables(resultPc, resultCombat.scale) : [], burstReady)
+            : normalized.length === 0 && !result.sceneEnded
+              ? buildFallbackChoices(result.state).map((label) => ({ label }))
+              : normalized;
 
         // Engine display lines (dice/ticks/damage/payment/combat) — the handlers
         // return them pre-prefixed; they become system transcript lines so a
@@ -141,9 +146,11 @@ export async function POST(req: NextRequest) {
           { role: "player" as const, text: playerText },
           ...engineLines,
           { role: "dm" as const, text: result.narration || "…" },
-          ...(result.sceneEnded
-            ? [{ role: "system" as const, text: "— scene ended · checklist applied —" }]
-            : []),
+          ...(pcDied
+            ? [{ role: "system" as const, text: `— ${resultPc!.name} is dead · this character's story ends here —` }]
+            : result.sceneEnded
+              ? [{ role: "system" as const, text: "— scene ended · checklist applied —" }]
+              : []),
           // One-time beat when the tutorial ends this turn. Persisted here so a
           // later refresh rehydrates it, and also emitted live in the done payload.
           ...(result.tutorialGraduated
@@ -224,6 +231,7 @@ export async function POST(req: NextRequest) {
           choices,
           combat: resultCombat,
           sceneEnded: result.sceneEnded,
+          dead: pcDied,
           tutorialGraduated: result.tutorialGraduated,
           model: result.model,
           usage: result.usage,
