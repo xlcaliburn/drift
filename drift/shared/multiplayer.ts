@@ -102,6 +102,8 @@ export const CreationInput = z.object({
   parentFactionId: z.string(),
   bias: z.enum(["commerce", "combat", "intrigue", "piloting", "diplomacy"]),
   alignment: z.enum(["ruthless", "pragmatic", "principled"]),
+  /** Player-selected sex — required. */
+  sex: z.enum(["male", "female"]),
   background: z.string(),
   ambition: z.string(),
   /** Optional flavor — blanks are auto-generated at finalize. */

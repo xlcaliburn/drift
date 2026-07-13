@@ -116,6 +116,8 @@ export const Character = z.object({
   /** Creation steering answers, kept for story hooks + dossier voice. */
   bias: z.enum(["commerce", "combat", "intrigue", "piloting", "diplomacy"]).optional(),
   alignment: z.enum(["ruthless", "pragmatic", "principled"]).optional(),
+  /** Player-selected sex (male/female). Optional — absent on legacy PCs. */
+  sex: z.enum(["male", "female"]).optional(),
   background: z.string().optional(),
   ambition: z.string().optional(),
   /** The line this character won't cross (e.g. "people aren't cargo"). */

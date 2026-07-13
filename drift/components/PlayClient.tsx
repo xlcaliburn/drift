@@ -251,11 +251,39 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
     }
   }
 
+  const headerPc = state?.characters.find((c) => c.kind === "pc");
+  const headerClock =
+    state?.clocks.find((c) => c.id === "clk-faultline") ??
+    state?.clocks.find((c) => c.status === "active");
+
   return (
     <div className="flex h-[100dvh] flex-col">
       <header className="flex items-center gap-2 border-b border-edge px-3 py-2.5 sm:px-5 sm:py-3">
-        <span className="shrink-0 text-lg font-bold text-accent">DRIFT</span>
-        <span className="min-w-0 flex-1 truncate text-center text-xs text-neutral-400 sm:text-sm">
+        {/* Logo shows on ≥sm; on mobile it's replaced by live game status. */}
+        <span className="hidden shrink-0 text-lg font-bold text-accent sm:inline">DRIFT</span>
+
+        {/* Mobile-only status bar: HP first, then character name, then clock if it fits. */}
+        {state && headerPc && (
+          <div className="flex min-w-0 flex-1 items-center gap-2 text-xs sm:hidden">
+            <span
+              className={
+                "shrink-0 font-bold " +
+                (headerPc.hp / headerPc.maxHp < 0.34 ? "text-bad" : "text-accent")
+              }
+            >
+              HP {headerPc.hp}/{headerPc.maxHp}
+            </span>
+            <span className="min-w-0 truncate font-semibold text-neutral-200">{headerPc.name}</span>
+            {headerClock && (
+              <span className="shrink-0 text-neutral-500" title={headerClock.name}>
+                · ⏱ {headerClock.current}/{headerClock.max}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Campaign name + location — desktop only (mobile shows live status instead). */}
+        <span className="hidden min-w-0 flex-1 truncate text-center text-xs text-neutral-400 sm:block sm:text-sm">
           {state?.campaign.name}
           {state?.campaign.currentLocationId &&
             ` · ${state?.locations.find((l) => l.id === state.campaign.currentLocationId)?.name ?? ""}`}

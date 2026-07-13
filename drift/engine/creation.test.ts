@@ -10,6 +10,7 @@ const base: CreationInput = {
   parentFactionId: "f-crown",
   bias: "piloting",
   alignment: "pragmatic",
+  sex: "male",
   background: "dock-rat",
   ambition: "freedom",
   flavor: { moralCode: "no passengers left behind" },

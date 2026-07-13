@@ -57,6 +57,7 @@ export function buildCharacterFromCreation(
     loyaltyToParent: 4,
     bias: input.bias,
     alignment: input.alignment,
+    sex: input.sex,
     background: input.background,
     ambition: input.ambition,
     moralCode: input.flavor.moralCode,

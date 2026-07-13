@@ -135,6 +135,7 @@ export default function CreateWizard() {
   const [factionId, setFactionId] = useState("");
   const [bias, setBias] = useState("");
   const [alignment, setAlignment] = useState("");
+  const [sex, setSex] = useState("");
   const [background, setBackground] = useState("");
   const [ambition, setAmbition] = useState("");
   // Optional flavor — blank fields are auto-generated at finalize.
@@ -184,7 +185,7 @@ export default function CreateWizard() {
   const isCustom = Boolean(usName || usDesc || tScenario) && !matchedPreset;
 
   const canFinish =
-    name && factionId && bias && alignment && background && ambition &&
+    name && factionId && bias && alignment && sex && background && ambition &&
     usName && usDesc && (usKind === "passive" ? pTarget : tScenario);
 
   /** Pull an example signature into the builder to tweak. */
@@ -233,6 +234,7 @@ export default function CreateWizard() {
       parentFactionId: factionId,
       bias: bias as CreationInput["bias"],
       alignment: alignment as CreationInput["alignment"],
+      sex: sex as CreationInput["sex"],
       background,
       ambition,
       flavor: {
@@ -252,6 +254,7 @@ export default function CreateWizard() {
     const fac = pick(factionBriefs).factionId;
     const bi = pick(BIASES).id;
     const al = pick(alignments).id;
+    const sx = pick(["male", "female"] as const);
     const bg = pick(backgrounds).id;
     const am = pick(ambitions).id;
     const ex = pick(exampleSkills).skill;
@@ -260,6 +263,7 @@ export default function CreateWizard() {
     setFactionId(fac);
     setBias(bi);
     setAlignment(al);
+    setSex(sx);
     setBackground(bg);
     setAmbition(am);
     applyExample(ex);
@@ -273,6 +277,7 @@ export default function CreateWizard() {
       parentFactionId: fac,
       bias: bi as CreationInput["bias"],
       alignment: al as CreationInput["alignment"],
+      sex: sx,
       background: bg,
       ambition: am,
       flavor: {},
@@ -404,6 +409,17 @@ export default function CreateWizard() {
             <Choices options={alignments} value={alignment} onPick={setAlignment} />
           </Field>
 
+          <Field label="Sex">
+            <Choices
+              options={[
+                { id: "male", label: "Male", description: "" },
+                { id: "female", label: "Female", description: "" },
+              ]}
+              value={sex}
+              onPick={setSex}
+            />
+          </Field>
+
           <Field label="Ambition — what you're really after">
             <Choices options={ambitions} value={ambition} onPick={setAmbition} />
           </Field>
@@ -421,7 +437,7 @@ export default function CreateWizard() {
             <FlavorField label="A tell" value={tell} onChange={setTell} placeholder="a habit that gives you away" examples={exampleTells} />
           </div>
 
-          <Nav back={() => setStep(1)} next={name && background && bias && alignment && ambition ? () => setStep(3) : undefined} />
+          <Nav back={() => setStep(1)} next={name && background && bias && alignment && sex && ambition ? () => setStep(3) : undefined} />
         </Section>
       )}
 
@@ -546,6 +562,7 @@ export default function CreateWizard() {
             <Row k="Background" v={backgrounds.find((b) => b.id === background)?.label ?? background} />
             <Row k="Focus" v={bias} />
             <Row k="Code" v={alignment} />
+            <Row k="Sex" v={sex} />
             <Row k="Ambition" v={ambition} />
             <Row k="Won't cross" v={moralCode || "— the lanes will invent it"} />
             {loss && <Row k="Loss" v={loss} />}
