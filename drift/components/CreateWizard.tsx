@@ -600,7 +600,13 @@ export default function CreateWizard() {
             <div className="mb-5 rounded-lg border border-edge bg-panel/50 p-4">
               <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-neutral-200">{result.character.backstory}</p>
               {result.enriching && (
-                <p className="mt-2 animate-pulse text-xs text-neutral-500">✍ fleshing out your story…</p>
+                <div className="mt-3 flex items-center gap-2 text-xs text-neutral-500">
+                  <span
+                    className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-neutral-600 border-t-accent"
+                    aria-hidden
+                  />
+                  <span>Fleshing out your story…</span>
+                </div>
               )}
             </div>
           )}

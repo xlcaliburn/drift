@@ -43,6 +43,16 @@ export interface CreationTelemetry {
   error?: string;
 }
 
+/** A person named in the backstory, captured as a relation to the PC so the
+ *  narrator can pull them into play (seeded as an NPC at creation). */
+export interface CreationRelation {
+  name: string;
+  /** Their tie to the PC, e.g. "estranged brother", "the fixer who bankrolled them". */
+  relation: string;
+  /** One sentence on who they are now. */
+  oneBreath: string;
+}
+
 export interface CreationFinalize {
   backstory: string;
   /** The character's line-they-won't-cross — verbatim if given, else invented. */
@@ -50,6 +60,8 @@ export interface CreationFinalize {
   /** 1-2 sentences of personality/voice for playing them (esp. as an NPC). */
   voiceNotes: string;
   notes: CreationNote[];
+  /** People named in the backstory, to seed as related NPCs. */
+  relations: CreationRelation[];
   /** Personalized cold-open (context + starting quest) generated from the
    *  faction's starting points. Undefined → newCampaign uses the static opening. */
   opening?: GeneratedOpening;
@@ -78,8 +90,10 @@ You are given the player's creation answers and their computed sheet. Some flavo
    - "questBody": 2-3 sentences framing that first job — what to do, who's involved, and the choice or risk it poses — drawn from the candidate leads and fitted to this character.
    Pick and personalize ONE lead; stay inside the given canon (don't invent new stations/factions).
 
+6. RELATIONS: For every specific PERSON you NAME in the backstory (not the PC themselves, not factions, stations, or ships), return an entry in "relations": their "name", their "relation" to the PC (e.g. "estranged brother", "the fixer who bankrolled them", "the captain who left them for dead"), and a "oneBreath" — one sentence on who they are now. Only real named people who actually appear in the backstory you wrote. If it names no one, return [].
+
 Reply ONLY with JSON, no prose:
-{"backstory": string, "moralCode": string, "voiceNotes": string, "notes": [{"field": "name"|"moralCode"|"uniqueSkill", "severity": "ok"|"warn", "message": string, "suggestion"?: string}], "opening": {"situation": string, "questTitle": string, "questBody": string}}
+{"backstory": string, "moralCode": string, "voiceNotes": string, "notes": [{"field": "name"|"moralCode"|"uniqueSkill", "severity": "ok"|"warn", "message": string, "suggestion"?: string}], "opening": {"situation": string, "questTitle": string, "questBody": string}, "relations": [{"name": string, "relation": string, "oneBreath": string}]}
 Only include a note when severity is "warn". Return "notes": [] if everything is fine.`;
 
 function cheapModel() {
@@ -134,7 +148,7 @@ function fallback(input: CreationInput, character: Character): CreationFinalize 
   const moralCode =
     input.flavor.moralCode?.trim() ||
     exampleMoralCodes[Math.floor(seedFrom(input.name) * exampleMoralCodes.length)];
-  return { backstory: character.backstory ?? "", moralCode, voiceNotes: "", notes };
+  return { backstory: character.backstory ?? "", moralCode, voiceNotes: "", notes, relations: [] };
 }
 
 export async function finalizeCreation(
@@ -301,7 +315,17 @@ A tell/mannerism: ${blank(input.flavor.tell)}${startingSituation}`;
       if (situation && questTitle && questBody) opening = { situation, questTitle, questBody };
     }
 
-    return { backstory, moralCode, voiceNotes, notes, opening, telemetry: telemetry() };
+    // People named in the backstory → seed as related NPCs (create route).
+    const relations: CreationRelation[] = (Array.isArray(parsed.relations) ? parsed.relations : [])
+      .filter((r: unknown): r is Record<string, unknown> => !!r && typeof r === "object")
+      .map((r: Record<string, unknown>) => ({
+        name: String(r.name ?? "").trim(),
+        relation: String(r.relation ?? "").trim(),
+        oneBreath: String(r.oneBreath ?? "").trim(),
+      }))
+      .filter((r: CreationRelation) => r.name.length > 0);
+
+    return { backstory, moralCode, voiceNotes, notes, relations, opening, telemetry: telemetry() };
   } catch (e) {
     console.error("[creationFinalize] response parse failed, using fallback:", e);
     return { ...fallback(input, character), telemetry: telemetry() };

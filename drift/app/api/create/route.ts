@@ -119,6 +119,22 @@ export async function POST(req: NextRequest) {
           pc.voiceNotes = enriched.voiceNotes;
         }
       }
+      // Seed people named in the backstory as related NPCs so the narrator can
+      // pull them into play — skip any name already in the world's cast.
+      if (finalize.relations?.length) {
+        const have = new Set(session.state.npcs.map((n) => n.name.toLowerCase()));
+        const add = finalize.relations
+          .filter((r) => r.name && !have.has(r.name.toLowerCase()))
+          .map((r, i) => ({
+            id: `npc-rel-${stamp}-${i}`,
+            universeId: session.state.universe.id,
+            name: r.name,
+            oneBreath: r.oneBreath || `${r.relation} of ${enriched.name}.`,
+            notes: `${enriched.name}'s ${r.relation}.`,
+          }));
+        if (add.length) session.state.npcs = [...session.state.npcs, ...add];
+      }
+
       setSession(campaignId, session);
       await persistSession(campaignId, session);
     }
