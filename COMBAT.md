@@ -224,3 +224,111 @@ took 9 damage]") when combat ends.
 - **D-9 Rebalance (ties into I-1)**: adopt a personal-scale damage table
   (T1 1d4 / T2 1d6+1 / T3 2d6) + slightly higher starting HP (e.g. 8 +
   vitality), or keep canon numbers and accept brutal lethality?
+
+---
+
+# Review round 1 — resolutions (2026-07-13)
+
+## Decisions locked
+
+- **Balance (I-1 / D-9): NO rebalance, NO count-scaling.** Canon numbers stay;
+  every enemy type exists "in the wild" at full strength. Lethality is managed by
+  two levers instead: **(a) deadly encounters are rare**, and **(b) escape is
+  scaled to the level disparity** — the more outmatched you are, the easier it is
+  to run. See "Escape-by-disparity" below. Accepted consequence: **a fresh
+  character cannot win a straight fight** — early game is avoid/flee until you
+  level and gear up. (Flag F-1.)
+- **Combat trigger (I-2): player-initiated is primary.** The model doesn't have
+  to emit `combatStart`; it narrates the threat and the **player's response**
+  starts the fight — a combat/attack choice (or clearly aggressive free text)
+  escalates it engine-side. Model `combatStart` on a genuine ambush still works.
+- **Free text in combat (I-3):** flat v1 (plain skill check, no attack effect);
+  richer creative play later.
+- **Downed rule (D-4):** volley **halts** when the player drops (aftermath beat;
+  hit-while-already-downed still kills).
+- **History (I-8):** finished combat compresses to one summary line.
+- **Loot (D-8):** engine-clamped credit range by tier on victory.
+- **Tool loop (D-7): deferred** — "come back to that." Keep it for now; combat
+  routes engine-side regardless.
+- **Ship combat (D-5): still open**, but note the "ships in the wild" framing is
+  ship-centric — the escape-by-disparity mechanic is designed to serve ship
+  *travel encounters* too (flee = burst drive). Leaning: personal loop v1, ship
+  travel-encounters v1.5 reusing the same escape math.
+
+## Escape-by-disparity (engine change)
+
+Flee is a check the engine makes easier the more outmatched you are:
+
+```
+threat        = max enemy tier present (T1=1, T2=2, T3=3)
+playerCombat  = max level among {smallArms, gunnery, melee} (0 for a rookie)
+disparity     = max(0, threat - playerCombat)
+fleeDC        = clamp( 10 + 2*fleeAttempts - 3*disparity, 5, 20 )
+```
+
+So a rookie (0) vs a T2 (disparity 2): DC 10 − 6 = **4** — almost always escapes.
+An even fight (disparity 0): DC 10, rising each retry. This makes "run from the
+warship / the pros" the reliable, intended play when outclassed, without nerfing
+enemies. Same formula generalizes to ship encounters (threat = enemy ship class).
+
+## Initiative / surprise (answers D-1)
+
+Default per-round order is **player-first** (clean in a chat format). Surprise is
+the exception that answers "what if the player doesn't have initiative":
+
+- `combatStart.surprise: "player" | "enemy" | "none"` (model sets it; on a
+  contested start the engine can roll the PC's `perception` vs the enemy `atk`
+  to decide instead of trusting the model).
+- **enemy surprise (ambush):** a free **enemy volley resolves BEFORE** the
+  player's first action — they take a hit for being caught out. Then normal
+  player-first rounds.
+- **player surprise (you ambush):** the player gets a **free opening attack**
+  before enemies act.
+- **none:** straight into player-first round 1.
+
+Rolled initiative each round was considered and rejected for v1 (turn-order
+bookkeeping adds little in an async, one-action-per-turn format; surprise carries
+the "who gets the drop" drama).
+
+## Spun-off features (NOT combat v1 — their own designs)
+
+These came out of the review and are real, separate subsystems. Combat v1 will
+be built to accommodate them but will not implement them:
+
+- **Crew recruitment + scaling upkeep (from I-5).** New campaigns can recruit
+  party members in play (today they're solo). A crew can grow large, but
+  **upkeep scales** (wages/supplies per tenday, rising with headcount and member
+  tier) so unchecked growth becomes unpayable — forcing income growth, efficiency,
+  or hard cuts (desertion/mutiny on unpaid upkeep, tied to existing `loyalty`).
+  Hooks that exist: `economy.crewWagePerPayingJob`, `Character.loyalty`, the
+  party/pc character shape. **Needs its own doc (CREW.md).** *Combat v1 impact:*
+  party members that exist auto-attack each round and can be targeted/killed.
+
+- **Item audit + consumables + inventory space (from I-6).** Instead of a lone
+  stim number, design a small diverse set of consumables (medkit/heal, grenade,
+  shield booster, breaching charge, repair kit, …) and wire **inventory slots**
+  (the `Character.slots`/`maxSlots` fields already exist but are unused).
+  **Needs its own doc (ITEMS.md) / audit.** *Combat v1 impact:* interim stim
+  heal = **1d6+2, 1/round**; the audit refines it and adds combat-usable items
+  (e.g. grenade = engine AoE damage) later.
+
+## Newly flagged
+
+- **F-1 (early game = flee-or-die).** With canon numbers + no rebalance, a fresh
+  PC has ~6–9 HP vs T2's 2d8; there is no "scrappy winnable" early fight — the
+  design intent is that early combat is avoided or fled. Confirm this is the
+  desired feel (it's coherent and brutal, but new players must be clearly
+  telegraphed the danger and always offered a strong flee choice).
+- **F-2 (rarity is soft).** "Encounters should be rare" has no hard enforcement —
+  it relies on the narrator not starting fights (which, per audit data, it rarely
+  does anyway). If fights turn out too frequent, add a combat cooldown (no
+  engine-forced combat within N turns of the last).
+- **F-3 (telegraphing).** Because losing a fight can be fatal, the narration MUST
+  make a fight's danger obvious and the flee option must always be present and
+  visibly easy when outmatched — otherwise a click into combat feels unfair.
+
+## Still open before build
+
+- **D-5 ship scope:** personal v1 only (recommended) vs personal + ship now.
+- **F-1 confirm:** accept "early combat = flee-or-die"?
+- Whether to write **CREW.md** / **ITEMS.md** designs before or after combat v1.
