@@ -6,6 +6,7 @@ import { tools } from "./tools";
 import { buildSystem, buildContextSlice } from "./promptBuilder";
 import { TurnRuntime } from "./engineBridge";
 import { deepseekChat, deepseekChatStream, deepseekAvailable, isDeepSeekModel, resolveModel } from "./deepseek";
+import { graduatedTutorialThisTurn } from "@/shared/tutorial";
 
 export interface TurnInput {
   state: CampaignState;
@@ -31,6 +32,9 @@ export interface TurnResult {
   worldEvents: TurnRuntime["worldEvents"];
   choices: string[];
   sceneEnded: boolean;
+  /** True on the one turn the tutorial ends (3rd quest resolved) — drives the
+   *  one-time "training wheels are off" transition beat. */
+  tutorialGraduated: boolean;
   model: string;
   /** Full assistant/user message pairs generated this turn, for history. */
   newMessages: Anthropic.MessageParam[];
@@ -365,6 +369,9 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
     worldEvents: runtime.worldEvents,
     choices: runtime.choices,
     sceneEnded: runtime.sceneEndReport !== null,
+    // input.state is the pre-turn snapshot; runtime.state carries this turn's
+    // thread resolutions. The crossing to the target count happens on one turn only.
+    tutorialGraduated: graduatedTutorialThisTurn(input.state, runtime.state),
     model: activeModel,
     newMessages,
     usage,

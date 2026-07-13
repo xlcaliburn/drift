@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { CampaignState } from "@/shared/schemas";
 import { skillProgress } from "@/engine";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
+import { inTutorial, TUTORIAL_CHOICE_DIRECTIVE } from "@/shared/tutorial";
 
 /**
  * DM style rules — the voice of the game. Kept static and marked for prompt
@@ -112,6 +113,9 @@ export function buildContextSlice(state: CampaignState, playerText: string, focu
   const moralLine = pc?.moralCode ? `PC's line they won't cross: ${pc.moralCode}.` : "";
 
   return [
+    // While the player is still on training wheels, lead with the tutorial
+    // directive so it outranks the static style rules for this beat.
+    ...(inTutorial(state) ? [TUTORIAL_CHOICE_DIRECTIVE, ``] : []),
     `CURRENT SCENE`,
     `Location: ${loc ? `${loc.name} — ${loc.description}` : "unknown"}`,
     ...(seasonLine ? [seasonLine] : []),

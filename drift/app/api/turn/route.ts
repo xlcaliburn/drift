@@ -4,6 +4,7 @@ import { getSession, setSession, persistSession } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
 import { recordAiCall } from "@/lib/audit";
+import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -87,6 +88,11 @@ export async function POST(req: NextRequest) {
           ...(result.sceneEnded
             ? [{ role: "system" as const, text: "— scene ended · checklist applied —" }]
             : []),
+          // One-time beat when the tutorial ends this turn. Persisted here so a
+          // later refresh rehydrates it, and also emitted live in the done payload.
+          ...(result.tutorialGraduated
+            ? [{ role: "system" as const, text: TUTORIAL_GRADUATION_BEAT }]
+            : []),
         ];
 
         setSession(campaignId, {
@@ -139,6 +145,7 @@ export async function POST(req: NextRequest) {
           worldEvents: result.worldEvents,
           choices: result.choices,
           sceneEnded: result.sceneEnded,
+          tutorialGraduated: result.tutorialGraduated,
           model: result.model,
           usage: result.usage,
         });

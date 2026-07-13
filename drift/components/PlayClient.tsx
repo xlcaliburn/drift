@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CampaignState } from "@/shared/schemas";
 import type { ChatEntry } from "@/shared/chat";
 import { buildOpeningRecap, buildOpeningChoices } from "@/shared/recap";
+import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import Sidebar from "./Sidebar";
 
 export default function PlayClient({ campaignId }: { campaignId: string }) {
@@ -103,6 +104,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             state?: CampaignState;
             choices?: string[];
             sceneEnded?: boolean;
+            tutorialGraduated?: boolean;
           };
           try {
             evt = JSON.parse(dataLine.slice(5).trim());
@@ -118,6 +120,10 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             setChoices(Array.isArray(evt.choices) ? evt.choices : []);
             if (evt.sceneEnded) {
               setChat((c) => [...c, { role: "system", text: "— scene ended · checklist applied —" }]);
+            }
+            // One-time "training wheels are off" beat when the tutorial just ended.
+            if (evt.tutorialGraduated) {
+              setChat((c) => [...c, { role: "system", text: TUTORIAL_GRADUATION_BEAT }]);
             }
             finished = true;
           } else if (evt.type === "error") {

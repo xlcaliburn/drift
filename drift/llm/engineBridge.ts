@@ -13,6 +13,7 @@ import {
 } from "@/engine";
 import { enemyTiers, shipClasses } from "@/content";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
+import { inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
 
 /** Standing at or below this with your parent faction, while still flying their
  *  loaner, gets the ship repossessed (see adjustRep). A real betrayal — starting
@@ -405,10 +406,16 @@ export class TurnRuntime {
   }
 
   private offerChoices(input: Record<string, unknown>) {
+    // Tutorial backstop: while the player is still on training wheels, hard-clamp
+    // every offer to a binary decision (exactly two options) even if the narrator
+    // proposes more — the prompt asks for this too, this guarantees it. `this.state`
+    // reflects any thread resolved earlier THIS turn, so the beat that resolves the
+    // 3rd quest already reads as graduated and keeps its full set of choices.
+    const cap = inTutorial(this.state) ? TUTORIAL_CHOICE_COUNT : 4;
     const choices = ((input.choices as string[]) ?? [])
       .map((c) => String(c).trim())
       .filter(Boolean)
-      .slice(0, 4);
+      .slice(0, cap);
     this.choices = choices;
     return { offered: choices.length };
   }
