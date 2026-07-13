@@ -39,6 +39,9 @@ export interface TurnResult {
    *  one-time "training wheels are off" transition beat. */
   tutorialGraduated: boolean;
   model: string;
+  /** The exact request sent to the model this turn (system + messages), rendered
+   *  as text for the admin audit — "what was actually fed to the API". */
+  promptDump: string;
   /** Full assistant/user message pairs generated this turn, for history. */
   newMessages: Anthropic.MessageParam[];
   usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
@@ -164,6 +167,52 @@ function cinematicModel() {
   return process.env.CINEMATIC_MODEL ?? "claude-sonnet-5";
 }
 
+/** Trim a narration back to its last COMPLETE sentence — used when a hard
+ *  max_tokens stop leaves the final sentence dangling mid-word. */
+export function trimToLastSentence(s: string): string {
+  const m = s.match(/^[\s\S]*[.!?][)"'”’]?(?=\s|$)/);
+  return m ? m[0].trim() : s;
+}
+
+/**
+ * Detect the DeepSeek repetition artifact: a substantial line (or paragraph)
+ * emitted verbatim more than once — the "said the menu twice / echoed the action"
+ * failure. Used to trigger one clean regeneration of a degenerate response.
+ */
+export function hasDuplication(text: string): boolean {
+  const lines = text
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter((l) => l.length >= 30);
+  const seen = new Set<string>();
+  for (const l of lines) {
+    if (seen.has(l)) return true;
+    seen.add(l);
+  }
+  return false;
+}
+
+/** Render the exact request sent to the model (system + messages) as readable
+ *  text for the admin audit — "what was actually fed to the API" this turn. */
+function renderRequest(system: Anthropic.TextBlockParam[], messages: Anthropic.MessageParam[]): string {
+  const sys = system.map((b) => b.text).join("\n\n");
+  const render = (m: Anthropic.MessageParam): string => {
+    const role = m.role.toUpperCase();
+    if (typeof m.content === "string") return `[${role}]\n${m.content}`;
+    const parts = m.content.map((b) => {
+      if (b.type === "text") return b.text;
+      if (b.type === "tool_use") return `→ tool_use ${b.name}(${JSON.stringify(b.input)})`;
+      if (b.type === "tool_result") {
+        const c = (b as { content?: unknown }).content;
+        return `← tool_result: ${typeof c === "string" ? c : JSON.stringify(c)}`;
+      }
+      return `[${b.type}]`;
+    });
+    return `[${role}]\n${parts.join("\n")}`;
+  };
+  return `=== SYSTEM ===\n${sys}\n\n=== MESSAGES ===\n${messages.map(render).join("\n\n")}`;
+}
+
 /** Cheap heuristic: does the player's action read like a combat / set-piece beat? */
 export function isSetPiece(text: string): boolean {
   return /\b(attack|fire|shoot|shot|fight|ambush|board|ram|engage|kill|dogfight|combat|missile|open fire)\b/i.test(
@@ -232,6 +281,8 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
       content: `${contextSlice}\n\n---\nPLAYER: ${input.playerText}`,
     },
   ];
+  // Snapshot the initial request for the audit before the tool loop appends to it.
+  const promptDump = renderRequest(system, messages);
 
   const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   const narrationParts: string[] = [];
@@ -240,6 +291,7 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
   const toolCalls: string[] = [];
   let rounds = 0;
   let lastStopReason = "end_turn";
+  let retriedDegenerate = false; // one clean regeneration per turn, at most
   const startedAt = Date.now();
   // Lazy — only constructed on the Anthropic path, so DeepSeek-only setups work.
   let anthropic: Anthropic | null = null;
@@ -317,6 +369,36 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
     rounds++;
     lastStopReason = stopReason;
 
+    // One clean regeneration if a turn-ending response came back degenerate — the
+    // DeepSeek "duplicated the menu / echoed the action" artifact. The retry is
+    // non-streaming; the transient streamed text is superseded by the clean result
+    // in the final `narration` (and the done payload the client commits).
+    if (stopReason !== "tool_use" && !retriedDegenerate) {
+      const roundText = respContent
+        .filter((b): b is Anthropic.TextBlockParam => b.type === "text")
+        .map((b) => b.text)
+        .join("");
+      if (hasDuplication(roundText)) {
+        retriedDegenerate = true;
+        try {
+          const retry = await callRound(activeModel, activeDeepSeek); // no streaming
+          rounds++;
+          const retryText = retry.respContent
+            .filter((b): b is Anthropic.TextBlockParam => b.type === "text")
+            .map((b) => b.text)
+            .join("");
+          // Take the retry unless it is ALSO duplicated and not longer.
+          if (retryText && (!hasDuplication(retryText) || retryText.length > roundText.length)) {
+            respContent = retry.respContent;
+            stopReason = retry.stopReason;
+            lastStopReason = stopReason;
+          }
+        } catch {
+          /* retry failed — keep the original response */
+        }
+      }
+    }
+
     for (const block of respContent) {
       if (block.type === "text") narrationParts.push(block.text);
     }
@@ -366,8 +448,15 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
     newMessages.push(toolMsg);
   }
 
+  let narration = narrationParts.join("\n\n").trim();
+  // Keep the 450 cap: a duplicated response is regenerated above; a genuine length
+  // overrun just gets trimmed to its last complete sentence so it never ends
+  // mid-word.
+  if (lastStopReason === "max_tokens") narration = trimToLastSentence(narration);
+
   return {
-    narration: narrationParts.join("\n\n").trim(),
+    narration,
+    promptDump,
     state: runtime.state,
     events: runtime.events,
     worldEvents: runtime.worldEvents,

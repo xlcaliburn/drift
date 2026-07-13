@@ -14,6 +14,12 @@ import type Anthropic from "@anthropic-ai/sdk";
 
 const FALLBACK_ANTHROPIC = "claude-haiku-4-5-20251001";
 
+// DeepSeek repeats itself far more than Claude — verbatim duplicated paragraphs
+// and re-stated choice menus. A frequency penalty discourages reusing the same
+// tokens/lines; a light presence penalty nudges it to move on rather than loop.
+const FREQUENCY_PENALTY = 0.5;
+const PRESENCE_PENALTY = 0.3;
+
 export function isDeepSeekModel(model: string): boolean {
   return model.startsWith("deepseek");
 }
@@ -157,6 +163,8 @@ export async function deepseekChat(params: {
   const body: Record<string, unknown> = {
     model: params.model,
     max_tokens: params.maxTokens,
+    frequency_penalty: FREQUENCY_PENALTY,
+    presence_penalty: PRESENCE_PENALTY,
     messages: [
       { role: "system", content: systemToString(params.system) },
       ...messagesToOpenAI(params.messages),
@@ -251,6 +259,8 @@ export async function deepseekChatStream(params: {
   const body: Record<string, unknown> = {
     model: params.model,
     max_tokens: params.maxTokens,
+    frequency_penalty: FREQUENCY_PENALTY,
+    presence_penalty: PRESENCE_PENALTY,
     stream: true,
     stream_options: { include_usage: true },
     messages: [

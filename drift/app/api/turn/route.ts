@@ -139,7 +139,9 @@ export async function POST(req: NextRequest) {
           stopReason: result.telemetry.stopReason,
           fellBack: result.telemetry.fellBack,
           systemChars: result.telemetry.systemChars,
-          prompt: playerText,
+          // Full request fed to the model (system + context + history + action),
+          // so the admin audit shows exactly what the API saw.
+          prompt: result.promptDump,
           response: result.narration,
         });
 

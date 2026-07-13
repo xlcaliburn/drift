@@ -13,7 +13,7 @@ Built from `../IMPLEMENTATION.md`. Faithful port of `../vess-karo-save_1.md`.
 |---|---|
 | M0 Scaffold | ✅ |
 | M1 Schemas + rules content + DB schema | ✅ |
-| M2 Pure engine + 87 passing tests | ✅ |
+| M2 Pure engine + 93 passing tests | ✅ |
 | M3 Save import (Zod-validated seed) | ✅ |
 | M4 Narrator loop (tools, prompt cache, summarizer) | ✅ |
 | M5 Play UI (chat, sheet, ship, clocks, dice log) | ✅ |
