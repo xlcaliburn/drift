@@ -6,8 +6,8 @@ import { tools } from "./tools";
 import { buildSystem, buildContextSlice, retrieveEntities } from "./promptBuilder";
 import { TurnRuntime } from "./engineBridge";
 import { deepseekChat, deepseekChatStream, deepseekAvailable, isDeepSeekModel, resolveModel } from "./deepseek";
-import { graduatedTutorialThisTurn } from "@/shared/tutorial";
-import { stripInlineMenu } from "@/shared/narration";
+import { graduatedTutorialThisTurn, inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
+import { parseInlineMenu } from "@/shared/narration";
 
 export interface TurnInput {
   state: CampaignState;
@@ -457,12 +457,20 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
     newMessages.push(toolMsg);
   }
 
-  let narration = narrationParts.join("\n\n").trim();
-  // Cut any inline choice menu (and the multi-beat overrun after it) DeepSeek
-  // wrote into the prose — offer_choices is the real menu. Then, keeping the 450
-  // cap, trim a genuine mid-word max_tokens cutoff to its last complete sentence.
-  narration = stripInlineMenu(narration);
+  // Cut any inline choice menu (and the multi-beat overrun after it) DeepSeek wrote
+  // into the prose, keeping ONE clean beat. Then, keeping the 450 cap, trim a genuine
+  // mid-word max_tokens cutoff to its last complete sentence.
+  const parsed = parseInlineMenu(narrationParts.join("\n\n").trim());
+  let narration = parsed.narration;
   if (lastStopReason === "max_tokens") narration = trimToLastSentence(narration);
+
+  // Choice precedence: the offer_choices tool wins; otherwise reuse the options the
+  // model wrote inline (cleaned + tutorial-capped) so the buttons match THIS beat.
+  // Only if there's neither does the turn route fall back to generic thread choices.
+  let choices = runtime.choices;
+  if (choices.length === 0 && parsed.choices.length) {
+    choices = parsed.choices.slice(0, inTutorial(input.state) ? TUTORIAL_CHOICE_COUNT : 4);
+  }
 
   // For multi-round turns, capture the full round-by-round exchange for the audit
   // (single-round turns are just the narration, already shown as the response).
@@ -475,7 +483,7 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
     state: runtime.state,
     events: runtime.events,
     worldEvents: runtime.worldEvents,
-    choices: runtime.choices,
+    choices,
     sceneEnded: runtime.sceneEndReport !== null,
     focusIds: retrieved.namedNpcIds,
     // input.state is the pre-turn snapshot; runtime.state carries this turn's
