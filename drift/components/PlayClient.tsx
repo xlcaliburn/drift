@@ -6,6 +6,7 @@ import type { CampaignState } from "@/shared/schemas";
 import type { ChatEntry } from "@/shared/chat";
 import { buildOpeningRecap, buildOpeningChoices } from "@/shared/recap";
 import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
+import { stripInlineMenu } from "@/shared/narration";
 import Sidebar from "./Sidebar";
 
 /** On load, show only the tail of the transcript — from the Nth-most-recent
@@ -134,7 +135,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             streamed += evt.text ?? "";
             setStreamingText(streamed);
           } else if (evt.type === "done") {
-            setChat((c) => [...c, { role: "dm", text: evt.narration || streamed || "…" }]);
+            setChat((c) => [...c, { role: "dm", text: evt.narration || stripInlineMenu(streamed) || "…" }]);
             if (evt.state) setState(evt.state);
             setChoices(Array.isArray(evt.choices) ? evt.choices : []);
             if (evt.sceneEnded) {
@@ -153,7 +154,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
       }
       // Stream closed without a done/error frame (e.g. dropped connection).
       if (!finished && streamed) {
-        setChat((c) => [...c, { role: "dm", text: streamed }]);
+        setChat((c) => [...c, { role: "dm", text: stripInlineMenu(streamed) }]);
       }
     } catch {
       setChat((c) => [...c, { role: "system", text: "⚠ request failed" }]);
@@ -303,7 +304,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             {streamingText !== null && streamingText.length > 0 && (
               <div>
                 <div className="inline-block max-w-[85%] whitespace-pre-wrap rounded-2xl bg-panel px-4 py-3 text-[17px] leading-relaxed text-neutral-100">
-                  {streamingText}
+                  {stripInlineMenu(streamingText)}
                   <span className="ml-0.5 inline-block animate-pulse text-accent">▍</span>
                 </div>
               </div>

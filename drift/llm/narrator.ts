@@ -7,6 +7,7 @@ import { buildSystem, buildContextSlice, retrieveEntities } from "./promptBuilde
 import { TurnRuntime } from "./engineBridge";
 import { deepseekChat, deepseekChatStream, deepseekAvailable, isDeepSeekModel, resolveModel } from "./deepseek";
 import { graduatedTutorialThisTurn } from "@/shared/tutorial";
+import { stripInlineMenu } from "@/shared/narration";
 
 export interface TurnInput {
   state: CampaignState;
@@ -457,9 +458,10 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
   }
 
   let narration = narrationParts.join("\n\n").trim();
-  // Keep the 450 cap: a duplicated response is regenerated above; a genuine length
-  // overrun just gets trimmed to its last complete sentence so it never ends
-  // mid-word.
+  // Cut any inline choice menu (and the multi-beat overrun after it) DeepSeek
+  // wrote into the prose — offer_choices is the real menu. Then, keeping the 450
+  // cap, trim a genuine mid-word max_tokens cutoff to its last complete sentence.
+  narration = stripInlineMenu(narration);
   if (lastStopReason === "max_tokens") narration = trimToLastSentence(narration);
 
   // For multi-round turns, capture the full round-by-round exchange for the audit
