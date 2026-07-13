@@ -13,13 +13,13 @@ Built from `../IMPLEMENTATION.md`. Faithful port of `../vess-karo-save_1.md`.
 |---|---|
 | M0 Scaffold | ✅ |
 | M1 Schemas + rules content + DB schema | ✅ |
-| M2 Pure engine + 64 passing tests | ✅ |
+| M2 Pure engine + 87 passing tests | ✅ |
 | M3 Save import (Zod-validated seed) | ✅ |
 | M4 Narrator loop (tools, prompt cache, summarizer) | ✅ |
 | M5 Play UI (chat, sheet, ship, clocks, dice log) | ✅ |
 | M6 Persistence + Google auth + user/admin system + budgets | ✅ |
-| M7 Durable transcript/dice log (snapshots, export) | ⏳ next |
-| M8 Retrieval tuning | ⏳ ongoing |
+| M7 Durable transcript/dice log (runtime snapshot, restore on reload) | ✅ |
+| M8 Retrieval tuning (scored entity/thread retrieval + carried focus) | ✅ |
 | M9 Multiplayer spillover | seams in place (`world_events`, `log_world_event`) |
 
 ## Quick start

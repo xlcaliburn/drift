@@ -108,14 +108,16 @@ DB migrations run directly via `apply_migration` to project `mgsogqnrpvoblqxkfgg
 
 ## Next build phase — shared-world runtime & world systems
 
-Persistence + auth + budgets + **durable transcripts (M7)** are done. Remaining, in
-rough order:
-1. **M8 — retrieval tuning.** Entity retrieval in `promptBuilder.retrieveEntities`
-   is naive keyword matching; tune what NPCs/threads get pulled into context so the
-   narrator "remembers" the right things.
-2. **Shared-world runtime** (see below) — dossiers, ledgers, cross-campaign reads.
-3. **World systems** — the exploration/artifacts/consequence-web design in
+Persistence + auth + budgets + **durable transcripts (M7)** + **retrieval tuning
+(M8)** are done. Remaining, in rough order:
+1. **Shared-world runtime** (see below) — dossiers, ledgers, cross-campaign reads.
+2. **World systems** — the exploration/artifacts/consequence-web design in
    `WORLD_SYSTEMS.md` (artifact vertical slice first).
+
+M8 note: `retrieveEntities` now scores NPCs (focus/named/location/faction) and
+threads (entityRefs/title-overlap/objective floor), capped for lean context, with
+`focusIds` carrying named entities forward one turn for continuity (see
+`llm/retrieval.test.ts`).
 
 Small deferred items: optimistic-lock guard on `campaign_runtime` (`updated_at` is
 written but not checked), and re-rendering the persisted dice log on reload.

@@ -117,7 +117,8 @@ export async function POST(req: NextRequest) {
           // Full display transcript is kept so a browser refresh rehydrates the chat.
           transcript: [...session.transcript, ...transcriptAdds].slice(-400),
           log: [...session.log, ...result.events].slice(-500),
-          focusIds: session.focusIds,
+          // Carry the entities named this turn into next turn's retrieval focus.
+          focusIds: result.focusIds,
         };
         setSession(campaignId, updatedSession);
 

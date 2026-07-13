@@ -3,7 +3,7 @@ import type { CampaignState } from "@/shared/schemas";
 import type { RNG } from "@/engine";
 import { liveRng, type EngineEvent } from "@/engine";
 import { tools } from "./tools";
-import { buildSystem, buildContextSlice } from "./promptBuilder";
+import { buildSystem, buildContextSlice, retrieveEntities } from "./promptBuilder";
 import { TurnRuntime } from "./engineBridge";
 import { deepseekChat, deepseekChatStream, deepseekAvailable, isDeepSeekModel, resolveModel } from "./deepseek";
 import { graduatedTutorialThisTurn } from "@/shared/tutorial";
@@ -32,6 +32,9 @@ export interface TurnResult {
   worldEvents: TurnRuntime["worldEvents"];
   choices: string[];
   sceneEnded: boolean;
+  /** Entity ids the player named this turn — carried into the next turn's context
+   *  as `focusIds` for short-term continuity (see retrieveEntities). */
+  focusIds: string[];
   /** True on the one turn the tutorial ends (3rd quest resolved) — drives the
    *  one-time "training wheels are off" transition beat. */
   tutorialGraduated: boolean;
@@ -219,7 +222,8 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
   const runtime = new TurnRuntime(input.state, input.rng ?? liveRng);
 
   const system = buildSystem(input.state);
-  const contextSlice = buildContextSlice(input.state, input.playerText, input.focusIds);
+  const retrieved = retrieveEntities(input.state, input.playerText, input.focusIds);
+  const contextSlice = buildContextSlice(input.state, input.playerText, input.focusIds, retrieved);
 
   const messages: Anthropic.MessageParam[] = [
     ...sanitizeHistory(input.history),
@@ -369,6 +373,7 @@ export async function runTurn(input: TurnInput): Promise<TurnResult> {
     worldEvents: runtime.worldEvents,
     choices: runtime.choices,
     sceneEnded: runtime.sceneEndReport !== null,
+    focusIds: retrieved.namedNpcIds,
     // input.state is the pre-turn snapshot; runtime.state carries this turn's
     // thread resolutions. The crossing to the target count happens on one turn only.
     tutorialGraduated: graduatedTutorialThisTurn(input.state, runtime.state),

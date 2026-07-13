@@ -47,20 +47,122 @@ export function buildSystem(state: CampaignState): Anthropic.TextBlockParam[] {
   ];
 }
 
-/** Naive entity retrieval: which NPCs/threads does the player's message touch? */
+/** How many entities to surface per turn — kept small so context (and cost) stays
+ *  flat regardless of how large the world grows. */
+const MAX_NPCS = 5;
+const MAX_THREADS = 4;
+
+const STOPWORDS = new Set([
+  "the", "and", "for", "with", "your", "you", "that", "this", "from", "into",
+  "onto", "who", "what", "where", "when", "them", "their", "there", "here",
+  "about", "over", "off", "out", "get", "got", "let", "she", "him", "her", "his",
+]);
+
+/** Significant lowercase word tokens (length ≥ 3, non-stopword) for keyword overlap. */
+function tokenize(s: string): string[] {
+  return (s.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(
+    (w) => w.length >= 3 && !STOPWORDS.has(w),
+  );
+}
+
+/** An NPC whose status marks them out of play (dead/gone/…) shouldn't be pulled in. */
+function npcIsGone(status?: string): boolean {
+  return !!status && /\b(dead|gone|killed|removed|inactive|departed|left)\b/i.test(status);
+}
+
+/**
+ * Entity retrieval: which NPCs and threads should this turn's context include?
+ *
+ * Scored keyword/entity matching (no vector DB — overkill at this scale). Signals,
+ * strongest first: carried focus from the last scene, the player naming an entity
+ * (full name or a name token, so "Ilyana" matches "Ilyana Vance"), NPCs physically
+ * at the current location, factions/locations named in the text, and the player's
+ * own faction. Threads score on entityRefs pointing at a surfaced entity, title
+ * keyword overlap, and a low always-on floor for the current objective threads so
+ * the narrator never loses the plot on a vague action. Results are capped so the
+ * context slice stays lean.
+ */
 export function retrieveEntities(state: CampaignState, playerText: string, focusIds: string[] = []) {
   const text = playerText.toLowerCase();
-  const npcs = state.npcs.filter(
-    (n) => focusIds.includes(n.id) || text.includes(n.name.toLowerCase()),
+  const textTokens = new Set(tokenize(playerText));
+  const pc = state.characters.find((c) => c.kind === "pc");
+  const currentLoc = state.campaign.currentLocationId;
+  const pcFactionId = pc?.parentFactionId;
+
+  // Factions / locations the player named this turn → scope NPCs and threads to them.
+  const mentionedFactionIds = new Set(
+    state.factions.filter((f) => f.name && text.includes(f.name.toLowerCase())).map((f) => f.id),
   );
-  const npcFactionIds = new Set(npcs.map((n) => n.factionId).filter(Boolean));
-  const threads = state.threads.filter(
-    (t) =>
-      t.status === "active" &&
-      (t.entityRefs.some((r) => npcs.some((n) => n.id === r) || focusIds.includes(r)) ||
-        text.includes(t.title.toLowerCase().split(":")[0])),
+  const mentionedLocationIds = new Set(
+    state.locations.filter((l) => l.name && text.includes(l.name.toLowerCase())).map((l) => l.id),
   );
-  return { npcs, threads, npcFactionIds };
+
+  const npcScored = state.npcs
+    .filter((n) => !npcIsGone(n.status))
+    .map((n) => {
+      let score = 0;
+      let named = false; // player typed this NPC's name/handle this turn
+      const nameLc = n.name.toLowerCase();
+      if (focusIds.includes(n.id)) score += 100;
+      if (text.includes(nameLc)) {
+        score += 60;
+        named = true;
+      } else {
+        const parts = nameLc.match(/[a-z0-9]+/g) ?? [];
+        if (parts.some((p) => p.length >= 3 && textTokens.has(p))) {
+          score += 40;
+          named = true;
+        }
+      }
+      if (n.locationId && n.locationId === currentLoc) score += 25; // physically present
+      if (n.locationId && mentionedLocationIds.has(n.locationId)) score += 20;
+      if (n.factionId && mentionedFactionIds.has(n.factionId)) score += 20;
+      if (n.factionId && n.factionId === pcFactionId) score += 8;
+      return { n, score, named };
+    });
+
+  const npcs = npcScored
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_NPCS)
+    .map((x) => x.n);
+
+  // Entities the player explicitly named this turn, carried forward as next turn's
+  // `focusIds` for short-term continuity (e.g. "I nod" right after naming someone).
+  // Named-only, so it can't self-reinforce into an eternal pin — a name has to be
+  // typed again to renew focus; otherwise it decays after one turn of grace.
+  const namedNpcIds = npcScored.filter((x) => x.named).map((x) => x.n.id);
+
+  const npcIds = new Set(npcs.map((n) => n.id));
+  const selectedRefs = new Set<string>([
+    ...focusIds,
+    ...npcIds,
+    ...mentionedFactionIds,
+    ...mentionedLocationIds,
+    ...(pcFactionId ? [pcFactionId] : []),
+  ]);
+  const starterThreadIds = new Set([`th-start-${state.campaign.id}`, shipThreadId(state.campaign.id)]);
+
+  const active = state.threads.filter((t) => t.status === "active");
+  let threads = active
+    .map((t) => {
+      let score = 0;
+      if (t.entityRefs.some((r) => selectedRefs.has(r))) score += 60;
+      const overlap = tokenize(t.title).filter((w) => textTokens.has(w)).length;
+      score += overlap * 25;
+      if (starterThreadIds.has(t.id)) score += 10; // current objective: low always-on floor
+      return { t, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_THREADS)
+    .map((x) => x.t);
+
+  // Never leave the narrator with zero plot: if nothing scored, fall back to the
+  // most recent active threads so the current objective is always in context.
+  if (threads.length === 0) threads = active.slice(0, 2);
+
+  return { npcs, threads, namedNpcIds };
 }
 
 /**
@@ -68,9 +170,14 @@ export function retrieveEntities(state: CampaignState, playerText: string, focus
  * active threads, party vitals, ship state, and any clock near a milestone.
  * This is the block that keeps token cost flat regardless of campaign length.
  */
-export function buildContextSlice(state: CampaignState, playerText: string, focusIds: string[] = []): string {
+export function buildContextSlice(
+  state: CampaignState,
+  playerText: string,
+  focusIds: string[] = [],
+  retrieved?: { npcs: CampaignState["npcs"]; threads: CampaignState["threads"] },
+): string {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
-  const { npcs, threads } = retrieveEntities(state, playerText, focusIds);
+  const { npcs, threads } = retrieved ?? retrieveEntities(state, playerText, focusIds);
 
   const pc = state.characters.find((c) => c.kind === "pc");
   const party = state.characters.filter((c) => c.kind === "party");

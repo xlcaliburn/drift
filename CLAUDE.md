@@ -51,11 +51,15 @@ budgets (default 2M tokens / $5), and **durable play sessions** — transcript, 
 log, and narrator history persist to `campaign_runtime` and restore on cold load
 (migration 006). Full milestone table + resume detail: **`STATUS.md`**.
 
-**Next up:** M8 retrieval tuning (naive keyword entity match in `promptBuilder`),
-the shared-world runtime (dossiers / ledgers / cross-campaign reads), or the
-`WORLD_SYSTEMS.md` artifact vertical slice. Small deferred items: optimistic-lock
-guard on `campaign_runtime` (`updated_at` is written but not yet checked), and
-re-rendering the persisted dice log on reload.
+**M8 retrieval tuning done:** `promptBuilder.retrieveEntities` now scores NPCs
+(focus > named > location-present > faction) and threads (entityRefs > title
+overlap > objective floor), capped and tested; `focusIds` carries entities the
+player *named* into the next turn for short-term continuity (no self-pin).
+
+**Next up:** the shared-world runtime (dossiers / ledgers / cross-campaign reads)
+or the `WORLD_SYSTEMS.md` artifact vertical slice. Small deferred items:
+optimistic-lock guard on `campaign_runtime` (`updated_at` written but not checked),
+and re-rendering the persisted dice log on reload.
 
 ## Locked decisions (don't re-litigate)
 
