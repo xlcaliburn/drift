@@ -195,7 +195,10 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             } else {
               setChoices(normalizeChoices(evt.choices));
               if (evt.sceneEnded) {
-                setChat((c) => [...c, { role: "system", text: "— scene ended · checklist applied —" }]);
+                setChat((c) => [
+                  ...c,
+                  { role: "system", text: "— scene ended · time and pay settled · pick your next move below —" },
+                ]);
               }
             }
             // One-time "training wheels are off" beat when the tutorial just ended.

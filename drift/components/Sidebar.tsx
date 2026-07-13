@@ -261,18 +261,17 @@ function StatusTab({
               </span>{" "}
               {c.ac}
               {c.credits !== undefined && ` · ¢${c.credits}`}
-              {typeof c.stims === "number" && ` · ${c.stims} stims`}
               {c.fragile && <span className="text-bad"> · FRAGILE</span>}
               {cond && <span className={`font-semibold ${cond.className}`}> · {cond.text}</span>}
             </div>
 
-            {weapons.length > 0 && (
-              <SheetSection label="Weapons">
+            {(weapons.length > 0 || inventory.length > 0 || c.stims > 0) && (
+              <SheetSection label="Equipment">
                 <div className="space-y-0.5">
                   {weapons.map((g, i) => {
                     const dry = g.rounds === 0;
                     return (
-                      <div key={i} className="flex justify-between gap-2 text-[12px]" title={g.detail}>
+                      <div key={`w${i}`} className="flex justify-between gap-2 text-[12px]" title={g.detail}>
                         <span className="text-neutral-200">{g.name}</span>
                         <span className="tabular-nums text-neutral-500">
                           {g.damage}
@@ -286,23 +285,21 @@ function StatusTab({
                       </div>
                     );
                   })}
-                </div>
-              </SheetSection>
-            )}
-
-            {inventory.length > 0 && (
-              <SheetSection label="Inventory">
-                <div className="flex flex-wrap gap-1">
                   {inventory.map((g, i) => (
-                    <span
-                      key={i}
-                      className="rounded border border-edge bg-ink/40 px-1.5 py-0.5 text-[11px] text-neutral-300"
-                      title={g.detail}
-                    >
-                      {g.name}
-                      {g.qty && g.qty > 1 ? <span className="text-neutral-500"> ×{g.qty}</span> : null}
-                    </span>
+                    <div key={`i${i}`} className="flex justify-between gap-2 text-[12px]" title={g.detail}>
+                      <span className="text-neutral-200">
+                        {g.name}
+                        {g.qty && g.qty > 1 ? <span className="text-neutral-500"> ×{g.qty}</span> : null}
+                      </span>
+                      {g.acBonus ? <span className="tabular-nums text-neutral-600">+{g.acBonus} AC</span> : null}
+                    </div>
                   ))}
+                  {c.stims > 0 && (
+                    <div className="flex justify-between gap-2 text-[12px]">
+                      <span className="text-neutral-200">Stim ×{c.stims}</span>
+                      <span className="tabular-nums text-neutral-600">heal 1d6+2</span>
+                    </div>
+                  )}
                 </div>
               </SheetSection>
             )}

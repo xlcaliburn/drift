@@ -57,6 +57,22 @@ describe("rollCheck", () => {
     expect(r.breakdown).toBe("piloting: d20(14) +8 = 22 vs DC 15 → success");
   });
 
+  it("natural 20 auto-succeeds even vs an impossible DC (critical)", () => {
+    const r = rollCheck({ character: vess, skill: "perception", dc: 30 }, scriptedRng([20]));
+    expect(r.critical).toBe(true);
+    expect(r.criticalFailure).toBe(false);
+    expect(r.outcome).toBe("success");
+    expect(r.breakdown).toContain("[CRIT]");
+  });
+
+  it("natural 1 auto-fails even with a big modifier (fumble)", () => {
+    const r = rollCheck({ character: vess, skill: "piloting", dc: 5 }, scriptedRng([1]));
+    expect(r.criticalFailure).toBe(true);
+    expect(r.critical).toBe(false);
+    expect(r.outcome).toBe("failure"); // 1 + 8 = 9 ≥ 5, but a nat 1 always fails
+    expect(r.breakdown).toContain("[FUMBLE]");
+  });
+
   it("applies ship DC modifier (racing thrusters -2 to DC)", () => {
     const rng = scriptedRng([5]);
     // effective DC 15 - 2 = 13; total 5+8=13 -> success

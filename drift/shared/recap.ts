@@ -37,12 +37,12 @@ function isFreshStart(state: CampaignState): boolean {
  */
 export function buildOpeningRecap(state: CampaignState): string {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
-  const pc = state.characters.find((c) => c.kind === "pc");
-  const ship = state.ship;
   const active = state.threads.filter((t) => t.status === "active");
 
+  // Kept deliberately short — set the scene, say where you are, point at the job,
+  // then get out of the way. Concrete moves are the clickable choices below; ship
+  // and credits live in the sidebar, so they're not repeated here.
   const lines: string[] = [];
-  lines.push("WHERE THINGS STAND");
 
   if (state.campaign.situation) lines.push(state.campaign.situation);
 
@@ -51,26 +51,12 @@ export function buildOpeningRecap(state: CampaignState): string {
     lines.push(`You're at ${loc.name}${desc}.`);
   }
 
-  if (ship) {
-    const critical = ship.hp / ship.maxHp < 0.34 ? " (critical)" : "";
-    const credits = pc?.credits !== undefined ? `¢${pc.credits} on hand · ` : "";
-    const ownership = shipIsOwned(state) ? "yours" : "on loan — not yet yours";
-    lines.push(`${ship.name}: ${ship.hp}/${ship.maxHp} hull${critical} · ${credits}${ownership}.`);
-  }
-
   if (active.length) {
-    const bullets = active.slice(0, 6).map((t) => `• ${t.title}`);
-    lines.push(["Open threads:", ...bullets].join("\n"));
-  }
-
-  // For a brand-new character, spell out concrete opening moves so the first
-  // screen is a set of handholds, not a blank "what do you want to do?".
-  const opening = openingFor(pc?.parentFactionId);
-  if (opening && isFreshStart(state)) {
-    const moves = opening.firstMoves.map((m) => `• ${m}`);
-    lines.push([`Some ways to start (or do your own):`, ...moves].join("\n"));
-  } else {
-    lines.push(`What does ${pc?.name ?? "you"} do?`);
+    lines.push(
+      isFreshStart(state)
+        ? `First job: ${active[0].title}. Pick a move below — or do your own.`
+        : `Open: ${active.slice(0, 3).map((t) => t.title).join(" · ")}.`,
+    );
   }
   return lines.join("\n\n");
 }

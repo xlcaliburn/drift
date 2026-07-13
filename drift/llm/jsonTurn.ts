@@ -94,16 +94,20 @@ type RollResult = {
   breakdown?: string;
   tick?: string;
   outcome?: string;
+  critical?: boolean;
+  criticalFailure?: boolean;
   damage?: number;
   downed?: boolean;
   died?: boolean;
   error?: string;
 };
 
-/** Player-facing lines (dice → tick → damage), pre-prefixed for display. */
+/** Player-facing lines (dice → crit → tick → damage), pre-prefixed for display. */
 function rollDisplayLines(res: RollResult): string[] {
   const lines: string[] = [];
   if (res.breakdown) lines.push(`🎲 ${res.breakdown}`);
+  if (res.criticalFailure) lines.push("💥 CRITICAL FAILURE — a natural 1");
+  else if (res.critical) lines.push("✨ CRITICAL SUCCESS — a natural 20");
   if (res.tick) lines.push(`⬆ ${res.tick}`);
   if (res.damage) {
     lines.push(`💥 Took ${res.damage} damage${res.died ? " — KILLED" : res.downed ? " — DOWNED" : ""}`);
@@ -113,10 +117,15 @@ function rollDisplayLines(res: RollResult): string[] {
 
 /** One compact line summarizing a roll for the model's context. */
 function engineContextLine(res: RollResult): string {
+  const crit = res.criticalFailure
+    ? " · CRITICAL FAILURE (nat 1 — make it cost)"
+    : res.critical
+      ? " · CRITICAL SUCCESS (nat 20 — make it shine)"
+      : "";
   const dmg = res.damage
     ? ` · ${res.damage} damage${res.died ? " (KILLED)" : res.downed ? " (DOWNED)" : ""}`
     : "";
-  return `ENGINE RESULT: ${res.breakdown ?? ""}${res.tick ? ` · ${res.tick}` : ""}${dmg}`;
+  return `ENGINE RESULT: ${res.breakdown ?? ""}${crit}${res.tick ? ` · ${res.tick}` : ""}${dmg}`;
 }
 
 export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult> {

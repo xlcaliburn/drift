@@ -132,8 +132,11 @@ export async function POST(req: NextRequest) {
           ? []
           : resultCombat?.active
             ? combatActions(resultCombat, resultPc ? usableConsumables(resultPc, resultCombat.scale) : [], burstReady)
-            : normalized.length === 0 && !result.sceneEnded
-              ? buildFallbackChoices(result.state).map((label) => ({ label }))
+            : normalized.length === 0
+              ? // No choices from the model (incl. right after a scene ends) → give
+                // the player concrete next moves so they're never left with a
+                // dead end. Derived from live state, free (no tokens).
+                buildFallbackChoices(result.state).map((label) => ({ label }))
               : normalized;
 
         // Engine display lines (dice/ticks/damage/payment/combat) — the handlers
@@ -149,7 +152,7 @@ export async function POST(req: NextRequest) {
           ...(pcDied
             ? [{ role: "system" as const, text: `— ${resultPc!.name} is dead · this character's story ends here —` }]
             : result.sceneEnded
-              ? [{ role: "system" as const, text: "— scene ended · checklist applied —" }]
+              ? [{ role: "system" as const, text: "— scene ended · time and pay settled · pick your next move below —" }]
               : []),
           // One-time beat when the tutorial ends this turn. Persisted here so a
           // later refresh rehydrates it, and also emitted live in the done payload.

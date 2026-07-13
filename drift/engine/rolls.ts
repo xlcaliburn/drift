@@ -25,7 +25,10 @@ export interface CheckResult {
   total: number;
   dc: number;
   outcome: "success" | "failure";
+  /** Natural 20 — auto-success + a stronger result. */
   critical: boolean;
+  /** Natural 1 — auto-failure + a worse result (fumble). */
+  criticalFailure: boolean;
   tickEligible: boolean;
   breakdown: string;
   event: EngineEvent;
@@ -75,12 +78,21 @@ export function rollCheck(input: CheckInput, rng: RNG): CheckResult {
   const dc = input.dc + (input.dcModifier ?? 0);
   const d20 = input.forceNat20 ? 20 : rng.int(1, 20);
   const critical = d20 === 20;
+  const criticalFailure = d20 === 1 && !input.forceNat20;
   const total = d20 + modifier;
-  const outcome = critical || total >= dc ? "success" : "failure";
+  // Naturals are decisive: a 20 always succeeds, a 1 always fails, regardless of
+  // the modifier — that's what makes them worth calling out.
+  const outcome = critical ? "success" : criticalFailure ? "failure" : total >= dc ? "success" : "failure";
   const tickEligible = stakes && input.dc >= economy.tickRule.minDcForTick;
 
   const sign = modifier >= 0 ? `+${modifier}` : `${modifier}`;
-  const sig = input.forceNat20 ? " [SIGNATURE]" : critical ? " [CRIT]" : "";
+  const sig = input.forceNat20
+    ? " [SIGNATURE]"
+    : critical
+      ? " [CRIT]"
+      : criticalFailure
+        ? " [FUMBLE]"
+        : "";
   const breakdown = `${skill}: d20(${d20})${sig} ${sign} = ${total} vs DC ${dc} → ${outcome}`;
 
   return {
@@ -90,6 +102,7 @@ export function rollCheck(input: CheckInput, rng: RNG): CheckResult {
     dc,
     outcome,
     critical,
+    criticalFailure,
     tickEligible,
     breakdown,
     event: {

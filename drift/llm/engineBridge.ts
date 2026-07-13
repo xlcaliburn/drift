@@ -209,6 +209,8 @@ export class TurnRuntime {
       breakdown: res.breakdown,
       total: res.total,
       outcome: res.outcome,
+      critical: res.critical,
+      criticalFailure: res.criticalFailure,
       tickEligible: res.tickEligible,
       ...(tick ? { tick } : {}),
       ...(harm && harm.taken > 0
