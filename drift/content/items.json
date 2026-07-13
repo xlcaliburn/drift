@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "note": "Item catalog (ITEMS.md). Every mechanical item has an effect the ENGINE executes — the narrator never applies an effect. Prices in credits; slot = inventory slot cost; combat = usable as a combat action. Effect kinds: heal | aoe | autoFlee | autoCheck | restoreShield | healShip | reloadMissiles.",
+  "items": {
+    "stim": {
+      "name": "Stim", "type": "consumable", "scale": "personal", "slot": 1, "price": 30,
+      "combat": true, "verb": "Use", "effect": { "kind": "heal", "dice": "1d6+2" }
+    },
+    "medkit": {
+      "name": "Medkit", "type": "consumable", "scale": "personal", "slot": 1, "price": 75,
+      "combat": true, "verb": "Use", "effect": { "kind": "heal", "dice": "2d6+2", "clearsDowned": true }
+    },
+    "frag": {
+      "name": "Frag grenade", "type": "consumable", "scale": "personal", "slot": 1, "price": 60,
+      "combat": true, "verb": "Throw", "effect": { "kind": "aoe", "dice": "2d6" }
+    },
+    "smoke": {
+      "name": "Smoke charge", "type": "consumable", "scale": "personal", "slot": 1, "price": 45,
+      "combat": true, "verb": "Pop", "effect": { "kind": "autoFlee" }
+    },
+    "breach": {
+      "name": "Breach charge", "type": "consumable", "scale": "personal", "slot": 1, "price": 50,
+      "combat": false, "verb": "Use", "effect": { "kind": "autoCheck" }
+    },
+    "shieldCell": {
+      "name": "Shield cell", "type": "consumable", "scale": "ship", "slot": 1, "price": 90,
+      "combat": true, "verb": "Divert", "effect": { "kind": "restoreShield" }
+    },
+    "hullPatch": {
+      "name": "Hull patch kit", "type": "consumable", "scale": "ship", "slot": 1, "price": 80,
+      "combat": false, "verb": "Use", "effect": { "kind": "healShip", "dice": "1d6+2" }
+    },
+    "missileReload": {
+      "name": "Missile reload", "type": "consumable", "scale": "ship", "slot": 1, "price": 102,
+      "combat": false, "verb": "Load", "effect": { "kind": "reloadMissiles", "amount": 2 }
+    }
+  }
+}

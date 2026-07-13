@@ -4,6 +4,7 @@
  * CampaignState. Null when there is no fight. The engine owns every number here;
  * the narrator only voices results.
  */
+import type { UsableConsumable } from "./items";
 
 export type CombatTier = "T1" | "T2" | "T3";
 
@@ -41,10 +42,12 @@ export interface CombatState {
   fleeAttempts: number;
 }
 
-export type CombatActionType = "attack" | "aim" | "cover" | "stim" | "flee";
+export type CombatActionType = "attack" | "aim" | "cover" | "stim" | "flee" | "item";
 export interface CombatAction {
   type: CombatActionType;
   enemyId?: string;
+  /** For type "item": the catalog id of the consumable to use. */
+  itemId?: string;
 }
 /** How the round ended (or didn't). "disabled" is the ship-scale analog of
  *  "downed" — hull at 0, adrift, aftermath narrated (not instant death). */
@@ -62,10 +65,11 @@ export interface PlayerCombatant {
 }
 
 /** Engine-generated combat action chips for a round (shared so the client can
- *  rebuild them on reload). Kept here (types only) to avoid a server import. */
+ *  rebuild them on reload). Kept here (types only) to avoid a server import;
+ *  `consumables` is the pre-filtered held-item list from shared/items. */
 export function combatActions(
   combat: CombatState,
-  stims: number,
+  consumables: UsableConsumable[],
   burstReady = false,
 ): { label: string; combatAction: CombatAction }[] {
   const verb = combat.scale === "ship" ? "Fire on" : "Attack";
@@ -73,14 +77,19 @@ export function combatActions(
     label: `${verb} ${e.name} (${e.hp}/${e.maxHp})`,
     combatAction: { type: "attack", enemyId: e.id },
   }));
+  const itemChips = consumables.map((u) => ({
+    label: `${u.verb} ${u.name} (×${u.count})`,
+    combatAction: { type: "item" as const, itemId: u.itemId },
+  }));
   if (combat.scale === "ship") {
     actions.push({ label: "Evasive maneuvers (+AC)", combatAction: { type: "cover" } });
+    actions.push(...itemChips);
     actions.push({ label: burstReady ? "Burst-drive away" : "Break off and run", combatAction: { type: "flee" } });
     return actions;
   }
   actions.push({ label: "Take aim (+2 next hit)", combatAction: { type: "aim" } });
   actions.push({ label: "Take cover (+2 AC)", combatAction: { type: "cover" } });
-  if (stims > 0) actions.push({ label: `Use stim (${stims} left)`, combatAction: { type: "stim" } });
+  actions.push(...itemChips);
   actions.push({ label: "Flee", combatAction: { type: "flee" } });
   return actions;
 }

@@ -289,6 +289,7 @@ function StatusTab({
                       title={g.detail}
                     >
                       {g.name}
+                      {g.qty && g.qty > 1 ? <span className="text-neutral-500"> ×{g.qty}</span> : null}
                     </span>
                   ))}
                 </div>

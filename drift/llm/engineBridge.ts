@@ -24,6 +24,7 @@ import {
 } from "@/engine/combatEngine";
 import { fleeDC, threatLevel } from "@/shared/combat";
 import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
+import { catalogItem, itemCount } from "@/shared/items";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
 
@@ -144,6 +145,8 @@ export class TurnRuntime {
         return this.endScene(input);
       case "award_payout":
         return this.awardPayout(input);
+      case "use_item":
+        return this.useItem(String(input.itemId ?? ""), input.characterId ? String(input.characterId) : undefined);
       case "offer_choices":
         return this.offerChoices(input);
       case "dm_override":
@@ -566,6 +569,88 @@ export class TurnRuntime {
     return hp;
   }
 
+  /** Remove a named injury (e.g. medkit stabilising a Downed ally). */
+  private clearInjury(characterId: string, name: string) {
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((x) =>
+        x.id === characterId ? { ...x, injuries: (x.injuries ?? []).filter((i) => i.name !== name) } : x,
+      ),
+    };
+  }
+
+  /**
+   * Spend one of a catalog consumable: decrement a gear stack (`itemId`/`qty`),
+   * or fall back to the legacy `stims` counter (ITEMS.md IT-5). Returns whether
+   * anything was consumed. The catalog effect is applied by the caller.
+   */
+  private consumeItem(characterId: string, itemId: string): boolean {
+    const c = this.char(characterId);
+    if (!c) return false;
+    const gear = [...c.gear];
+    const idx = gear.findIndex((g) => g.itemId === itemId && (g.qty ?? 1) > 0);
+    if (idx >= 0) {
+      const q = (gear[idx].qty ?? 1) - 1;
+      if (q <= 0) gear.splice(idx, 1);
+      else gear[idx] = { ...gear[idx], qty: q };
+      this.state = {
+        ...this.state,
+        characters: this.state.characters.map((x) => (x.id === characterId ? { ...x, gear } : x)),
+      };
+      return true;
+    }
+    if (itemId === "stim" && c.stims > 0) {
+      this.state = {
+        ...this.state,
+        characters: this.state.characters.map((x) => (x.id === characterId ? { ...x, stims: x.stims - 1 } : x)),
+      };
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Use a consumable OUT of combat (in-combat use runs through the round
+   * resolvers). Validates possession, applies the catalog effect, consumes one,
+   * and returns a player-facing line. Combat-only effects (aoe/autoFlee/
+   * restoreShield) used here just flavor-narrate + consume.
+   */
+  useItem(itemId: string, characterId?: string): { line?: string; error?: string } {
+    const c = characterId ? this.char(characterId) : this.pc();
+    if (!c) return { error: "no character" };
+    const item = catalogItem(itemId);
+    if (!item) return { error: `unknown item: ${itemId}` };
+    if (itemCount(c, itemId) <= 0) return { error: `no ${item.name} left` };
+    const eff = item.effect;
+    let line = `${item.name} used.`;
+
+    if (eff?.kind === "heal") {
+      const healed = rollDamage(eff.dice ?? "1d6+2", this.rng);
+      const before = c.hp;
+      const after = this.applyHeal(c.id, healed);
+      if (eff.clearsDowned && after > 0) this.clearInjury(c.id, "Downed");
+      line = `🩹 ${item.name}: +${after - before} HP — ${before}→${after}.`;
+    } else if (eff?.kind === "healShip" && this.state.ship) {
+      const s = this.state.ship;
+      const healed = rollDamage(eff.dice ?? "1d6+2", this.rng);
+      const after = Math.min(s.maxHp, s.hp + healed);
+      this.state = { ...this.state, ship: { ...s, hp: after } };
+      line = `🔧 ${item.name}: +${after - s.hp} hull — ${s.hp}→${after}.`;
+    } else if (eff?.kind === "reloadMissiles" && this.state.ship) {
+      const s = this.state.ship;
+      const add = eff.amount ?? 2;
+      const weapons = s.weapons.map((w) => (w.type === "missile" ? { ...w, ammo: (w.ammo ?? 0) + add } : w));
+      this.state = { ...this.state, ship: { ...s, weapons } };
+      line = `🚀 ${item.name}: +${add} missiles.`;
+    } else if (eff?.kind === "restoreShield" && this.state.ship) {
+      this.state = { ...this.state, ship: { ...this.state.ship, shieldReady: true } };
+      line = `⛨ ${item.name} — shields restored.`;
+    }
+
+    this.consumeItem(c.id, itemId);
+    return { line };
+  }
+
   /** Derive the PC's personal-scale combat profile (best weapon, combat level). */
   private personalCombatant(): PlayerCombatant {
     const pc = this.pc()!;
@@ -687,21 +772,38 @@ export class TurnRuntime {
         aim = 0;
         lines.push("🛡 You take cover (+2 AC until you move).");
         break;
-      case "stim": {
+      case "stim":
+      case "item": {
         const pc = this.pc()!;
-        if (pc.stims > 0) {
-          const healed = rollDamage("1d6+2", this.rng);
-          const before = pc.hp;
-          const after = this.applyHeal(pc.id, healed);
-          this.state = {
-            ...this.state,
-            characters: this.state.characters.map((x) => (x.id === pc.id ? { ...x, stims: x.stims - 1 } : x)),
-          };
-          lines.push(`🩹 Stim: +${after - before} HP — ${before}→${after} (${pc.stims - 1} left).`);
-        } else {
-          lines.push("No stims left.");
+        const itemId = action.type === "stim" ? "stim" : action.itemId ?? "";
+        const item = catalogItem(itemId);
+        if (!item || itemCount(pc, itemId) <= 0) {
+          lines.push("Nothing to use.");
+          cover = 0;
+          break;
         }
-        cover = 0;
+        const eff = item.effect;
+        if (eff?.kind === "heal") {
+          const before = pc.hp;
+          const after = this.applyHeal(pc.id, rollDamage(eff.dice ?? "1d6+2", this.rng));
+          this.consumeItem(pc.id, itemId);
+          lines.push(`🩹 ${item.name}: +${after - before} HP — ${before}→${after}.`);
+          cover = 0;
+        } else if (eff?.kind === "aoe") {
+          const dmg = rollDamage(eff.dice ?? "2d6", this.rng);
+          enemies = enemies.map((e) => (e.hp > 0 ? { ...e, hp: Math.max(0, e.hp - dmg) } : e));
+          this.consumeItem(pc.id, itemId);
+          lines.push(`💥 ${item.name}: ${dmg} to every enemy.`);
+          aim = 0;
+          cover = 0;
+        } else if (eff?.kind === "autoFlee") {
+          this.consumeItem(pc.id, itemId);
+          lines.push(`🌫 ${item.name} — you break contact and slip clear.`);
+          return { combat: { ...combat, active: false }, lines, outcome: "escaped", loot: 0 };
+        } else {
+          lines.push(`${item.name} does nothing here.`);
+          cover = 0;
+        }
         break;
       }
       case "flee": {
@@ -877,6 +979,18 @@ export class TurnRuntime {
         evasive = true;
         lines.push("🛡 Evasive maneuvers — throwing off their targeting.");
         break;
+      case "item": {
+        const item = catalogItem(action.itemId ?? "");
+        if (item?.effect?.kind === "restoreShield" && itemCount(pc, item.id) > 0) {
+          this.state = { ...this.state, ship: { ...this.state.ship!, shieldReady: true } };
+          this.consumeItem(pc.id, item.id);
+          lines.push(`⛨ ${item.name} — shields back online.`);
+        } else {
+          lines.push("Nothing to use.");
+        }
+        evasive = false;
+        break;
+      }
       case "flee": {
         if (s.burstDriveReady) {
           lines.push("💨 Burst drive fires — you punch clear of the engagement.");

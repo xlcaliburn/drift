@@ -3,6 +3,7 @@ import type { CampaignState } from "@/shared/schemas";
 import { skillProgress } from "@/engine";
 import { skillReference } from "@/content";
 import { backgrounds, ambitions } from "@/content/creation";
+import { itemReference, allItems, itemCount } from "@/shared/items";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_DIRECTIVE, TUTORIAL_JSON_DIRECTIVE } from "@/shared/tutorial";
 
@@ -45,6 +46,7 @@ const DM_STYLE = `You are the DM of DRIFT, a brutal space-opera TTRPG. Voice and
 /** Static skill reference (name — what it covers), interpolated into the cached
  *  system prompt so the narrator picks the right skill. */
 const SKILL_REFERENCE = skillReference();
+const ITEM_REFERENCE = itemReference();
 
 const JSON_DM_STYLE = `You are the DM of DRIFT, a brutal space-opera TTRPG. The engine rolls all dice and tracks all numbers — you write the story and propose options as data.
 
@@ -59,6 +61,7 @@ Respond with ONE json object and nothing else:
   "roll": {"skill": "piloting", "dc": 13, "stakes": true, "failDamage": "2d6"},
   "danger": {"skill": "zeroG", "dc": 13, "damage": "1d6", "note": "plasma vents across the bay"},
   "combatStart": {"tier": "T2", "count": 2, "name": "Sable gunhand", "surprise": "none"},
+  "useItem": {"itemId": "medkit"},
   "payout": {"tier": "T1", "reason": "courier run delivered"},
   "worldEvent": {"headline": "..."},
   "sceneEnd": {"title": "...", "paying": true, "dockings": 1},
@@ -74,9 +77,11 @@ DC: 10 easy, 13 pressured, 15 hard, 18 severe. stakes=true only when failure gen
 4. "danger" is an UNAVOIDABLE hazard the player must survive THIS turn regardless of choice — the engine rolls their save (skill vs dc) and deals "damage" on failure. Use it for an environmental/incidental threat (an explosion, plasma, being shot at while doing something else).
 5. "roll" is ONLY for when the player's CURRENT typed action itself needs a check. If the message contains an ENGINE RESULT line, that roll already happened — narrate its outcome and do NOT request another.
 6. "combatStart" — a FIGHT against an armed opponent who will FIGHT BACK (springing an ambush on a gunhand, trading fire, a brawl with a resisting foe). This is the ONLY way to DAMAGE AN ENEMY and track their HP — the engine then runs the whole fight round by round; you just narrate. A "check" is for one-sided or non-combat risk (a lockpick, sneaking past, one shot at an unaware or helpless target). If the enemy can shoot back, it is combatStart, NOT a check with failDamage. Combat is rare — most tension resolves without it — but a real firefight is ALWAYS combatStart. tier = enemy strength (T1 mook / T2 professional / T3 elite), count 1-4, surprise = "enemy" (they ambush you), "player" (you get the drop), or "none". For a SHIP battle (dogfight in the black, a hostile hull opening fire) add scale:"ship" and shipClass ("scout" fast/fragile, "fighter" balanced, "gunship" shielded, "corvette" warship). Do NOT emit combatStart AND choices — the engine generates the combat actions.
-7. "payout" when a job/bounty/deal CONCLUDES and payment is due: T0 errand, T1 standard run, T2 professional (earned standing), T3 major score (rare). The ENGINE rolls the actual credits — never state amounts in narration, and never pay twice for one job. A successful negotiation check this turn pushes the roll toward the top of the band.
-8. "worldEvent" when the beat meaningfully shifts a faction's standing. "sceneEnd" when the scene genuinely wraps.
-9. Ground everything in the CURRENT SCENE block; don't contradict it.
+7. "useItem" when the player uses a consumable they HOLD, OUT of combat (drink a stim between fights, patch the hull at dock). The engine applies the effect and reports it — never narrate the heal/repair numbers yourself, and only use an item the CURRENT SCENE shows in their inventory. In a FIGHT, do NOT use useItem — consumables are engine-generated combat actions there. Valid itemIds:
+${ITEM_REFERENCE}
+8. "payout" when a job/bounty/deal CONCLUDES and payment is due: T0 errand, T1 standard run, T2 professional (earned standing), T3 major score (rare). The ENGINE rolls the actual credits — never state amounts in narration, and never pay twice for one job. A successful negotiation check this turn pushes the roll toward the top of the band.
+9. "worldEvent" when the beat meaningfully shifts a faction's standing. "sceneEnd" when the scene genuinely wraps.
+10. Ground everything in the CURRENT SCENE block; don't contradict it.
 
 EXAMPLE (check, non-combat) — player: "Slip past the dock guard while the crane cycles"
 {"narration":"You hug the container line, matching your steps to the crane's groan. The guard's lamp sweeps across the gap you just left — he lingers, listening.","choices":[{"label":"Freeze in the shadow until the lamp moves on","check":{"skill":"stealth","dc":13,"stakes":true}},{"label":"Slide under the maintenance walkway","check":{"skill":"zeroG","dc":15,"stakes":true}},{"label":"Step out and bluff a dockhand's greeting","check":{"skill":"deception","dc":13,"stakes":true}}]}
@@ -286,6 +291,16 @@ export function buildContextSlice(
   }
   const moralLine = pc?.moralCode ? `PC's line they won't cross: ${pc.moralCode}.` : "";
 
+  // Consumables the PC actually holds — so the narrator only offers useItem for
+  // items in hand (and knows what's available to spend between fights).
+  const held = pc
+    ? allItems()
+        .filter((i) => i.type === "consumable")
+        .map((i) => ({ name: i.name, n: itemCount(pc, i.id) }))
+        .filter((x) => x.n > 0)
+    : [];
+  const consumablesLine = held.length ? `PC consumables: ${held.map((h) => `${h.name} ×${h.n}`).join(", ")}.` : "";
+
   // Identity — the PC's past and their drive. Creation bakes these into gear and
   // backstory but they weren't re-fed at play time, so the narrator couldn't pull
   // on them. Surface background + ambition each turn as material for scenes, NPCs,
@@ -311,6 +326,7 @@ export function buildContextSlice(
     ``,
     `PC skills (id: ${pc?.id ?? "pc"}): ${pc ? pc.skills.map(skillProgress).join(" · ") : "—"}`,
     ...(identityLine ? [identityLine] : []),
+    ...(consumablesLine ? [consumablesLine] : []),
     ...(moralLine ? [moralLine] : []),
     `Party & PC vitals:`,
     ...state.characters.map((c) => `  ${vitals(c)} (id: ${c.id})`),

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runJsonTurn } from "@/llm/jsonTurn";
 import { runCombatTurn } from "@/llm/combatTurn";
 import { combatActions } from "@/shared/combat";
+import { usableConsumables } from "@/shared/items";
 import { getSession, setSession, persistSession } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
@@ -119,13 +120,13 @@ export async function POST(req: NextRequest) {
         // Combat owns the choices while active (engine-generated chips); otherwise
         // use the model's choices, falling back to generic actions if it gave none.
         const resultCombat = result.combat ?? null;
-        const pcStims = result.state.characters.find((c) => c.kind === "pc")?.stims ?? 0;
+        const resultPc = result.state.characters.find((c) => c.kind === "pc");
         const burstReady = !!result.state.ship?.burstDriveReady;
         const normalized: ChoiceOption[] = result.choices.map((c) =>
           typeof c === "string" ? { label: c } : c,
         );
         const choices: ChoiceOption[] = resultCombat?.active
-          ? combatActions(resultCombat, pcStims, burstReady)
+          ? combatActions(resultCombat, resultPc ? usableConsumables(resultPc, resultCombat.scale) : [], burstReady)
           : normalized.length === 0 && !result.sceneEnded
             ? buildFallbackChoices(result.state).map((label) => ({ label }))
             : normalized;

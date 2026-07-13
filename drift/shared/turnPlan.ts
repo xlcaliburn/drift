@@ -43,8 +43,10 @@ export type DangerSpec = z.infer<typeof DangerSpec>;
 
 /** A combat action carried by an engine-generated combat choice. */
 export const CombatActionSpec = z.object({
-  type: z.enum(["attack", "aim", "cover", "stim", "flee"]),
+  type: z.enum(["attack", "aim", "cover", "stim", "flee", "item"]),
   enemyId: optionalNullable(z.string()),
+  /** For type "item": catalog id of the consumable to use. */
+  itemId: optionalNullable(z.string()),
 });
 
 /** A clickable next action; `check` makes clicking it roll before narration;
@@ -86,6 +88,8 @@ export const TurnPlan = z.object({
   danger: optionalNullable(DangerSpec),
   /** This beat becomes a fight — the engine spawns enemies and takes over. */
   combatStart: optionalNullable(CombatStartSpec),
+  /** The player uses a consumable out of combat — the engine applies the effect. */
+  useItem: optionalNullable(z.object({ itemId: z.string().min(1) })),
   /** Job/bounty/deal concluded → the ENGINE rolls the credits inside the tier's
    *  payout band (ECONOMY.md — the model never sets amounts). */
   payout: optionalNullable(

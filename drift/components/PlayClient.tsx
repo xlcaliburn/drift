@@ -9,6 +9,7 @@ import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { stripInlineMenu } from "@/shared/narration";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import { combatActions, type CombatState } from "@/shared/combat";
+import { usableConsumables } from "@/shared/items";
 import Sidebar from "./Sidebar";
 
 /** Choices may arrive as plain strings (opening/fallback) or objects with an
@@ -85,9 +86,13 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
         // In a live fight, rebuild the engine's combat chips; otherwise opening choices.
         if (d.combat?.active) {
           setCombat(d.combat);
-          const stims = d.state.characters.find((c: { kind: string }) => c.kind === "pc")?.stims ?? 0;
+          const combatPc = d.state.characters.find((c: { kind: string }) => c.kind === "pc");
           const burstReady = !!d.state.ship?.burstDriveReady;
-          setChoices(d.combat.enemies ? combatActions(d.combat, stims, burstReady) : []);
+          setChoices(
+            d.combat.enemies
+              ? combatActions(d.combat, combatPc ? usableConsumables(combatPc, d.combat.scale) : [], burstReady)
+              : [],
+          );
         } else if (!restored.length) {
           setChoices(normalizeChoices(buildOpeningChoices(d.state)));
         }

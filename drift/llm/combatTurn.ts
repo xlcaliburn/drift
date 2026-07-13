@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { CampaignState } from "@/shared/schemas";
 import { liveRng, type RNG, type EngineEvent } from "@/engine";
 import { combatActions, type CombatState, type CombatAction, type CombatOutcome } from "@/shared/combat";
+import { usableConsumables } from "@/shared/items";
 import { TurnRuntime } from "./engineBridge";
 import { deepseekChat, deepseekChatStream, isDeepSeekModel, resolveModel } from "./deepseek";
 import { sanitizeHistory } from "./narrator";
@@ -74,7 +75,7 @@ export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnR
   void loot;
 
   const pc = runtime.state.characters.find((c) => c.kind === "pc");
-  const stims = pc?.stims ?? 0;
+  const consumables = pc ? usableConsumables(pc, nextCombat.scale) : [];
   const burstReady = !!runtime.state.ship?.burstDriveReady;
 
   // 2. Narrate the round from the engine results (model narrates only).
@@ -119,7 +120,7 @@ export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnR
   const narration = stripInlineMenu(raw.trim()) || status;
 
   const choices =
-    outcome === "continue" && nextCombat.active ? combatActions(nextCombat, stims, burstReady) : endChoices(outcome);
+    outcome === "continue" && nextCombat.active ? combatActions(nextCombat, consumables, burstReady) : endChoices(outcome);
 
   return {
     narration,

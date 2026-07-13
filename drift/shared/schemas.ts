@@ -51,6 +51,11 @@ export const GearItem = z.object({
   damage: z.string().optional(),
   rounds: z.number().int().optional(),
   acBonus: z.number().int().optional(),
+  /** Catalog id (content/items.json) when this gear is a known mechanical item;
+   *  absent on legacy freeform gear (ITEMS.md IT-1). */
+  itemId: z.string().optional(),
+  /** Stack size for consumables (e.g. "Stim ×3"); 1/absent for single items. */
+  qty: z.number().int().positive().optional(),
 });
 
 /**

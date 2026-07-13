@@ -346,6 +346,11 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     }) as { amount?: number; tier?: string; error?: string };
     if (res.amount) emit([`💰 Payment: +¢${res.amount} (${plan.payout.tier})`]);
   }
+  if (plan.useItem && pc) {
+    toolCalls.push("use_item");
+    const res = runtime.useItem(plan.useItem.itemId, pc.id) as { line?: string; error?: string };
+    if (res.line) emit([res.line]);
+  }
   if (plan.worldEvent) {
     toolCalls.push("log_world_event");
     runtime.execute("log_world_event", {
