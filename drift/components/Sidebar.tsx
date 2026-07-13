@@ -300,7 +300,7 @@ function StatusTab({
                 onClick={onDetails}
                 className="mt-2 w-full rounded border border-edge py-1 text-[11px] uppercase tracking-wide text-neutral-400 transition hover:border-accent hover:text-accent"
               >
-                Character details
+                More details
               </button>
             )}
           </div>
@@ -377,42 +377,12 @@ function TraitsTab({ state }: { state: CampaignState }) {
         </div>
       </SheetSection>
 
-      {(pc.background || pc.bias || pc.alignment || pc.ambition) && (
-        <SheetSection label="Traits">
-          <div className="space-y-0.5">
-            <TraitRow
-              k="Background"
-              v={bgLabel(pc.background)}
-              tip="Who you were before you started drifting — your opening gear, contacts, and reputation grew out of it."
-            />
-            <TraitRow
-              k="Focus"
-              v={pc.bias ? cap(pc.bias) : undefined}
-              tip="The lean you chose at creation — where your attribute and skill emphasis concentrated."
-            />
-            <TraitRow
-              k="Code"
-              v={pc.alignment ? cap(pc.alignment) : undefined}
-              tip="Your moral code — the narrator holds you to how you said this character behaves."
-            />
-            <TraitRow
-              k="Ambition"
-              v={pc.ambition ? cap(pc.ambition) : undefined}
-              tip="The long game — what your character is ultimately chasing across the campaign."
-            />
-          </div>
-        </SheetSection>
-      )}
-
       {pc.uniqueSkill && (
         <SheetSection label="Signature">
           <p className="text-[13px] text-neutral-200">
             <span className="font-semibold">{pc.uniqueSkill.name}</span>
             <span className="text-accent/80"> · {sigLine(pc.uniqueSkill)}</span>
           </p>
-          {pc.uniqueSkill.description && (
-            <p className="mt-0.5 text-[12px] text-neutral-400">{pc.uniqueSkill.description}</p>
-          )}
         </SheetSection>
       )}
     </div>
@@ -440,6 +410,32 @@ function DetailsModal({
             ✕
           </button>
         </div>
+        {(c.background || c.bias || c.alignment || c.ambition) && (
+          <SheetSection label="Traits">
+            <div className="space-y-0.5">
+              <TraitRow
+                k="Background"
+                v={bgLabel(c.background)}
+                tip="Who you were before you started drifting — your opening gear, contacts, and reputation grew out of it."
+              />
+              <TraitRow
+                k="Focus"
+                v={c.bias ? cap(c.bias) : undefined}
+                tip="The lean you chose at creation — where your attribute and skill emphasis concentrated."
+              />
+              <TraitRow
+                k="Code"
+                v={c.alignment ? cap(c.alignment) : undefined}
+                tip="Your moral code — the narrator holds you to how you said this character behaves."
+              />
+              <TraitRow
+                k="Ambition"
+                v={c.ambition ? cap(c.ambition) : undefined}
+                tip="The long game — what your character is ultimately chasing across the campaign."
+              />
+            </div>
+          </SheetSection>
+        )}
         {c.uniqueSkill && (
           <SheetSection label="Signature">
             <p className="text-neutral-200">
