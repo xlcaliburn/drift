@@ -7,12 +7,17 @@ import { backgrounds, alignments, ambitions } from "@/content/creation";
 import { openingFor } from "@/content/openings";
 import {
   suggestName,
+  sample,
   exampleSkills,
   exampleMoralCodes,
   exampleLosses,
   exampleTies,
   exampleTells,
 } from "@/content/examples";
+
+/** How many example cards / flavor chips to surface at once (reshuffle for more). */
+const GALLERY_COUNT = 6;
+const CHIP_COUNT = 4;
 import type { CreationInput } from "@/shared/multiplayer";
 import type { Character, UniqueSkill, AttributeKey } from "@/shared/schemas";
 
@@ -51,10 +56,36 @@ const ATTR_ORDER: AttributeKey[] = ["might", "reflex", "vitality", "intellect", 
 
 type Kind = "passive" | "trigger";
 
+/** True when two signatures are identical. Used so a gallery preset stays
+ *  highlighted only while it's unedited — any tweak falls back to "Custom". */
+function skillsEqual(a: UniqueSkill, b: UniqueSkill): boolean {
+  if (a.kind !== b.kind || a.name !== b.name || a.description !== b.description) return false;
+  if (a.kind === "passive" && b.kind === "passive") {
+    return (
+      a.passiveTargetType === b.passiveTargetType &&
+      a.passiveTarget === b.passiveTarget &&
+      a.passiveAmount === b.passiveAmount
+    );
+  }
+  if (a.kind === "trigger" && b.kind === "trigger") {
+    return a.triggerScenario === b.triggerScenario && a.usesPerScene === b.usesPerScene;
+  }
+  return false;
+}
+
 export default function CreateWizard() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
+  // Reshuffle seed for the signature-skill gallery (bump → new random picks).
+  const [skillSeed, setSkillSeed] = useState(0);
+  const shownSkills = useMemo(() => sample(exampleSkills, GALLERY_COUNT, skillSeed), [skillSeed]);
+
+  // Every step change starts a fresh screen — jump back to the top so long
+  // pages (faction list, questionnaire) don't open scrolled halfway down.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [step]);
   const [err, setErr] = useState("");
   const [result, setResult] = useState<CreateResult | null>(null);
   const [dismissed, setDismissed] = useState<string[]>([]);
@@ -137,6 +168,14 @@ export default function CreateWizard() {
       triggerScenario: tScenario, triggerEffect: "auto_crit" as const, usesPerScene: tUses,
     };
   }, [usKind, usName, usDesc, pTargetType, pTarget, pAmount, amountCap, tScenario, tUses]);
+
+  // Which preset (if any) the builder currently matches exactly. Edit anything
+  // and this goes undefined → the gallery deselects and we show "Custom".
+  const matchedPreset = useMemo(
+    () => exampleSkills.find((ex) => skillsEqual(ex.skill, uniqueSkill)),
+    [uniqueSkill],
+  );
+  const isCustom = Boolean(usName || usDesc || tScenario) && !matchedPreset;
 
   const canFinish =
     name && factionId && bias && alignment && background && ambition &&
@@ -383,16 +422,26 @@ export default function CreateWizard() {
 
           {/* example gallery */}
           <div className="mb-6">
-            <p className="mb-2 text-xs uppercase tracking-wide text-neutral-500">For inspiration — click to use, then tweak</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wide text-neutral-500">For inspiration — click to use, then tweak</p>
+              <button
+                type="button"
+                onClick={() => setSkillSeed((s) => s + 1)}
+                className="shrink-0 text-xs text-neutral-400 hover:text-accent"
+                title="Show a different set of examples"
+              >
+                ↻ more ideas
+              </button>
+            </div>
             <div className="grid gap-2 sm:grid-cols-2">
-              {exampleSkills.map((ex) => (
+              {shownSkills.map((ex) => (
                 <button
                   key={ex.skill.name}
                   type="button"
                   onClick={() => applyExample(ex.skill)}
                   className={
                     "rounded-lg border p-3 text-left transition " +
-                    (usName === ex.skill.name ? "border-accent bg-panel" : "border-edge hover:border-neutral-600")
+                    (skillsEqual(ex.skill, uniqueSkill) ? "border-accent bg-panel" : "border-edge hover:border-neutral-600")
                   }
                 >
                   <div className="flex items-baseline justify-between gap-2">
@@ -405,8 +454,22 @@ export default function CreateWizard() {
             </div>
           </div>
 
+          {/* divider: everything below is the custom builder, not more presets */}
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-edge" />
+            <span className="flex items-center gap-2 text-xs uppercase tracking-wide text-neutral-500">
+              or build your own
+              {isCustom && (
+                <span className="rounded-full border border-accent/50 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
+                  Custom
+                </span>
+              )}
+            </span>
+            <div className="h-px flex-1 bg-edge" />
+          </div>
+
           <div className="mb-4 grid grid-cols-2 gap-3">
-            <KindCard active={usKind === "passive"} onClick={() => setUsKind("passive")} title="Always-on edge" desc="A small, constant buff to something you do. Reliable." />
+            <KindCard active={usKind === "passive"} onClick={() => setUsKind("passive")} title="Passive effects" desc="A small, constant buff to something you do. Reliable." />
             <KindCard active={usKind === "trigger"} onClick={() => setUsKind("trigger")} title="Signature moment" desc="In one narrow situation you define, a roll lands as a natural 20. Rare, decisive." />
           </div>
 
@@ -716,10 +779,23 @@ function KindCard({ active, onClick, title, desc }: { active: boolean; onClick: 
   return (
     <button
       onClick={onClick}
-      className={"rounded-lg border p-4 text-left transition " + (active ? "border-accent bg-panel" : "border-edge hover:border-neutral-600")}
+      className={
+        "flex items-start gap-3 rounded-lg border-2 p-4 text-left transition " +
+        (active ? "border-accent bg-accent/10" : "border-edge hover:border-neutral-600")
+      }
     >
-      <div className="font-semibold text-neutral-100">{title}</div>
-      <div className="mt-1 text-xs text-neutral-400">{desc}</div>
+      <span
+        className={
+          "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 " +
+          (active ? "border-accent" : "border-neutral-600")
+        }
+      >
+        {active && <span className="h-2 w-2 rounded-full bg-accent" />}
+      </span>
+      <span className="min-w-0">
+        <span className="block font-semibold text-neutral-100">{title}</span>
+        <span className="mt-1 block text-xs text-neutral-400">{desc}</span>
+      </span>
     </button>
   );
 }
@@ -761,12 +837,15 @@ function FlavorField({
   placeholder: string;
   examples: string[];
 }) {
+  // Show a rotating handful of the (larger) pool rather than the whole list.
+  const [seed, setSeed] = useState(0);
+  const shown = useMemo(() => sample(examples, CHIP_COUNT, seed), [examples, seed]);
   return (
     <div className="mb-4">
       <label className="mb-1.5 block text-sm text-neutral-400">{label}</label>
       <input value={value} onChange={(e) => onChange(e.target.value)} className={inputClass} placeholder={placeholder} />
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {examples.map((c) => (
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {shown.map((c) => (
           <button
             key={c}
             type="button"
@@ -776,6 +855,16 @@ function FlavorField({
             {c}
           </button>
         ))}
+        {examples.length > CHIP_COUNT && (
+          <button
+            type="button"
+            onClick={() => setSeed((s) => s + 1)}
+            className="rounded-full px-2 py-1 text-xs text-neutral-500 hover:text-accent"
+            title="Show different suggestions"
+          >
+            ↻
+          </button>
+        )}
       </div>
     </div>
   );

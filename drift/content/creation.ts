@@ -119,6 +119,48 @@ export const backgrounds: BackgroundDef[] = [
     ],
     hook: "You make problems disappear for a cut. The favors are stacking up.",
   },
+  {
+    id: "void-marine",
+    label: "Void marine",
+    primary: "might",
+    secondary: "vitality",
+    weakness: "intellect",
+    signatureSkill: "melee",
+    gear: [
+      { name: "Riot gun", damage: "2d6" },
+      { name: "Combat knife", damage: "1d6" },
+      { name: "Heavy plate", detail: "+2 AC", acBonus: 2 },
+    ],
+    hook: "Boarding actions and breach-and-clears were your trade. The war ended; the reflexes didn't.",
+  },
+  {
+    id: "long-hauler",
+    label: "Long-haul crewer",
+    primary: "vitality",
+    secondary: "perception",
+    weakness: "presence",
+    signatureSkill: "navigation",
+    gear: [
+      { name: "Sealed vac suit", detail: "vacuum-rated" },
+      { name: "Route ledger", detail: "clean lanes and quiet ports" },
+      { name: "Sidearm", damage: "1d8" },
+    ],
+    hook: "Years in the black on someone else's hull taught you patience — and every trick to survive it.",
+  },
+  {
+    id: "scout-surveyor",
+    label: "Deep-range scout",
+    primary: "perception",
+    secondary: "reflex",
+    weakness: "might",
+    signatureSkill: "survival",
+    gear: [
+      { name: "Marksman carbine", damage: "2d6" },
+      { name: "Scout armor", detail: "+1 AC", acBonus: 1 },
+      { name: "Recon optics & survival kit" },
+    ],
+    hook: "You went out ahead of everyone, into places with no name yet. Something out there still owes you answers.",
+  },
 ];
 
 export interface OptionDef {
