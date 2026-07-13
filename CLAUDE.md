@@ -67,10 +67,21 @@ narration only — never raw model output; prevents few-shot contamination).
 Narration still streams via `llm/jsonStream.ts`. Combat set-pieces keep the tool
 loop in `narrator.ts`. Don't add prose rules for things the engine can enforce.
 
-**Next up:** the shared-world runtime (dossiers / ledgers / cross-campaign reads)
-or the `WORLD_SYSTEMS.md` artifact vertical slice. Small deferred items:
-optimistic-lock guard on `campaign_runtime` (`updated_at` written but not checked),
-and re-rendering the persisted dice log on reload.
+**Combat v1 done (both scales):** engine-owned multi-turn combat — a fight is a
+persisted `CombatState` (`campaign_runtime.combat`, migration 009), one player
+turn = one round (engine-generated action chips → player action → enemy volley →
+end check), damage through `applyDamage` (downed→dead) / `applyShipDamage`
+(hull-0 = disabled, not death). Personal + ship (burst-drive flee, interaction
+matrix). Model only emits `combatStart` + narrates; it can't skip mechanics. The
+freeform tool loop is RETIRED — all turns run the JSON path (cinematic = Sonnet).
+Engine-clamped money (`award_payout` bands), immediate skill ticks, real-stakes
+damage/death all landed alongside. Money/repair: `content/economy.json`.
+
+**Next up (build order, docs are ready):** **items v1** (`ITEMS.md` — catalog +
+consumables + slots + loot + dock services/debt) → **crew v1** (`CREW.md` —
+recruitment + scaling upkeep). Then the shared-world runtime / `WORLD_SYSTEMS.md`
+artifact slice. Small deferred: optimistic-lock guard on `campaign_runtime`,
+the I-2 combat backstop (auto-start combat if the model under-fires `combatStart`).
 
 ## Locked decisions (don't re-litigate)
 
