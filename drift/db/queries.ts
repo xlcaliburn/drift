@@ -139,24 +139,55 @@ export async function listCampaigns(
 }
 
 /**
- * The player's existing character (campaign), oldest first, or null if they
- * have none. Used to enforce one-character-per-player: creation is blocked when
- * this returns non-null, and callers redirect the player to it. Oldest wins as
- * the canonical keeper so an accidental later duplicate never shadows it.
+ * The player's canonical character (campaign), or null if they have none. Used
+ * to enforce one-character-per-player: creation is blocked when this returns
+ * non-null, and callers redirect the player to it.
+ *
+ * The keeper is the MOST-PROGRESSED campaign — most resolved quests, then most
+ * in-game time (tendays_elapsed), then oldest as a stable final tiebreak. This
+ * mirrors migration 005's corrected cleanup ranking exactly, so the row the UI
+ * sends a player to is the same one the storage-layer cleanup keeps. After that
+ * cleanup runs (partial unique index from 004) a player owns at most one
+ * campaign, so the ranking below only ever matters for the pre-cleanup /
+ * transient-duplicate case.
  */
 export async function getOwnedCampaign(
   db: SupabaseClient,
   playerId: string,
 ): Promise<{ id: string; name: string } | null> {
-  const { data, error } = await db
+  const { data: camps, error } = await db
     .from("campaigns")
-    .select("id,name")
-    .eq("player_id", playerId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (error || !data) return null;
-  return { id: String(data.id), name: String(data.name) };
+    .select("id,name,tendays_elapsed,created_at")
+    .eq("player_id", playerId);
+  if (error || !camps || camps.length === 0) return null;
+  if (camps.length === 1) return { id: String(camps[0].id), name: String(camps[0].name) };
+
+  // Rare multi-campaign case (only before 004's cleanup, or a transient race):
+  // rank by progress. Resolved-quest counts need a second query since they live
+  // in the threads table; the campaign set here is tiny (a player's dupes).
+  const ids = camps.map((c) => String(c.id));
+  const { data: threadRows } = await db
+    .from("threads")
+    .select("campaign_id")
+    .eq("status", "resolved")
+    .in("campaign_id", ids);
+  const resolved = new Map<string, number>();
+  for (const t of threadRows ?? []) {
+    const k = String((t as { campaign_id: string }).campaign_id);
+    resolved.set(k, (resolved.get(k) ?? 0) + 1);
+  }
+  const keeper = [...camps].sort((a, b) => {
+    const ra = resolved.get(String(a.id)) ?? 0;
+    const rb = resolved.get(String(b.id)) ?? 0;
+    if (rb !== ra) return rb - ra; // most resolved quests
+    const ta = Number((a as { tendays_elapsed?: number }).tendays_elapsed ?? 0);
+    const tb = Number((b as { tendays_elapsed?: number }).tendays_elapsed ?? 0);
+    if (tb !== ta) return tb - ta; // most in-game time
+    return String((a as { created_at?: string }).created_at ?? "").localeCompare(
+      String((b as { created_at?: string }).created_at ?? ""),
+    ); // oldest first
+  })[0];
+  return { id: String(keeper.id), name: String(keeper.name) };
 }
 
 /**
