@@ -416,22 +416,22 @@ function DetailsModal({
               <TraitRow
                 k="Background"
                 v={bgLabel(c.background)}
-                tip="Who you were before you started drifting — your opening gear, contacts, and reputation grew out of it."
+                tip="Who you were before drifting. Chosen at creation, it set your starting gear and trained skills and seeded your backstory."
               />
               <TraitRow
                 k="Focus"
                 v={c.bias ? cap(c.bias) : undefined}
-                tip="The lean you chose at creation — where your attribute and skill emphasis concentrated."
+                tip="Your specialization lean. At creation it decided which skills you began trained in — your early edge."
               />
               <TraitRow
                 k="Code"
                 v={c.alignment ? cap(c.alignment) : undefined}
-                tip="Your moral code — the narrator holds you to how you said this character behaves."
+                tip="Your moral lean. It shaped the line you won't cross, which the narrator is reminded of every turn and holds you to."
               />
               <TraitRow
                 k="Ambition"
                 v={c.ambition ? cap(c.ambition) : undefined}
-                tip="The long game — what your character is ultimately chasing across the campaign."
+                tip="What you're ultimately chasing. It seeded your backstory and the personal stakes the story can pull on."
               />
             </div>
           </SheetSection>
