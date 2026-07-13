@@ -68,15 +68,16 @@ export async function POST(req: NextRequest) {
   const state = buildNewCampaignState(base, playerId, undefined);
   // Seed the opening beat into history at creation so the player's first action
   // is grounded (prevents the narrator re-offering the just-accepted opening job).
-  setSession(campaignId, {
+  const session0 = {
     state,
     history: buildOpeningHistory(state),
     transcript: [],
     log: [],
     scenes: [],
     focusIds: [],
-  });
-  await persistSession(campaignId, state);
+  };
+  setSession(campaignId, session0);
+  await persistSession(campaignId, session0);
 
   // Background flesh-out: personalized backstory/voice/opening + audit. Runs
   // after the response is sent; the player is already in the review screen.
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest) {
         }
       }
       setSession(campaignId, session);
-      await persistSession(campaignId, session.state);
+      await persistSession(campaignId, session);
     }
 
     if (finalize.telemetry) {

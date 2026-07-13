@@ -178,6 +178,19 @@ create table if not exists rolls (
   created_at    timestamptz default now()
 );
 
+-- ── Durable play-session runtime (M7) ─────────────────────────────────────
+-- Per-campaign snapshot of the live session (chat transcript, dice/event log,
+-- and the narrator's model history), upserted each turn and restored on cold
+-- load so a refresh/restart resumes the latest run instead of the opening.
+create table if not exists campaign_runtime (
+  campaign_id text primary key references campaigns(id) on delete cascade,
+  transcript  jsonb not null default '[]',
+  history     jsonb not null default '[]',
+  log         jsonb not null default '[]',
+  focus_ids   jsonb not null default '[]',
+  updated_at  timestamptz not null default now()
+);
+
 -- ── Multiplayer spillover seam ────────────────────────────────────────────
 create table if not exists world_events (
   id                 text primary key,

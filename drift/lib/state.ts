@@ -40,20 +40,34 @@ export async function getSession(campaignId: string): Promise<SessionData | null
 
   if (hasSupabase()) {
     try {
-      const { getServiceClient, loadCampaignState } = await import("@/db/queries");
-      const state = await loadCampaignState(getServiceClient(), campaignId);
+      const { getServiceClient, loadCampaignState, loadCampaignRuntime } = await import("@/db/queries");
+      const db = getServiceClient();
+      const [state, runtime] = await Promise.all([
+        loadCampaignState(db, campaignId),
+        loadCampaignRuntime(db, campaignId),
+      ]);
+      // Restore the durable runtime snapshot (transcript, history, dice log) so a
+      // cold load resumes the latest run. Only fall back to a freshly-seeded
+      // opening beat when nothing has been persisted yet (a legacy pre-M7 campaign).
       const { buildOpeningHistory } = await import("@/shared/recap");
-      // Seed the opening beat into history so a cold-loaded campaign (in-memory
-      // history is not persisted — M7) still grounds the model's first turn and
-      // doesn't re-narrate the opening job.
-      const session: SessionData = {
-        state,
-        history: buildOpeningHistory(state),
-        transcript: [],
-        log: [],
-        scenes: [],
-        focusIds: [],
-      };
+      const session: SessionData =
+        runtime && runtime.history.length
+          ? {
+              state,
+              history: runtime.history,
+              transcript: runtime.transcript,
+              log: runtime.log,
+              scenes: [],
+              focusIds: runtime.focusIds,
+            }
+          : {
+              state,
+              history: buildOpeningHistory(state),
+              transcript: [],
+              log: [],
+              scenes: [],
+              focusIds: [],
+            };
       store.set(campaignId, session);
       return session;
     } catch (e) {
@@ -72,15 +86,24 @@ export function setSession(campaignId: string, data: SessionData): void {
 }
 
 /**
- * Persist a campaign's durable state to Supabase. No-op without Supabase.
- * Errors are logged, not thrown — a failed write must not break a turn (the
- * in-memory session is still authoritative for the round).
+ * Persist a campaign to Supabase: the mechanical CampaignState AND the durable
+ * runtime snapshot (transcript, narrator history, dice log, focus) so a later
+ * cold load resumes the latest run. No-op without Supabase. Errors are logged,
+ * not thrown — a failed write must not break a turn (the in-memory session is
+ * still authoritative for the round).
  */
-export async function persistSession(campaignId: string, state: CampaignState): Promise<void> {
+export async function persistSession(campaignId: string, session: SessionData): Promise<void> {
   if (!hasSupabase()) return;
   try {
-    const { getServiceClient, saveCampaignState } = await import("@/db/queries");
-    await saveCampaignState(getServiceClient(), state);
+    const { getServiceClient, saveCampaignState, saveCampaignRuntime } = await import("@/db/queries");
+    const db = getServiceClient();
+    await saveCampaignState(db, session.state);
+    await saveCampaignRuntime(db, campaignId, {
+      transcript: session.transcript,
+      history: session.history,
+      log: session.log,
+      focusIds: session.focusIds,
+    });
   } catch (e) {
     console.error(
       `[state] failed to persist campaign ${campaignId}:`,

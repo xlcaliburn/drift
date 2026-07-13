@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type Anthropic from "@anthropic-ai/sdk";
 import {
   Universe,
   Campaign,
@@ -13,6 +14,8 @@ import {
   Contract,
   type CampaignState,
 } from "@/shared/schemas";
+import type { ChatEntry } from "@/shared/chat";
+import type { EngineEvent } from "@/engine";
 
 /**
  * Row mapping: DB columns are snake_case, app types are camelCase. We convert
@@ -99,6 +102,56 @@ export async function saveCampaignState(db: SupabaseClient, state: CampaignState
   await db.from("faction_rep").upsert(state.factionRep.map((r) => toRow(r)));
   await db.from("clocks").upsert(state.clocks.map((c) => toRow(c)));
   await db.from("threads").upsert(state.threads.map((t) => toRow(t)));
+}
+
+// ── Durable play-session runtime (M7) ────────────────────────────────────────
+
+/** The live-session slices that aren't part of the mechanical CampaignState:
+ *  the display transcript, the narrator's model history, the dice/event log, and
+ *  the rolling entity focus. Snapshotted per campaign so a refresh/restart resumes
+ *  the latest run instead of rebuilding just the opening recap. */
+export interface CampaignRuntime {
+  transcript: ChatEntry[];
+  history: Anthropic.MessageParam[];
+  log: EngineEvent[];
+  focusIds: string[];
+  updatedAt?: string;
+}
+
+/** Load a campaign's runtime snapshot, or null if none has been saved yet. */
+export async function loadCampaignRuntime(
+  db: SupabaseClient,
+  campaignId: string,
+): Promise<CampaignRuntime | null> {
+  const { data, error } = await db
+    .from("campaign_runtime")
+    .select("transcript,history,log,focus_ids,updated_at")
+    .eq("campaign_id", campaignId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    transcript: (data.transcript as ChatEntry[]) ?? [],
+    history: (data.history as Anthropic.MessageParam[]) ?? [],
+    log: (data.log as EngineEvent[]) ?? [],
+    focusIds: (data.focus_ids as string[]) ?? [],
+    updatedAt: data.updated_at ? String(data.updated_at) : undefined,
+  };
+}
+
+/** Upsert a campaign's runtime snapshot (transcript, history, log, focus). */
+export async function saveCampaignRuntime(
+  db: SupabaseClient,
+  campaignId: string,
+  rt: Pick<CampaignRuntime, "transcript" | "history" | "log" | "focusIds">,
+): Promise<void> {
+  await db.from("campaign_runtime").upsert({
+    campaign_id: campaignId,
+    transcript: rt.transcript,
+    history: rt.history,
+    log: rt.log,
+    focus_ids: rt.focusIds,
+    updated_at: new Date().toISOString(),
+  });
 }
 
 export interface CampaignSummary {

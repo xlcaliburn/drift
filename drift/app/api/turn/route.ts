@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
             : []),
         ];
 
-        setSession(campaignId, {
+        const updatedSession = {
           ...session,
           state: result.state,
           // Keep the last ~10 exchanges verbatim; older context is carried by scene
@@ -118,10 +118,12 @@ export async function POST(req: NextRequest) {
           transcript: [...session.transcript, ...transcriptAdds].slice(-400),
           log: [...session.log, ...result.events].slice(-500),
           focusIds: session.focusIds,
-        });
+        };
+        setSession(campaignId, updatedSession);
 
-        // Persist durable state (HP, credits, rep, clocks, threads) to Supabase.
-        await persistSession(campaignId, result.state);
+        // Persist durable state (HP, credits, rep, clocks, threads) AND the runtime
+        // snapshot (transcript, history, dice log) so a refresh resumes this run.
+        await persistSession(campaignId, updatedSession);
 
         // Audit every call (dev included; dev logs with a null user id). Best-effort.
         await recordAiCall({
