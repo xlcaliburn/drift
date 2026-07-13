@@ -215,28 +215,36 @@ function CallDetails({ c }: { c: AiCallRow }) {
       {c.fellBack && <div className="text-bad">fell back to Haiku mid-turn</div>}
       {c.error && <pre className="whitespace-pre-wrap rounded bg-ink p-2 text-bad">{c.error}</pre>}
 
-      <div>
-        <div className="mb-1 text-neutral-500">fed to the API</div>
-        <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap rounded bg-ink p-2 text-[11px] leading-relaxed text-neutral-300">
+      {/* Full input log — collapsed by default (it's large: system prompt +
+          exchange history + context slice + action). */}
+      <details>
+        <summary className="cursor-pointer text-neutral-500 hover:text-neutral-300">
+          full input — system, exchange history, context slice, action
+        </summary>
+        <pre className="mt-1 max-h-[55vh] overflow-auto whitespace-pre-wrap rounded bg-ink p-2 text-[11px] leading-relaxed text-neutral-300">
           {c.promptPreview ?? "—"}
         </pre>
-      </div>
+      </details>
+
       {c.exchangeDump && (
-        <div>
-          <div className="mb-1 text-neutral-500">
+        <details>
+          <summary className="cursor-pointer text-neutral-500 hover:text-neutral-300">
             tool-loop rounds{c.rounds != null ? ` (${c.rounds})` : ""} — assistant text, tool calls, and results each round
-          </div>
-          <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap rounded bg-ink p-2 text-[11px] leading-relaxed text-neutral-300">
+          </summary>
+          <pre className="mt-1 max-h-[40vh] overflow-auto whitespace-pre-wrap rounded bg-ink p-2 text-[11px] leading-relaxed text-neutral-300">
             {c.exchangeDump}
           </pre>
-        </div>
+        </details>
       )}
-      <div>
-        <div className="mb-1 text-neutral-500">returned (final narration)</div>
-        <pre className="max-h-[30vh] overflow-auto whitespace-pre-wrap rounded bg-ink p-2 text-[11px] leading-relaxed text-neutral-300">
+
+      <details open>
+        <summary className="cursor-pointer text-neutral-500 hover:text-neutral-300">
+          returned (final narration)
+        </summary>
+        <pre className="mt-1 max-h-[30vh] overflow-auto whitespace-pre-wrap rounded bg-ink p-2 text-[11px] leading-relaxed text-neutral-300">
           {c.responsePreview ?? "—"}
         </pre>
-      </div>
+      </details>
     </div>
   );
 }
