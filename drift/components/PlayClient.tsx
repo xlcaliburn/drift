@@ -8,6 +8,7 @@ import { buildOpeningRecap, buildOpeningChoices } from "@/shared/recap";
 import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { stripInlineMenu } from "@/shared/narration";
 import type { ChoiceOption } from "@/shared/turnPlan";
+import { combatActions, type CombatState } from "@/shared/combat";
 import Sidebar from "./Sidebar";
 
 /** Choices may arrive as plain strings (opening/fallback) or objects with an
@@ -34,6 +35,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
   const [state, setState] = useState<CampaignState | null>(null);
   const [chat, setChat] = useState<ChatEntry[]>([]);
   const [choices, setChoices] = useState<ChoiceOption[]>([]);
+  const [combat, setCombat] = useState<CombatState | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   // Live narration while a turn streams in. null = not streaming; "" = streaming
@@ -80,7 +82,14 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
               ]
             : [];
         setChat([recap, ...restored, ...notice]);
-        if (!restored.length) setChoices(normalizeChoices(buildOpeningChoices(d.state)));
+        // In a live fight, rebuild the engine's combat chips; otherwise opening choices.
+        if (d.combat?.active) {
+          setCombat(d.combat);
+          const stims = d.state.characters.find((c: { kind: string }) => c.kind === "pc")?.stims ?? 0;
+          setChoices(d.combat.enemies ? combatActions(d.combat, stims) : []);
+        } else if (!restored.length) {
+          setChoices(normalizeChoices(buildOpeningChoices(d.state)));
+        }
       });
   }, [campaignId]);
 
@@ -103,8 +112,13 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
       const res = await fetch("/api/turn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // A choice's attached check rides along — the engine pre-rolls it.
-        body: JSON.stringify({ campaignId, playerText: text, check: action?.check }),
+        // A choice's attached check / combat action rides along to the engine.
+        body: JSON.stringify({
+          campaignId,
+          playerText: text,
+          check: action?.check,
+          combatAction: action?.combatAction,
+        }),
       });
 
       // Gating errors (budget/auth/not-found) come back as plain JSON, not a stream.
@@ -135,6 +149,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             narration?: string;
             state?: CampaignState;
             choices?: unknown;
+            combat?: CombatState | null;
             sceneEnded?: boolean;
             tutorialGraduated?: boolean;
           };
@@ -154,6 +169,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
           } else if (evt.type === "done") {
             setChat((c) => [...c, { role: "dm", text: evt.narration || stripInlineMenu(streamed) || "…" }]);
             if (evt.state) setState(evt.state);
+            setCombat(evt.combat ?? null);
             setChoices(normalizeChoices(evt.choices));
             if (evt.sceneEnded) {
               setChat((c) => [...c, { role: "system", text: "— scene ended · checklist applied —" }]);
@@ -407,7 +423,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
         </section>
 
         {/* Sidebar — right rail on desktop, slide-over drawer on mobile */}
-        {state && <Sidebar state={state} mobileOpen={showSheet} onClose={() => setShowSheet(false)} />}
+        {state && <Sidebar state={state} combat={combat} mobileOpen={showSheet} onClose={() => setShowSheet(false)} />}
       </div>
     </div>
   );

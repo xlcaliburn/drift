@@ -41,12 +41,31 @@ export const DangerSpec = z.object({
 });
 export type DangerSpec = z.infer<typeof DangerSpec>;
 
-/** A clickable next action; `check` makes clicking it roll before narration. */
+/** A combat action carried by an engine-generated combat choice. */
+export const CombatActionSpec = z.object({
+  type: z.enum(["attack", "aim", "cover", "stim", "flee"]),
+  enemyId: optionalNullable(z.string()),
+});
+
+/** A clickable next action; `check` makes clicking it roll before narration;
+ *  `combatAction` routes it through the combat round engine. */
 export const ChoiceOption = z.object({
   label: z.string().min(1).max(160),
   check: optionalNullable(CheckSpec),
+  combatAction: optionalNullable(CombatActionSpec),
 });
 export type ChoiceOption = z.infer<typeof ChoiceOption>;
+
+/** The model declaring that this beat turns into a fight. Only tier/count/scale/
+ *  surprise pass through — the engine owns the stats. */
+export const CombatStartSpec = z.object({
+  tier: z.enum(["T1", "T2", "T3"]),
+  count: optionalNullable(z.coerce.number().int().min(1).max(4)),
+  name: optionalNullable(z.string()),
+  scale: optionalNullable(z.enum(["personal", "ship"])),
+  surprise: optionalNullable(z.enum(["player", "enemy", "none"])),
+});
+export type CombatStartSpec = z.infer<typeof CombatStartSpec>;
 
 /** Model may emit a bare string choice — normalize to {label}. */
 const ChoiceLoose = z.preprocess(
@@ -63,6 +82,8 @@ export const TurnPlan = z.object({
   roll: optionalNullable(CheckSpec),
   /** An unavoidable hazard the PC must survive this turn (save-or-take-damage). */
   danger: optionalNullable(DangerSpec),
+  /** This beat becomes a fight — the engine spawns enemies and takes over. */
+  combatStart: optionalNullable(CombatStartSpec),
   /** Job/bounty/deal concluded → the ENGINE rolls the credits inside the tier's
    *  payout band (ECONOMY.md — the model never sets amounts). */
   payout: optionalNullable(

@@ -52,6 +52,7 @@ Respond with ONE json object and nothing else:
   "choices": [{"label": "short concrete action", "check": {"skill": "stealth", "dc": 13, "stakes": true, "failDamage": "1d6"}}],
   "roll": {"skill": "piloting", "dc": 13, "stakes": true, "failDamage": "2d6"},
   "danger": {"skill": "zeroG", "dc": 13, "damage": "1d6", "note": "plasma vents across the bay"},
+  "combatStart": {"tier": "T2", "count": 2, "name": "Sable gunhand", "surprise": "none"},
   "payout": {"tier": "T1", "reason": "courier run delivered"},
   "worldEvent": {"headline": "..."},
   "sceneEnd": {"title": "...", "paying": true, "dockings": 1},
@@ -64,9 +65,10 @@ RULES:
 3. "failDamage" (dice, e.g. "1d6", "2d6") on a check → the engine deals that damage when the check FAILS. Add it whenever failing that action would physically hurt (a firefight, a fall, a burn). This is how the player can be wounded and killed.
 4. "danger" is an UNAVOIDABLE hazard the player must survive THIS turn regardless of choice — the engine rolls their save (skill vs dc) and deals "damage" on failure. Use it when you state a danger in the narration (gunfire, explosion, hostile environment).
 5. "roll" is ONLY for when the player's CURRENT typed action itself needs a check. If the message contains an ENGINE RESULT line, that roll already happened — narrate its outcome and do NOT request another.
-6. "payout" when a job/bounty/deal CONCLUDES and payment is due: T0 errand, T1 standard run, T2 professional (earned standing), T3 major score (rare). The ENGINE rolls the actual credits — never state amounts in narration, and never pay twice for one job. A successful negotiation check this turn pushes the roll toward the top of the band.
-7. "worldEvent" when the beat meaningfully shifts a faction's standing. "sceneEnd" when the scene genuinely wraps.
-8. Ground everything in the CURRENT SCENE block; don't contradict it.
+6. "combatStart" when the beat turns into an actual FIGHT (the player draws, an ambush springs, an enemy opens fire). tier = enemy strength (T1 mook / T2 professional / T3 elite), count 1-4, surprise = "enemy" (ambush), "player" (you get the drop), or "none". The ENGINE then runs the whole fight round-by-round — you just narrate. Combat is rare; most tension resolves without it. Do NOT emit combatStart AND choices — the engine generates the combat actions.
+7. "payout" when a job/bounty/deal CONCLUDES and payment is due: T0 errand, T1 standard run, T2 professional (earned standing), T3 major score (rare). The ENGINE rolls the actual credits — never state amounts in narration, and never pay twice for one job. A successful negotiation check this turn pushes the roll toward the top of the band.
+8. "worldEvent" when the beat meaningfully shifts a faction's standing. "sceneEnd" when the scene genuinely wraps.
+9. Ground everything in the CURRENT SCENE block; don't contradict it.
 
 EXAMPLE — player: "Slip past the dock guard while the crane cycles"
 {"narration":"You hug the container line, matching your steps to the crane's groan. The guard's lamp sweeps across the gap you just left — he lingers, listening.","choices":[{"label":"Freeze in the shadow until the lamp moves on","check":{"skill":"stealth","dc":13,"stakes":true}},{"label":"Slide under the maintenance walkway","check":{"skill":"zeroG","dc":15,"stakes":true}},{"label":"Step out and bluff a dockhand's greeting","check":{"skill":"deception","dc":13,"stakes":true}}]}`;

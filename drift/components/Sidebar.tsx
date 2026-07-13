@@ -5,6 +5,7 @@ import type { CampaignState, Skill, UniqueSkill } from "@/shared/schemas";
 import { tickMax } from "@/engine/progression";
 import { shipIsOwned } from "@/shared/recap";
 import { backgrounds } from "@/content/creation";
+import type { CombatState } from "@/shared/combat";
 import skillsMeta from "@/content/skills.json";
 
 const ATTR_ORDER = ["might", "reflex", "vitality", "intellect", "perception", "presence"] as const;
@@ -60,10 +61,12 @@ type Tab = "status" | "traits" | "map" | "clocks";
 
 export default function Sidebar({
   state,
+  combat = null,
   mobileOpen = false,
   onClose,
 }: {
   state: CampaignState;
+  combat?: CombatState | null;
   /** Mobile slide-over drawer control (desktop rail ignores these). */
   mobileOpen?: boolean;
   onClose?: () => void;
@@ -90,7 +93,7 @@ export default function Sidebar({
       </div>
 
       <div className="scrollbar-thin flex-1 overflow-y-auto p-3 text-[13px]">
-        {tab === "status" && <StatusTab state={state} onDetails={() => setShowDetails(true)} />}
+        {tab === "status" && <StatusTab state={state} combat={combat} onDetails={() => setShowDetails(true)} />}
         {tab === "traits" && <TraitsTab state={state} />}
         {tab === "map" && <MapTab state={state} />}
         {tab === "clocks" && <ClocksTab state={state} />}
@@ -188,11 +191,41 @@ function condition(injuries?: { name: string }[]): { text: string; className: st
 
 /** MAIN tab — the most immediate info: HP/condition, weapons + ammo, inventory,
  *  ship survival state, and where you are / what's live. */
-function StatusTab({ state, onDetails }: { state: CampaignState; onDetails: () => void }) {
+function StatusTab({
+  state,
+  combat,
+  onDetails,
+}: {
+  state: CampaignState;
+  combat: CombatState | null;
+  onDetails: () => void;
+}) {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
   const active = state.threads.filter((t) => t.status === "active");
   return (
     <div className="space-y-4">
+      {combat?.active && (
+        <div className="rounded border border-bad/50 bg-bad/5 p-2">
+          <div className="mb-1 flex items-center justify-between text-[11px] uppercase tracking-wide text-bad">
+            <span>⚔ In combat</span>
+            <span className="text-neutral-500">Round {combat.round}</span>
+          </div>
+          <div className="space-y-1">
+            {combat.enemies.map((e) => (
+              <div key={e.id}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[13px] text-neutral-200">{e.name}</span>
+                  <span className="tabular-nums text-[11px] text-neutral-500">
+                    {e.hp}/{e.maxHp}
+                    {e.shieldReady && <span className="text-accent"> ⛨</span>}
+                  </span>
+                </div>
+                <Bar value={e.hp} max={e.maxHp} tone="bg-bad" height="h-1" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {state.characters.map((c) => {
         const cond = condition(c.injuries);
         const weapons = c.gear.filter((g) => g.damage);

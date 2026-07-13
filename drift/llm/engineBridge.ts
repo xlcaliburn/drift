@@ -13,9 +13,19 @@ import {
 } from "@/engine";
 import { enemyTiers, shipClasses, economy } from "@/content";
 import { awardTick } from "@/engine/progression";
-import { rollDamage } from "@/engine/dice";
+import { rollDamage, maxDice } from "@/engine/dice";
+import { spawnCombatEnemies, playerAttack, enemyAttack, type SpawnSpec } from "@/engine/combatEngine";
+import { fleeDC, threatLevel } from "@/shared/combat";
+import type { CombatState, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
+
+/** Victory loot band by top tier faced (ECONOMY.md). */
+const LOOT_BAND: Record<"T1" | "T2" | "T3", [number, number]> = {
+  T1: [20, 60],
+  T2: [80, 200],
+  T3: [350, 700],
+};
 
 /** Standing at or below this with your parent faction, while still flying their
  *  loaner, gets the ship repossessed (see adjustRep). A real betrayal — starting
@@ -529,6 +539,195 @@ export class TurnRuntime {
       title: input.title,
       checklist: report.checklist,
     };
+  }
+
+  // ── Multi-turn combat (COMBAT.md) ──────────────────────────────────────────
+
+  private pc(): Character | undefined {
+    return this.state.characters.find((c) => c.kind === "pc");
+  }
+
+  /** Heal a character, clamped to maxHp. Returns the new HP. */
+  private applyHeal(characterId: string, amount: number): number {
+    const c = this.char(characterId);
+    if (!c) return 0;
+    const hp = Math.min(c.maxHp, c.hp + Math.max(0, amount));
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((x) => (x.id === characterId ? { ...x, hp } : x)),
+    };
+    return hp;
+  }
+
+  /** Derive the PC's personal-scale combat profile (best weapon, combat level). */
+  private personalCombatant(): PlayerCombatant {
+    const pc = this.pc()!;
+    const attackMod = computeModifier(pc, "smallArms");
+    const weapon = [...pc.gear]
+      .filter((g) => g.damage)
+      .sort((a, b) => maxDice(String(b.damage)) - maxDice(String(a.damage)))[0];
+    const weaponDamage = weapon?.damage ?? "1d4"; // unarmed
+    const combatLevel = Math.max(
+      0,
+      ...["smallArms", "gunnery", "melee"].map((s) => pc.skills.find((k) => k.name === s)?.level ?? 0),
+    );
+    return { hp: pc.hp, maxHp: pc.maxHp, ac: pc.ac, attackMod, weaponDamage, combatLevel };
+  }
+
+  /** Enemies attack the player; halts the instant the player drops (COMBAT D-4). */
+  private enemyVolley(combat: CombatState, lines: string[]): CombatOutcome {
+    const pc = this.pc()!;
+    const targetAc = pc.ac + combat.playerCoverAc;
+    for (const enemy of combat.enemies) {
+      const swings = enemy.multiAttack ? 2 : 1;
+      for (let i = 0; i < swings; i++) {
+        if ((this.pc()?.hp ?? 0) <= 0) return TurnRuntime.isDead(this.pc()!) ? "dead" : "downed";
+        const atk = enemyAttack(enemy, targetAc, this.rng);
+        lines.push(`💢 ${atk.breakdown}`);
+        if (atk.hit) {
+          const harm = this.applyDamage(pc.id, atk.damage, `${enemy.name}'s attack.`);
+          lines.push(
+            `💥 You take ${harm.taken} — ${harm.hpAfter + harm.taken}→${harm.hpAfter} HP` +
+              (harm.died ? " · KILLED" : harm.downed ? " · DOWNED" : ""),
+          );
+          if (harm.died) return "dead";
+          if (harm.downed) return "downed";
+        }
+      }
+    }
+    return "continue";
+  }
+
+  /**
+   * Start a fight: spawn enemies, resolve surprise (ambush = a free enemy volley
+   * before the player acts; you-ambush = a free opening strike is left to the
+   * player's first round). Returns the CombatState + opening lines.
+   */
+  startCombat(
+    specs: SpawnSpec[],
+    scale: "personal" | "ship",
+    surprise: "player" | "enemy" | "none",
+  ): { combat: CombatState; lines: string[]; outcome: CombatOutcome } {
+    const enemies = spawnCombatEnemies(specs, this.rng);
+    const combat: CombatState = {
+      active: true,
+      round: 1,
+      scale,
+      enemies,
+      playerCoverAc: 0,
+      playerAimBonus: surprise === "player" ? 2 : 0, // your ambush → aim on the opener
+      fleeAttempts: 0,
+    };
+    const lines = [`⚔ Combat — ${enemies.map((e) => e.name).join(", ")}.`];
+    let outcome: CombatOutcome = "continue";
+    if (surprise === "enemy") {
+      lines.push("Ambushed — they fire first.");
+      outcome = this.enemyVolley(combat, lines);
+      if (outcome !== "continue") combat.active = false;
+    }
+    return { combat, lines, outcome };
+  }
+
+  /**
+   * Resolve one round: the player's action, then (if the fight continues) the
+   * enemy volley, then the end check. Pure w.r.t. the CombatState arg (returns a
+   * new one) but mutates player HP through the runtime's applyDamage/heal.
+   */
+  resolveCombatRound(
+    combat: CombatState,
+    action: CombatAction,
+  ): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
+    const lines: string[] = [];
+    const cbt = this.personalCombatant();
+    let enemies = combat.enemies.map((e) => ({ ...e }));
+    let aim = combat.playerAimBonus;
+    let cover = combat.playerCoverAc;
+    let fleeAttempts = combat.fleeAttempts;
+
+    switch (action.type) {
+      case "attack": {
+        const enemy = enemies.find((e) => e.id === action.enemyId && e.hp > 0) ?? enemies.find((e) => e.hp > 0);
+        if (enemy) {
+          const r = playerAttack(enemy, cbt.attackMod, cbt.weaponDamage, aim, this.rng);
+          lines.push(`🎯 ${r.breakdown}`);
+          enemy.hp = r.enemyHpAfter;
+          enemy.shieldReady = r.shieldReadyAfter;
+          if (r.killed) lines.push(`☠ ${enemy.name} is down.`);
+        }
+        aim = 0;
+        cover = 0;
+        break;
+      }
+      case "aim":
+        aim = 2;
+        cover = 0;
+        lines.push("🔺 You steady your aim (+2 to your next attack).");
+        break;
+      case "cover":
+        cover = 2;
+        aim = 0;
+        lines.push("🛡 You take cover (+2 AC until you move).");
+        break;
+      case "stim": {
+        const pc = this.pc()!;
+        if (pc.stims > 0) {
+          const healed = rollDamage("1d6+2", this.rng);
+          const before = pc.hp;
+          const after = this.applyHeal(pc.id, healed);
+          this.state = {
+            ...this.state,
+            characters: this.state.characters.map((x) => (x.id === pc.id ? { ...x, stims: x.stims - 1 } : x)),
+          };
+          lines.push(`🩹 Stim: +${after - before} HP — ${before}→${after} (${pc.stims - 1} left).`);
+        } else {
+          lines.push("No stims left.");
+        }
+        cover = 0;
+        break;
+      }
+      case "flee": {
+        const pc = this.pc()!;
+        const dc = fleeDC(threatLevel(enemies), cbt.combatLevel, fleeAttempts);
+        const mod = computeModifier(pc, "stealth");
+        const d20 = this.rng.int(1, 20);
+        const total = d20 + mod;
+        fleeAttempts += 1;
+        const escaped = total >= dc;
+        lines.push(`🎲 Flee: d20(${d20})+${mod} = ${total} vs DC ${dc} → ${escaped ? "escaped" : "they cut you off"}`);
+        if (escaped) {
+          return { combat: { ...combat, active: false }, lines, outcome: "escaped", loot: 0 };
+        }
+        cover = 0;
+        break;
+      }
+    }
+
+    // Deaths resolve; victory if the field is clear.
+    enemies = enemies.filter((e) => e.hp > 0);
+    if (enemies.length === 0) {
+      const tier = combat.enemies.reduce<"T1" | "T2" | "T3">(
+        (m, e) => (LOOT_BAND[e.tier][1] > LOOT_BAND[m][1] ? e.tier : m),
+        "T1",
+      );
+      const [lo, hi] = LOOT_BAND[tier];
+      const loot = this.rng.int(lo, hi);
+      const pc = this.pc()!;
+      this.state = {
+        ...this.state,
+        characters: this.state.characters.map((x) => (x.id === pc.id ? { ...x, credits: (x.credits ?? 0) + loot } : x)),
+      };
+      lines.push(`💰 Cleared them out — recovered ¢${loot}.`);
+      return { combat: { ...combat, enemies, active: false }, lines, outcome: "victory", loot };
+    }
+
+    // Enemy volley (halts if the player drops).
+    const next: CombatState = { ...combat, enemies, playerAimBonus: aim, playerCoverAc: cover, fleeAttempts };
+    const outcome = this.enemyVolley(next, lines);
+    if (outcome === "continue") {
+      next.round += 1;
+      return { combat: next, lines, outcome, loot: 0 };
+    }
+    return { combat: { ...next, active: false }, lines, outcome, loot: 0 };
   }
 
   private offerChoices(input: Record<string, unknown>) {

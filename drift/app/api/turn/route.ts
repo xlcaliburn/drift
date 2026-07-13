@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runTurn, isSetPiece } from "@/llm/narrator";
 import { runJsonTurn } from "@/llm/jsonTurn";
+import { runCombatTurn } from "@/llm/combatTurn";
+import { combatActions } from "@/shared/combat";
 import { getSession, setSession, persistSession } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
 import { recordAiCall } from "@/lib/audit";
 import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { buildFallbackChoices } from "@/shared/recap";
-import { CheckSpec, type ChoiceOption } from "@/shared/turnPlan";
+import { CheckSpec, CombatActionSpec, type ChoiceOption } from "@/shared/turnPlan";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -35,6 +36,8 @@ export async function POST(req: NextRequest) {
   const cinematic: boolean = Boolean(body.cinematic);
   // Check attached to the clicked choice (engine pre-rolls it). Invalid → ignored.
   const preCheck = body.check ? CheckSpec.safeParse(body.check).data : undefined;
+  // Combat action from a clicked combat chip (routes through the combat engine).
+  const combatAction = body.combatAction ? CombatActionSpec.safeParse(body.combatAction).data : undefined;
   if (!campaignId) {
     return NextResponse.json({ error: "campaignId is required" }, { status: 400 });
   }
@@ -91,55 +94,46 @@ export async function POST(req: NextRequest) {
         // persisted back after the turn, reset when a scene ends.
         const tickedSet = new Set(session.tickedThisScene);
 
-        // Path selection: combat set-pieces still run the freeform tool loop
-        // (spawn/resolve machinery); everything else — including any clicked
-        // choice with an attached check — runs the structured JSON turn.
-        const useToolLoop = !preCheck && (cinematic || isSetPiece(playerText));
-
         const common = {
           state: session.state,
           history: session.history,
-          playerText,
-          focusIds: session.focusIds,
           tickedSet,
           onDelta: (text: string) => send({ type: "token", text }),
+          onEngine: (lines: string[]) => send({ type: "engine", lines }),
         };
-        const result = useToolLoop
-          ? await runTurn({ ...common, cinematic })
-          : await runJsonTurn({
-              ...common,
-              preCheck,
-              // Dice/tick lines stream to the client the moment the engine rolls.
-              onEngine: (lines) => send({ type: "engine", lines }),
-            });
 
-        // Quick-select safety net: never leave a routine beat without choices.
-        const inCombat = result.telemetry.toolCalls.some(
-          (t) => t === "spawn_encounter" || t === "resolve_attack",
+        // Routing (tool loop retired — COMBAT.md D-7): a live fight + a combat
+        // action runs the engine-owned combat round; everything else runs the
+        // structured JSON turn (cinematic turns just use the pricier model there).
+        const result =
+          session.combat?.active && combatAction
+            ? await runCombatTurn({ ...common, combat: session.combat, action: combatAction })
+            : await runJsonTurn({
+                ...common,
+                playerText,
+                focusIds: session.focusIds,
+                preCheck,
+                model: cinematic ? "claude-sonnet-5" : undefined,
+              });
+
+        // Combat owns the choices while active (engine-generated chips); otherwise
+        // use the model's choices, falling back to generic actions if it gave none.
+        const resultCombat = result.combat ?? null;
+        const pcStims = result.state.characters.find((c) => c.kind === "pc")?.stims ?? 0;
+        const normalized: ChoiceOption[] = result.choices.map((c) =>
+          typeof c === "string" ? { label: c } : c,
         );
-        const normalized: ChoiceOption[] = (result.choices as (string | ChoiceOption)[]).map(
-          (c) => (typeof c === "string" ? { label: c } : c),
-        );
-        const choices: ChoiceOption[] =
-          normalized.length === 0 && !result.sceneEnded && !inCombat
+        const choices: ChoiceOption[] = resultCombat?.active
+          ? combatActions(resultCombat, pcStims)
+          : normalized.length === 0 && !result.sceneEnded
             ? buildFallbackChoices(result.state).map((label) => ({ label }))
             : normalized;
 
-        // Engine result lines (dice, ticks, damage, payment) become system
-        // transcript lines so a refresh shows the same mechanics seen live.
-        const isEngineLine = (e: (typeof result.events)[number]) =>
-          e.type === "roll" ||
-          e.type === "tick" ||
-          (e.type === "resource" &&
-            (("field" in e && e.field === "hp" && Number(e.delta) < 0) ||
-              ("field" in e && e.field === "credits" && Number(e.delta) > 0)));
-        const enginePrefix = (e: (typeof result.events)[number]) =>
-          e.type === "roll" ? "🎲" : e.type === "tick" ? "⬆" : "field" in e && e.field === "credits" ? "💰" : "💥";
-        const engineEvents = result.events.filter(isEngineLine);
-        const engineLines = engineEvents.map((e) => ({
-          role: "system" as const,
-          text: `${enginePrefix(e)} ${e.breakdown}`,
-        }));
+        // Engine display lines (dice/ticks/damage/payment/combat) — the handlers
+        // return them pre-prefixed; they become system transcript lines so a
+        // refresh shows the same mechanics seen live.
+        const engineLineTexts = result.engineLines ?? [];
+        const engineLines = engineLineTexts.map((text) => ({ role: "system" as const, text }));
 
         const transcriptAdds = [
           { role: "player" as const, text: playerText },
@@ -159,7 +153,7 @@ export async function POST(req: NextRequest) {
         // prose-menu violation would become few-shot evidence for every later
         // turn). The user side carries the action + a compact engine summary;
         // the assistant side carries only the cleaned narration.
-        const engineSummary = engineEvents.map((e) => e.breakdown).slice(0, 6);
+        const engineSummary = engineLineTexts.map((t) => t.replace(/^[^\w-]+\s*/, "")).slice(0, 8);
         const canonicalUser =
           `PLAYER: ${playerText}` +
           (engineSummary.length ? `\n[ENGINE: ${engineSummary.join(" · ")}]` : "");
@@ -180,6 +174,8 @@ export async function POST(req: NextRequest) {
           focusIds: result.focusIds,
           // Per-scene tick cap (engine cleared the set if the scene ended).
           tickedThisScene: [...tickedSet],
+          // Active fight (null when combat ended or never started).
+          combat: resultCombat,
         };
         setSession(campaignId, updatedSession);
 
@@ -224,6 +220,7 @@ export async function POST(req: NextRequest) {
           state: result.state,
           worldEvents: result.worldEvents,
           choices,
+          combat: resultCombat,
           sceneEnded: result.sceneEnded,
           tutorialGraduated: result.tutorialGraduated,
           model: result.model,

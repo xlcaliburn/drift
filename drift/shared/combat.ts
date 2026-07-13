@@ -36,6 +36,14 @@ export interface CombatState {
   fleeAttempts: number;
 }
 
+export type CombatActionType = "attack" | "aim" | "cover" | "stim" | "flee";
+export interface CombatAction {
+  type: CombatActionType;
+  enemyId?: string;
+}
+/** How the round ended (or didn't). */
+export type CombatOutcome = "continue" | "victory" | "escaped" | "downed" | "dead";
+
 /** The player's derived combat profile for the current scale. */
 export interface PlayerCombatant {
   hp: number;
@@ -45,6 +53,23 @@ export interface PlayerCombatant {
   weaponDamage: string;
   /** Best combat-skill level, for the flee-disparity math. */
   combatLevel: number;
+}
+
+/** Engine-generated combat action chips for a round (shared so the client can
+ *  rebuild them on reload). Kept here (types only) to avoid a server import. */
+export function combatActions(
+  combat: CombatState,
+  stims: number,
+): { label: string; combatAction: CombatAction }[] {
+  const actions: { label: string; combatAction: CombatAction }[] = combat.enemies.map((e) => ({
+    label: `Attack ${e.name} (${e.hp}/${e.maxHp})`,
+    combatAction: { type: "attack", enemyId: e.id },
+  }));
+  actions.push({ label: "Take aim (+2 next hit)", combatAction: { type: "aim" } });
+  actions.push({ label: "Take cover (+2 AC)", combatAction: { type: "cover" } });
+  if (stims > 0) actions.push({ label: `Use stim (${stims} left)`, combatAction: { type: "stim" } });
+  actions.push({ label: "Flee", combatAction: { type: "flee" } });
+  return actions;
 }
 
 const TIER_LEVEL: Record<CombatTier, number> = { T1: 1, T2: 2, T3: 3 };
