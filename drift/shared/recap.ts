@@ -110,12 +110,12 @@ export function buildOpeningChoices(state: CampaignState): string[] {
  * Tutorial-clamped like the real choices.
  */
 export function buildFallbackChoices(state: CampaignState): string[] {
-  const active = state.threads.filter((t) => t.status === "active");
-  const choices = [...active.slice(0, 3).map((t) => t.title), "Look around and take stock"];
-  if (inTutorial(state)) {
-    return [choices[0], "Look around and take stock"].slice(0, TUTORIAL_CHOICE_COUNT);
-  }
-  return choices.slice(0, 4);
+  // GENERIC, context-free actions only — never the starting-quest thread titles,
+  // which read as stale "opening" options when they resurface mid-game (e.g.
+  // "Verify Kesh's evidence"). This fires only when the model returned no choices
+  // at all, which is rare with structured turns.
+  const generic = ["Look around and take stock", "Press on", "Wait for an opening"];
+  return generic.slice(0, inTutorial(state) ? TUTORIAL_CHOICE_COUNT : 3);
 }
 
 /**

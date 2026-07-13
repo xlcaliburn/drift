@@ -1,10 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import type { CampaignState, Skill } from "@/shared/schemas";
+import { useState, type ReactNode } from "react";
+import type { CampaignState, Skill, UniqueSkill } from "@/shared/schemas";
 import { tickMax } from "@/engine/progression";
 import { shipIsOwned } from "@/shared/recap";
+import { backgrounds } from "@/content/creation";
 import skillsMeta from "@/content/skills.json";
+
+const ATTR_ORDER = ["might", "reflex", "vitality", "intellect", "perception", "presence"] as const;
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const fmtMod = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
+const bgLabel = (id?: string) => backgrounds.find((b) => b.id === id)?.label ?? (id ? cap(id) : "");
+
+/** Compact effect line for a signature (unique) skill. */
+function sigLine(sig: UniqueSkill): string {
+  return sig.kind === "passive"
+    ? `+${sig.passiveAmount} ${sig.passiveTarget}`
+    : `nat-20 · ${sig.triggerScenario ?? ""}`;
+}
 
 /** Every skill in the game, merged with the character's levels (0 if unlearned),
  *  learned first — so the sheet shows the full range the player can attempt, not
@@ -43,7 +56,7 @@ function skillTooltip(name: string): string {
   return desc ? `${desc} (governed by ${a})` : `Governed by ${a}.`;
 }
 
-type Tab = "sheet" | "ship" | "map" | "clocks";
+type Tab = "sheet" | "map" | "clocks";
 
 export default function Sidebar({
   state,
@@ -60,7 +73,7 @@ export default function Sidebar({
   const body = (
     <>
       <div className="flex border-b border-edge text-xs">
-        {(["sheet", "ship", "map", "clocks"] as Tab[]).map((t) => (
+        {(["sheet", "map", "clocks"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -76,7 +89,6 @@ export default function Sidebar({
 
       <div className="scrollbar-thin flex-1 overflow-y-auto p-3 text-[13px]">
         {tab === "sheet" && <SheetTab state={state} />}
-        {tab === "ship" && <ShipTab state={state} />}
         {tab === "map" && <MapTab state={state} />}
         {tab === "clocks" && <ClocksTab state={state} />}
       </div>
@@ -143,6 +155,25 @@ function humanizeSkill(name: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+function SheetSection({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="mt-2 border-t border-edge pt-2">
+      <div className="mb-1.5 text-[11px] uppercase tracking-wide text-neutral-500">{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function TraitRow({ k, v }: { k: string; v?: string }) {
+  if (!v) return null;
+  return (
+    <div className="flex justify-between gap-3 text-[13px]">
+      <span className="shrink-0 text-neutral-500">{k}</span>
+      <span className="text-right text-neutral-200">{v}</span>
+    </div>
+  );
+}
+
 function SheetTab({ state }: { state: CampaignState }) {
   return (
     <div className="space-y-4">
@@ -167,43 +198,117 @@ function SheetTab({ state }: { state: CampaignState }) {
             </span>{" "}
             {c.ac}
             {c.credits !== undefined && ` · ¢${c.credits}`}
+            {typeof c.stims === "number" && ` · ${c.stims} stims`}
             {c.fragile && <span className="text-bad"> · FRAGILE</span>}
           </div>
+
           {c.kind === "pc" && (
-            <div className="mt-2 border-t border-edge pt-2">
-              <div className="mb-1.5 text-[11px] uppercase tracking-wide text-neutral-500">
-                Skills <span className="text-neutral-600">— all you can attempt</span>
-              </div>
-              <div className="space-y-2">
-                {allSkillRows(c.skills).map((s) => {
-                  const learned = s.level > 0 || s.ticks > 0;
-                  return (
-                    <div key={s.name} className={learned ? "" : "opacity-45"}>
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span
-                          className="cursor-help text-[13px] text-neutral-200 underline decoration-dotted decoration-neutral-600 underline-offset-2"
-                          title={skillTooltip(s.name)}
-                        >
-                          {humanizeSkill(s.name)}
-                        </span>
-                        <span className="shrink-0 tabular-nums text-[11px] text-neutral-500">
-                          Level&nbsp;{s.level}
-                          {learned && <span className="text-neutral-600"> · {s.ticks}/{tickMax(s.level)}</span>}
-                        </span>
-                      </div>
-                      {learned && (
-                        <div className="mt-1">
-                          <Bar value={s.ticks} max={tickMax(s.level)} height="h-1" />
-                        </div>
-                      )}
+            <>
+              <SheetSection label="Attributes">
+                <div className="grid grid-cols-6 gap-1">
+                  {ATTR_ORDER.map((a) => (
+                    <div key={a} className="rounded border border-edge/60 bg-ink/40 px-1 py-1 text-center" title={cap(a)}>
+                      <div className="text-[9px] uppercase text-neutral-600">{a.slice(0, 3)}</div>
+                      <div className="text-[13px] font-semibold text-neutral-100">{fmtMod(c.attributes[a] ?? 0)}</div>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+              </SheetSection>
+
+              <SheetSection label="Skills — all you can attempt">
+                <div className="space-y-2">
+                  {allSkillRows(c.skills).map((s) => {
+                    const learned = s.level > 0 || s.ticks > 0;
+                    return (
+                      <div key={s.name} className={learned ? "" : "opacity-45"}>
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span
+                            className="cursor-help text-[13px] text-neutral-200 underline decoration-dotted decoration-neutral-600 underline-offset-2"
+                            title={skillTooltip(s.name)}
+                          >
+                            {humanizeSkill(s.name)}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-[11px] text-neutral-500">
+                            Level&nbsp;{s.level}
+                            {learned && <span className="text-neutral-600"> · {s.ticks}/{tickMax(s.level)}</span>}
+                          </span>
+                        </div>
+                        {learned && (
+                          <div className="mt-1">
+                            <Bar value={s.ticks} max={tickMax(s.level)} height="h-1" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </SheetSection>
+
+              {(c.background || c.bias || c.alignment || c.ambition) && (
+                <SheetSection label="Traits">
+                  <div className="space-y-0.5">
+                    <TraitRow k="Background" v={bgLabel(c.background)} />
+                    <TraitRow k="Focus" v={c.bias ? cap(c.bias) : undefined} />
+                    <TraitRow k="Code" v={c.alignment ? cap(c.alignment) : undefined} />
+                    <TraitRow k="Ambition" v={c.ambition ? cap(c.ambition) : undefined} />
+                  </div>
+                </SheetSection>
+              )}
+
+              {c.uniqueSkill && (
+                <SheetSection label="Signature">
+                  <p className="text-[13px] text-neutral-200">
+                    <span className="font-semibold">{c.uniqueSkill.name}</span>
+                    <span className="text-accent/80"> · {sigLine(c.uniqueSkill)}</span>
+                  </p>
+                  {c.uniqueSkill.description && (
+                    <p className="mt-0.5 text-[12px] text-neutral-400">{c.uniqueSkill.description}</p>
+                  )}
+                </SheetSection>
+              )}
+
+              {c.moralCode && (
+                <SheetSection label="The line won't cross">
+                  <p className="text-[13px] text-neutral-200">{c.moralCode}</p>
+                </SheetSection>
+              )}
+              {c.voiceNotes && (
+                <SheetSection label="Voice">
+                  <p className="text-[12px] italic text-neutral-400">{c.voiceNotes}</p>
+                </SheetSection>
+              )}
+              {c.backstory && (
+                <SheetSection label="Backstory">
+                  <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-neutral-400">{c.backstory}</p>
+                </SheetSection>
+              )}
+            </>
+          )}
+
+          {c.gear.length > 0 && (
+            <SheetSection label="Equipment">
+              <div className="flex flex-wrap gap-1">
+                {c.gear.map((g, i) => (
+                  <span
+                    key={i}
+                    className="rounded border border-edge bg-ink/40 px-1.5 py-0.5 text-[11px] text-neutral-300"
+                    title={g.detail}
+                  >
+                    {g.name}
+                    {g.damage ? ` (${g.damage})` : ""}
+                  </span>
+                ))}
               </div>
-            </div>
+            </SheetSection>
           )}
         </div>
       ))}
+
+      {/* Ship lives in the sheet now — one place for the whole character. */}
+      <div>
+        <div className="mb-1.5 text-[11px] uppercase tracking-wide text-neutral-500">Ship</div>
+        <ShipTab state={state} />
+      </div>
     </div>
   );
 }
