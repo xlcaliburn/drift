@@ -34,6 +34,23 @@ export function rollDice(notation: string, rng: RNG): DiceRoll {
   return { notation, dice, total };
 }
 
+/**
+ * Roll a damage/effect expression tolerant of what a model emits: a bare flat
+ * number ("6"), dice ("1d6"), or dice+flat ("2d6+1"). Returns 0 for anything
+ * unparseable (so a bad expression can never crash a turn).
+ */
+export function rollDamage(expr: string, rng: RNG): number {
+  const m = expr.trim().toLowerCase().match(/^(\d+)(?:d(\d+))?\s*([+-]\s*\d+)?$/);
+  if (!m) return 0;
+  const count = parseInt(m[1], 10);
+  const sides = m[2] ? parseInt(m[2], 10) : 0;
+  const flat = m[3] ? parseInt(m[3].replace(/\s/g, ""), 10) : 0;
+  if (!sides) return Math.max(0, count + flat); // bare flat number
+  let total = flat;
+  for (let i = 0; i < count; i++) total += rng.int(1, sides);
+  return Math.max(0, total);
+}
+
 /** Maximum possible value of a dice expression (used for crit resolution). */
 export function maxDice(notation: string): number {
   const { count, sides, flat } = parseDice(notation);

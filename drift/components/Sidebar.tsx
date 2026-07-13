@@ -200,6 +200,13 @@ function SheetTab({ state }: { state: CampaignState }) {
             {c.credits !== undefined && ` · ¢${c.credits}`}
             {typeof c.stims === "number" && ` · ${c.stims} stims`}
             {c.fragile && <span className="text-bad"> · FRAGILE</span>}
+            {c.injuries?.some((i) => i.name === "Dead") ? (
+              <span className="font-semibold text-bad"> · ☠ DECEASED</span>
+            ) : (
+              c.injuries?.some((i) => i.name === "Downed") && (
+                <span className="font-semibold text-bad"> · DOWNED</span>
+              )
+            )}
           </div>
 
           {c.kind === "pc" && (

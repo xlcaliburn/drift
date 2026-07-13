@@ -15,8 +15,8 @@ import type { CampaignState } from "./schemas";
 /** Resolved quests it takes to leave the tutorial. */
 export const TUTORIAL_QUEST_TARGET = 3;
 
-/** Choices allowed per beat while in the tutorial (a binary yes/no decision). */
-export const TUTORIAL_CHOICE_COUNT = 2;
+/** Choices allowed per beat while in the tutorial (kept small for onboarding). */
+export const TUTORIAL_CHOICE_COUNT = 3;
 
 /** Resolved "quests" = story threads the narrator has marked resolved. */
 export function resolvedQuestCount(state: CampaignState): number {

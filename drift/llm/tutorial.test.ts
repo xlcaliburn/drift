@@ -33,9 +33,9 @@ describe("tutorial gating", () => {
     expect(resolvedQuestCount(stateWith(2))).toBe(2);
   });
 
-  it("clamps offer_choices to exactly 2 while in tutorial", () => {
-    expect(runOfferChoices(stateWith(0), ["Yes", "No", "Maybe", "Negotiate"])).toEqual(["Yes", "No"]);
-    expect(runOfferChoices(stateWith(2), ["Take it", "Walk", "Haggle"])).toEqual(["Take it", "Walk"]);
+  it("clamps offer_choices to the tutorial count (3) while in tutorial", () => {
+    expect(runOfferChoices(stateWith(0), ["Yes", "No", "Maybe", "Negotiate"])).toEqual(["Yes", "No", "Maybe"]);
+    expect(runOfferChoices(stateWith(2), ["Take it", "Walk"])).toEqual(["Take it", "Walk"]);
   });
 
   it("restores full branching (up to 4) once graduated", () => {

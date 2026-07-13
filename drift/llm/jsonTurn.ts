@@ -72,9 +72,33 @@ function defaultModel(): string {
   return resolveModel(process.env.NARRATOR_MODEL ?? "deepseek-chat");
 }
 
-/** Format an engine roll result for the model + the audit. */
-function engineLineOf(rollBreakdown: string, tick?: string): string {
-  return `ENGINE RESULT: ${rollBreakdown}${tick ? ` · ${tick}` : ""}`;
+type RollResult = {
+  breakdown?: string;
+  tick?: string;
+  outcome?: string;
+  damage?: number;
+  downed?: boolean;
+  died?: boolean;
+  error?: string;
+};
+
+/** Player-facing lines (dice → tick → damage) for a resolved roll. */
+function rollDisplayLines(res: RollResult): string[] {
+  const lines: string[] = [];
+  if (res.breakdown) lines.push(res.breakdown);
+  if (res.tick) lines.push(res.tick);
+  if (res.damage) {
+    lines.push(`Took ${res.damage} damage${res.died ? " — KILLED" : res.downed ? " — DOWNED" : ""}`);
+  }
+  return lines;
+}
+
+/** One compact line summarizing a roll for the model's context. */
+function engineContextLine(res: RollResult): string {
+  const dmg = res.damage
+    ? ` · ${res.damage} damage${res.died ? " (KILLED)" : res.downed ? " (DOWNED)" : ""}`
+    : "";
+  return `ENGINE RESULT: ${res.breakdown ?? ""}${res.tick ? ` · ${res.tick}` : ""}${dmg}`;
 }
 
 export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult> {
@@ -102,10 +126,11 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       skill: input.preCheck.skill,
       dc: input.preCheck.dc,
       stakes: input.preCheck.stakes,
-    }) as { breakdown?: string; tick?: string; error?: string };
+      failDamage: input.preCheck.failDamage,
+    }) as RollResult;
     if (res.breakdown) {
-      engineLines.push(engineLineOf(res.breakdown, res.tick));
-      input.onEngine?.([res.breakdown, ...(res.tick ? [res.tick] : [])]);
+      engineLines.push(engineContextLine(res));
+      input.onEngine?.(rollDisplayLines(res));
     }
   }
 
@@ -206,17 +231,36 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       skill: plan.roll.skill,
       dc: plan.roll.dc,
       stakes: plan.roll.stakes,
-    }) as { breakdown?: string; tick?: string; error?: string };
+      failDamage: plan.roll.failDamage,
+    }) as RollResult;
     if (res.breakdown) {
-      input.onEngine?.([res.breakdown, ...(res.tick ? [res.tick] : [])]);
+      input.onEngine?.(rollDisplayLines(res));
       messages.push({ role: "assistant", content: JSON.stringify({ narration: plan.narration }) });
       messages.push({
         role: "user",
-        content: `${engineLineOf(res.breakdown, res.tick)}\nNarrate the outcome of this roll and provide choices. Do not request another roll.`,
+        content: `${engineContextLine(res)}\nNarrate the outcome of this roll and provide choices. Do not request another roll.`,
       });
       const outcome = await plannedCall(true);
       narration = `${plan.narration}\n\n${outcome.narration}`.trim();
       plan = { ...outcome, narration };
+    }
+  }
+
+  // ── Danger: an unavoidable hazard the PC must survive this turn. The engine
+  //    resolves the save + damage; the dice/HP drop show as system lines (the
+  //    consequence is real even though the narration was already written). ────
+  if (plan.danger && pc && !TurnRuntime.isDead(pc)) {
+    toolCalls.push("roll_check");
+    const res = runtime.execute("roll_check", {
+      characterId: pc.id,
+      skill: plan.danger.skill,
+      dc: plan.danger.dc,
+      stakes: true,
+      failDamage: plan.danger.damage,
+    }) as RollResult;
+    if (res.breakdown) {
+      engineLines.push(engineContextLine(res));
+      input.onEngine?.(rollDisplayLines(res));
     }
   }
 

@@ -53,6 +53,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not your campaign." }, { status: 403 });
   }
 
+  // Death is permanent — a dead character can't act. Stakes are real.
+  const pcNow = session.state.characters.find((c) => c.kind === "pc");
+  if (pcNow && (pcNow.injuries ?? []).some((i) => i.name === "Dead")) {
+    return NextResponse.json(
+      { error: `${pcNow.name} is dead. This character's story has ended.` },
+      { status: 409 },
+    );
+  }
+
   // Hard monthly budget: block BEFORE spending tokens. (Two concurrent turns
   // can both pass — a one-turn overshoot is fine at playtest scale.)
   if (!isDevUser(auth.user)) {

@@ -25,8 +25,21 @@ export const CheckSpec = z.object({
   dc: z.coerce.number().int().min(5).max(30),
   /** Only stakes=true rolls at DC 13+ earn skill ticks (levelling). */
   stakes: z.coerce.boolean().default(false),
+  /** Damage the engine rolls and applies to the PC when this check FAILS —
+   *  e.g. "1d6", "2d6", "8". This is how failure becomes real (and lethal). */
+  failDamage: optionalNullable(z.string().regex(/^\s*\d+\s*(d\s*\d+)?\s*([+-]\s*\d+)?\s*$/i)),
 });
 export type CheckSpec = z.infer<typeof CheckSpec>;
+
+/** An unavoidable hazard the PC must survive THIS turn: a save (skill vs DC); on
+ *  failure the engine rolls `damage` and applies it. "If a danger is stated." */
+export const DangerSpec = z.object({
+  skill: z.string().min(1),
+  dc: z.coerce.number().int().min(5).max(30),
+  damage: z.string().regex(/^\s*\d+\s*(d\s*\d+)?\s*([+-]\s*\d+)?\s*$/i),
+  note: optionalNullable(z.string()),
+});
+export type DangerSpec = z.infer<typeof DangerSpec>;
 
 /** A clickable next action; `check` makes clicking it roll before narration. */
 export const ChoiceOption = z.object({
@@ -48,6 +61,8 @@ export const TurnPlan = z.object({
   choices: z.array(ChoiceLoose).max(6).default([]),
   /** A check the CURRENT player action itself requires (pre-roll not done). */
   roll: optionalNullable(CheckSpec),
+  /** An unavoidable hazard the PC must survive this turn (save-or-take-damage). */
+  danger: optionalNullable(DangerSpec),
   /** Canon feed entry when the beat shifts a faction's standing. */
   worldEvent: optionalNullable(
     z.object({

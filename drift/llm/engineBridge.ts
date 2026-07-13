@@ -13,6 +13,7 @@ import {
 } from "@/engine";
 import { enemyTiers, shipClasses } from "@/content";
 import { awardTick } from "@/engine/progression";
+import { rollDamage } from "@/engine/dice";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
 
@@ -51,6 +52,51 @@ export class TurnRuntime {
 
   private char(id: string): Character | undefined {
     return this.state.characters.find((c) => c.id === id);
+  }
+
+  /** Is this character dead (an injury marks it)? Guards further play. */
+  static isDead(c: Character): boolean {
+    return (c.injuries ?? []).some((i) => i.name === "Dead");
+  }
+
+  /**
+   * Apply damage to a character and resolve the life-and-death consequences —
+   * this is what makes stakes real and death POSSIBLE:
+   *   HP > 0 → 0        : DOWNED (critical; one more hit is fatal)
+   *   already at 0, hit : DEAD
+   * Returns the outcome so the caller can surface it to the player + narrator.
+   */
+  private applyDamage(characterId: string, amount: number, reason: string) {
+    const c = this.char(characterId);
+    if (!c || amount <= 0) return { hpAfter: c?.hp ?? 0, taken: 0, downed: false, died: false };
+    const before = c.hp;
+    const hp = Math.max(0, before - amount);
+    let injuries = c.injuries ?? [];
+    let downed = false;
+    let died = false;
+    if (before === 0) {
+      // Struck while already down → killed.
+      died = true;
+      injuries = [...injuries.filter((i) => i.name !== "Downed"), { name: "Dead", effect: reason }];
+    } else if (hp === 0) {
+      downed = true;
+      if (!injuries.some((i) => i.name === "Downed")) {
+        injuries = [...injuries, { name: "Downed", effect: "critical — bleeding out; one more hit is fatal" }];
+      }
+    }
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((x) => (x.id === characterId ? { ...x, hp, injuries } : x)),
+    };
+    const tag = died ? " · KILLED" : downed ? " · DOWNED" : "";
+    this.events.push({
+      type: "resource",
+      breakdown: `${c.name} takes ${amount} damage — ${before}→${hp} HP${tag}`,
+      field: "hp",
+      delta: -amount,
+    });
+    if (died) this.events.push({ type: "note", breakdown: `${c.name} has DIED. ${reason}` });
+    return { hpAfter: hp, taken: amount, downed, died };
   }
 
   /** Does this target id refer to the player's ship? Accepts the real ship id,
@@ -126,12 +172,22 @@ export class TurnRuntime {
         tick = award.event.breakdown;
       }
     }
+    // Real stakes: a failed roll that carries failDamage HURTS — the engine rolls
+    // the damage and applies it (can down or kill the character).
+    let harm: { taken: number; hpAfter: number; downed: boolean; died: boolean } | undefined;
+    if (res.outcome === "failure" && input.failDamage) {
+      const rolled = rollDamage(String(input.failDamage), this.rng);
+      if (rolled > 0) harm = this.applyDamage(character.id, rolled, `Failed ${String(input.skill)} check.`);
+    }
     return {
       breakdown: res.breakdown,
       total: res.total,
       outcome: res.outcome,
       tickEligible: res.tickEligible,
       ...(tick ? { tick } : {}),
+      ...(harm && harm.taken > 0
+        ? { damage: harm.taken, hpAfter: harm.hpAfter, downed: harm.downed, died: harm.died }
+        : {}),
     };
   }
 
