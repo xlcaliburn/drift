@@ -23,6 +23,17 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const fmtMod = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 const bgLabel = (id?: string) => backgrounds.find((b) => b.id === id)?.label ?? (id ? cap(id) : "");
 
+/** A signature's passive bonus to a given attribute (0 if none). This is applied
+ *  at roll time (rolls.passiveBonus); the sheet shows the ADJUSTED total so what
+ *  you see matches what you roll. */
+function sigAttrBonus(pc: CampaignState["characters"][number], attr: string): number {
+  const u = pc.uniqueSkill;
+  if (u?.kind === "passive" && u.passiveTargetType === "attribute" && u.passiveTarget === attr) {
+    return u.passiveAmount ?? 0;
+  }
+  return 0;
+}
+
 /** Compact effect line for a signature (unique) skill. */
 function sigLine(sig: UniqueSkill): string {
   return sig.kind === "passive"
@@ -336,16 +347,27 @@ function TraitsTab({ state }: { state: CampaignState }) {
 
       <SheetSection label="Attributes">
         <div className="grid grid-cols-6 gap-1">
-          {ATTR_ORDER.map((a) => (
-            <div
-              key={a}
-              className="cursor-help rounded border border-edge/60 bg-ink/40 px-1 py-1 text-center"
-              title={`${cap(a)} — ${ATTR_HINT[a]}`}
-            >
-              <div className="text-[9px] uppercase text-neutral-600">{a.slice(0, 3)}</div>
-              <div className="text-[13px] font-semibold text-neutral-100">{fmtMod(pc.attributes[a] ?? 0)}</div>
-            </div>
-          ))}
+          {ATTR_ORDER.map((a) => {
+            const base = pc.attributes[a] ?? 0;
+            const bonus = sigAttrBonus(pc, a);
+            const total = base + bonus;
+            return (
+              <div
+                key={a}
+                className="cursor-help rounded border border-edge/60 bg-ink/40 px-1 py-1 text-center"
+                title={
+                  bonus
+                    ? `${cap(a)} — ${ATTR_HINT[a]} (base ${fmtMod(base)} ${bonus >= 0 ? "+" : ""}${bonus} signature)`
+                    : `${cap(a)} — ${ATTR_HINT[a]}`
+                }
+              >
+                <div className="text-[9px] uppercase text-neutral-600">{a.slice(0, 3)}</div>
+                <div className={"text-[13px] font-semibold " + (bonus ? "text-accent" : "text-neutral-100")}>
+                  {fmtMod(total)}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </SheetSection>
 

@@ -6,17 +6,11 @@
 
 export const worldIntro = `THE DRIFT
 
-A hard, lawless stretch of settled space strung between three stations and the dead lanes that connect them. Ships are freedom and debt in equal measure; a hull and a full tank can make you your own master, or bury you in someone else's ledger.
-
-MERIDIAN RING is the closest thing to order — Crown territory, legitimate commerce, clean docks and cleaner money. ROOK STATION, three days out, is where the black market breathes: fixers, courier syndicates, and bounty desks, a place that respects you and fears you in the same breath. TALOS lies four days through THE SHEAR, a debris field that eats the careless and the unlucky, into hostile country.
-
-Nobody here is coming to save you. Consequences stick. The dice are honest. And right now, the balance of power is cracking.`;
+A hard, lawless stretch of settled space strung between three stations — Meridian Ring, where the Hollow Crown keeps order and clean money; Rook, where the black market breathes; and Talos, frontier country past the debris field called the Shear. A ship is freedom and debt in equal measure. Three powers move in the lanes: the Hollow Crown, who own the debt; the Sable Chain, the rival syndicate rising against them; and the Undertow, who profit off the chaos in between. Right now the Crown and the Chain are going to war over the routes — and nobody is coming to save you.`;
 
 export const seasonOneSpine = `SEASON ONE — FAULT LINE
 
-For years the Hollow Crown has owned the Meridian–Rook lanes: their debt, their routes, their rules. That grip is slipping. The Sable Chain — a rival syndicate that used to keep to the margins — is pushing into Crown lanes in the open, running scouts on the bulk routes and daring anyone to stop them. The Undertow smells opportunity in the chaos. Brokers hedge their bets. Old contacts go quiet.
-
-Everyone in the lanes is choosing a side, or carving out their own. Where you start in this fault line is up to you. Where it ends is up to all of you.`;
+The Crown's grip on the Meridian–Rook lanes is slipping, and the Sable Chain is pushing into their routes in the open. Everyone is choosing a side — or carving out their own.`;
 
 export interface FactionBrief {
   factionId: string;
