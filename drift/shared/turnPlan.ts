@@ -202,7 +202,9 @@ export function repairTurnPlan(text: string): TurnPlan {
   }
   const { narration, choices } = parseInlineMenu(text.trim());
   return TurnPlan.parse({
-    narration: narration || "…",
+    // A non-empty in-fiction beat beats a bare "…" when generation returns nothing
+    // (e.g. a passive "wait and watch" the model under-answered).
+    narration: narration || "The moment holds, and the lanes keep turning around you.",
     choices: choices.map((label) => ({ label })),
   });
 }

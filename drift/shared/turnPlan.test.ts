@@ -79,7 +79,9 @@ describe("repairTurnPlan", () => {
   });
 
   it("never returns an empty narration", () => {
-    expect(repairTurnPlan("").narration).toBe("…");
+    const n = repairTurnPlan("").narration;
+    expect(n.length).toBeGreaterThan(1);
+    expect(n).not.toBe("…");
   });
 
   it("salvages narration + choice labels from JSON that failed validation", () => {

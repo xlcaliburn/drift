@@ -547,6 +547,17 @@ export class TurnRuntime {
       tendaysDelta: input.tendaysDelta ? Number(input.tendaysDelta) : 0,
     });
     this.state = report.state;
+    // Stabilise the wounded between scenes: a Downed (but living) character is
+    // patched up — cleared of Downed and brought to at least 1 HP — so nobody
+    // carries a bleeding-out, 0-HP crisis (or a soft-lock) into the next scene.
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((c) => {
+        if (TurnRuntime.isDead(c)) return c;
+        if (!(c.injuries ?? []).some((i) => i.name === "Downed")) return c;
+        return { ...c, hp: Math.max(1, c.hp), injuries: c.injuries.filter((i) => i.name !== "Downed") };
+      }),
+    };
     this.sceneEndReport = report;
     // New scene → the per-scene tick cap resets.
     this.tickedThisScene.clear();
@@ -563,14 +574,16 @@ export class TurnRuntime {
     return this.state.characters.find((c) => c.kind === "pc");
   }
 
-  /** Heal a character, clamped to maxHp. Returns the new HP. */
+  /** Heal a character, clamped to maxHp. Any heal that brings them above 0 HP
+   *  clears Downed — you're back on your feet (bloodied, but up). Returns new HP. */
   private applyHeal(characterId: string, amount: number): number {
     const c = this.char(characterId);
     if (!c) return 0;
     const hp = Math.min(c.maxHp, c.hp + Math.max(0, amount));
+    const injuries = hp > 0 ? (c.injuries ?? []).filter((i) => i.name !== "Downed") : c.injuries;
     this.state = {
       ...this.state,
-      characters: this.state.characters.map((x) => (x.id === characterId ? { ...x, hp } : x)),
+      characters: this.state.characters.map((x) => (x.id === characterId ? { ...x, hp, injuries } : x)),
     };
     return hp;
   }

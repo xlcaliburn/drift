@@ -143,6 +143,12 @@ export default function CreateWizard() {
   const [tie, setTie] = useState("");
   const [tell, setTell] = useState("");
 
+  // Start with a suggested canon name so the field is never blank. Client-only
+  // (in an effect) to avoid an SSR hydration mismatch from the random pick.
+  useEffect(() => {
+    setName((n) => n || suggestName(Math.random()));
+  }, []);
+
   // unique skill
   const [usName, setUsName] = useState("");
   const [usDesc, setUsDesc] = useState("");
@@ -315,7 +321,7 @@ export default function CreateWizard() {
       {step === 0 && (
         <Section>
           <h1 className="mb-4 text-3xl font-bold text-accent">DRIFT</h1>
-          <Prose text={worldIntro} />
+          <Prose text={worldIntro} highlight={FACTION_TERMS} />
           <div className="my-6 rounded-lg border border-edge bg-panel/50 p-4">
             <Prose text={seasonOneSpine} />
           </div>
@@ -350,12 +356,17 @@ export default function CreateWizard() {
                   (factionId === f.factionId ? "border-accent bg-panel" : "border-edge hover:border-neutral-600")
                 }
               >
-                <div className="flex items-baseline justify-between">
-                  <span className="text-lg font-semibold">{f.name}</span>
-                  <span className="text-xs italic text-neutral-500">{f.tagline}</span>
+                <div className="flex items-start gap-3">
+                  <FactionEmblem factionId={f.factionId} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-lg font-semibold">{f.name}</span>
+                      <span className="shrink-0 text-xs italic text-neutral-500">{f.tagline}</span>
+                    </div>
+                    <p className="mt-1 text-sm text-neutral-400">{f.brief}</p>
+                    <p className="mt-2 text-xs text-accent/80">Playstyle: {f.playstyle}</p>
+                  </div>
                 </div>
-                <p className="mt-1 text-sm text-neutral-400">{f.brief}</p>
-                <p className="mt-2 text-xs text-accent/80">Playstyle: {f.playstyle}</p>
               </button>
             ))}
           </div>
@@ -745,8 +756,85 @@ function Section({ children }: { children: React.ReactNode }) {
 function H({ children }: { children: React.ReactNode }) {
   return <h2 className="mb-4 text-2xl font-bold text-neutral-100">{children}</h2>;
 }
-function Prose({ text }: { text: string }) {
-  return <div className="whitespace-pre-wrap text-[15px] leading-relaxed text-neutral-300">{text}</div>;
+/** Faction names to accent (orange, bold) wherever they appear in prose. */
+const FACTION_TERMS = ["Hollow Crown", "Sable Chain", "Undertow"];
+
+function highlightTerms(text: string, terms: string[]): React.ReactNode[] {
+  const esc = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp(`(${esc.join("|")})`, "g");
+  return text.split(re).map((part, i) =>
+    terms.includes(part) ? (
+      <span key={i} className="font-semibold text-accent">
+        {part}
+      </span>
+    ) : (
+      <span key={i}>{part}</span>
+    ),
+  );
+}
+
+function Prose({ text, highlight }: { text: string; highlight?: string[] }) {
+  const content = highlight?.length ? highlightTerms(text, highlight) : text;
+  return <div className="whitespace-pre-wrap text-[15px] leading-relaxed text-neutral-300">{content}</div>;
+}
+
+/** Deterministic FNV-1a hash for the pixel-flag generator. */
+function emblemHash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+const FACTION_COLORS: Record<string, string> = {
+  "f-crown": "#e8a33d",
+  "f-sable": "#d9584a",
+  "f-undertow": "#8b93a6",
+  "f-ledger": "#c99a5b",
+  "f-meridian": "#6fae8f",
+  "f-reclaimers": "#7fa6c9",
+  "f-free": "#b98fd0",
+  "f-wreckers": "#d9584a",
+  "f-rook": "#c99a5b",
+  "f-talos": "#6f7b93",
+};
+
+/**
+ * A deterministic pixel-flag emblem per faction (identicon-style): a horizontally
+ * mirrored 5×5 bitmap seeded from the faction id, in the faction's colour. No
+ * assets — pure SVG rects, so it renders anywhere and never breaks the CSP.
+ */
+function FactionEmblem({ factionId, size = 46 }: { factionId: string; size?: number }) {
+  const h = emblemHash(factionId);
+  const color = FACTION_COLORS[factionId] ?? `hsl(${h % 360} 55% 62%)`;
+  const W = 5;
+  const H = 5;
+  const cells: [number, number][] = [];
+  for (let r = 0; r < H; r++) {
+    for (let c = 0; c < 3; c++) {
+      if ((h >> (r * 3 + c)) & 1) {
+        cells.push([c, r]);
+        if (c < 2) cells.push([W - 1 - c, r]); // mirror
+      }
+    }
+  }
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${W} ${H}`}
+      className="shrink-0 rounded border border-edge"
+      style={{ imageRendering: "pixelated" }}
+      aria-hidden
+    >
+      <rect width={W} height={H} fill="#0b0e14" />
+      {cells.map(([c, r], i) => (
+        <rect key={i} x={c} y={r} width={1.02} height={1.02} fill={color} />
+      ))}
+    </svg>
+  );
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

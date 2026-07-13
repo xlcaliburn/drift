@@ -5,6 +5,7 @@ import type { RNG } from "@/engine";
 
 // d20 = 1 → any check vs a high DC fails (and 1 is not a crit), so failDamage lands.
 const minRng: RNG = { int: (min) => min };
+const maxRng: RNG = { int: (_min, max) => max };
 
 /** A low-HP PC with `resolved` completed quests (>=3 ends the tutorial). */
 function pcState(resolved: number): CampaignState {
@@ -46,5 +47,29 @@ describe("death gate", () => {
     expect(rt.state.characters[0].injuries.some((i) => i.name === "Downed")).toBe(true);
     lethalHit(rt); // dead
     expect(TurnRuntime.isDead(rt.state.characters[0])).toBe(true);
+  });
+});
+
+describe("downed recovery", () => {
+  function downedState(): CampaignState {
+    const s = pcState(3);
+    s.characters[0].hp = 0;
+    s.characters[0].injuries = [{ name: "Downed", effect: "bleeding out" }];
+    s.characters[0].stims = 1;
+    return s;
+  }
+
+  it("a heal that brings HP above 0 clears Downed (back on your feet)", () => {
+    const rt = new TurnRuntime(downedState(), maxRng);
+    rt.useItem("stim");
+    expect(rt.state.characters[0].hp).toBeGreaterThan(0);
+    expect(rt.state.characters[0].injuries.some((i) => i.name === "Downed")).toBe(false);
+  });
+
+  it("scene end stabilises a downed survivor to at least 1 HP and clears Downed", () => {
+    const rt = new TurnRuntime(downedState(), maxRng);
+    rt.execute("end_scene", {});
+    expect(rt.state.characters[0].hp).toBe(1);
+    expect(rt.state.characters[0].injuries.some((i) => i.name === "Downed")).toBe(false);
   });
 });
