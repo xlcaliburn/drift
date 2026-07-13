@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { CampaignState } from "@/shared/schemas";
 import { skillProgress } from "@/engine";
+import { skillReference } from "@/content";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_DIRECTIVE, TUTORIAL_JSON_DIRECTIVE } from "@/shared/tutorial";
 
@@ -40,6 +41,10 @@ const DM_STYLE = `You are the DM of DRIFT, a brutal space-opera TTRPG. Voice and
  * where recency dominates for small models. Mechanics the engine can enforce
  * are NOT prompted for here — the engine enforces them.
  */
+/** Static skill reference (name — what it covers), interpolated into the cached
+ *  system prompt so the narrator picks the right skill. */
+const SKILL_REFERENCE = skillReference();
+
 const JSON_DM_STYLE = `You are the DM of DRIFT, a brutal space-opera TTRPG. The engine rolls all dice and tracks all numbers — you write the story and propose options as data.
 
 VOICE: second person, present tense. Vivid but economical — a beat is 2-4 sentences, ~90 words. Consequences stick; no plot armor; the world moves on its own. NPCs treat an unproven newcomer accordingly. Never invent dice results or numbers. Never repeat a sentence you already wrote.
@@ -61,7 +66,9 @@ Respond with ONE json object and nothing else:
 
 RULES:
 1. "narration" is required. "choices" needs 2-4 entries unless "sceneEnd" is set.
-2. Attach "check" to a choice when that action would be uncertain WITH stakes — the engine rolls it when clicked. Skills: piloting, gunnery, smallArms, melee, stealth, streetwise, negotiation, deception, intimidation, mechanics, electronics, navigation, zeroG, survival, perception. DC: 10 easy, 13 pressured, 15 hard, 18 severe. stakes=true only when failure genuinely costs something.
+2. Attach "check" to a choice when that action would be uncertain WITH stakes — the engine rolls it when clicked. Pick the skill from this list by what the action actually is (do NOT guess from the word — e.g. an FTL jump is navigation, not zeroG):
+${SKILL_REFERENCE}
+DC: 10 easy, 13 pressured, 15 hard, 18 severe. stakes=true only when failure genuinely costs something.
 3. "failDamage" (dice, e.g. "1d6", "2d6") on a check → the engine deals that damage when the check FAILS. Add it whenever failing that action would physically hurt (a firefight, a fall, a burn). This is how the player can be wounded and killed.
 4. "danger" is an UNAVOIDABLE hazard the player must survive THIS turn regardless of choice — the engine rolls their save (skill vs dc) and deals "damage" on failure. Use it when you state a danger in the narration (gunfire, explosion, hostile environment).
 5. "roll" is ONLY for when the player's CURRENT typed action itself needs a check. If the message contains an ENGINE RESULT line, that roll already happened — narrate its outcome and do NOT request another.

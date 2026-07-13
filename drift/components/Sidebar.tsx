@@ -30,31 +30,14 @@ function allSkillRows(owned: Skill[]): Skill[] {
     .sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
 }
 
-/** One-line "what this covers" blurbs for the skill tooltips. */
-const SKILL_INFO: Record<string, string> = {
-  piloting: "Flying ships — dogfights, hard burns, threading debris at speed.",
-  gunnery: "Firing ship-mounted weapons in space combat.",
-  smallArms: "Pistols and rifles — personal ranged fighting.",
-  melee: "Close-quarters fighting — blades, fists, improvised weapons.",
-  stealth: "Moving unseen, hiding, and sleight of hand.",
-  zeroG: "Moving and fighting in zero gravity and vacuum.",
-  streetwise: "Reading the underworld — contacts, rumors, black markets.",
-  negotiation: "Bargaining, brokering deals, and talking people around.",
-  deception: "Lies, disguises, cons, and bluffing.",
-  intimidation: "Bending others with threats and force of presence.",
-  mechanics: "Repairing and jury-rigging machinery and hulls.",
-  electronics: "Hacking, wiring, security systems, and sensors.",
-  navigation: "Plotting jumps and lanes — and not getting lost.",
-  survival: "Enduring hostile environments and scavenging to live.",
-  perception: "Noticing details — spotting danger, traps, and tells.",
-};
-
-/** Tooltip text for a skill: what it covers + its governing attribute. */
+/** Tooltip text for a skill: what it covers + its governing attribute
+ *  (descriptions come from content/skills.json — the same source fed to the AI). */
 function skillTooltip(name: string): string {
-  const attr = skillsMeta.skills[name as keyof typeof skillsMeta.skills]?.attribute ?? "reflex";
-  const a = attr.charAt(0).toUpperCase() + attr.slice(1);
-  const desc = SKILL_INFO[name];
-  return desc ? `${desc} (governed by ${a})` : `Governed by ${a}.`;
+  const def = skillsMeta.skills[name as keyof typeof skillsMeta.skills] as
+    | { attribute?: string; does?: string }
+    | undefined;
+  const a = (def?.attribute ?? "reflex").replace(/^./, (c) => c.toUpperCase());
+  return def?.does ? `${def.does} (governed by ${a})` : `Governed by ${a}.`;
 }
 
 type Tab = "status" | "traits" | "map" | "clocks";
