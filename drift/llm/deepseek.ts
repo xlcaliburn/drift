@@ -20,6 +20,11 @@ const FALLBACK_ANTHROPIC = "claude-haiku-4-5-20251001";
 const FREQUENCY_PENALTY = 0.5;
 const PRESENCE_PENALTY = 0.3;
 
+// DeepSeek defaults to ~1.0, which encourages the wandering / multi-beat
+// over-generation we keep fighting. Nudge it down for tighter, more on-format
+// turns while keeping enough warmth for prose. Tunable via env for playtesting.
+const TEMPERATURE = Number(process.env.NARRATOR_TEMPERATURE ?? 0.8);
+
 export function isDeepSeekModel(model: string): boolean {
   return model.startsWith("deepseek");
 }
@@ -163,6 +168,7 @@ export async function deepseekChat(params: {
   const body: Record<string, unknown> = {
     model: params.model,
     max_tokens: params.maxTokens,
+    temperature: TEMPERATURE,
     frequency_penalty: FREQUENCY_PENALTY,
     presence_penalty: PRESENCE_PENALTY,
     messages: [
@@ -259,6 +265,7 @@ export async function deepseekChatStream(params: {
   const body: Record<string, unknown> = {
     model: params.model,
     max_tokens: params.maxTokens,
+    temperature: TEMPERATURE,
     frequency_penalty: FREQUENCY_PENALTY,
     presence_penalty: PRESENCE_PENALTY,
     stream: true,
