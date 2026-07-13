@@ -3,6 +3,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { CampaignState, Scene } from "@/shared/schemas";
 import type { EngineEvent } from "@/engine";
 import type { ChatEntry } from "@/shared/chat";
+import type { CombatState } from "@/shared/combat";
 
 /**
  * Server-side campaign store.
@@ -23,6 +24,8 @@ export interface SessionData {
   focusIds: string[];
   /** Skills already ticked this scene ("characterId:skill") — per-scene cap. */
   tickedThisScene: string[];
+  /** Active multi-turn combat, or null when not fighting. */
+  combat: CombatState | null;
 }
 
 const store = new Map<string, SessionData>();
@@ -62,6 +65,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               scenes: [],
               focusIds: runtime.focusIds,
               tickedThisScene: runtime.tickedThisScene,
+              combat: runtime.combat,
             }
           : {
               state,
@@ -71,6 +75,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               scenes: [],
               focusIds: [],
               tickedThisScene: [],
+              combat: null,
             };
       store.set(campaignId, session);
       return session;
@@ -108,6 +113,7 @@ export async function persistSession(campaignId: string, session: SessionData): 
       log: session.log,
       focusIds: session.focusIds,
       tickedThisScene: session.tickedThisScene,
+      combat: session.combat,
     });
   } catch (e) {
     console.error(

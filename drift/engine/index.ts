@@ -3,6 +3,7 @@ export * from "./dice";
 export * from "./events";
 export * from "./rolls";
 export * from "./combat";
+export * from "./combatEngine";
 export * from "./progression";
 export * from "./clocks";
 export * from "./economy";

@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
     scenes: [],
     focusIds: [],
     tickedThisScene: [],
+    combat: null,
   };
   setSession(campaignId, session0);
   await persistSession(campaignId, session0);
