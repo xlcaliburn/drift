@@ -9,6 +9,16 @@ import type { CombatState } from "@/shared/combat";
 import skillsMeta from "@/content/skills.json";
 
 const ATTR_ORDER = ["might", "reflex", "vitality", "intellect", "perception", "presence"] as const;
+
+/** What each attribute governs — surfaced as a tooltip on the attribute chips. */
+const ATTR_HINT: Record<(typeof ATTR_ORDER)[number], string> = {
+  might: "Raw physical force — melee, hauling, breaking through.",
+  reflex: "Speed and coordination — piloting, gunnery, small arms, dodging.",
+  vitality: "Toughness and endurance — your HP and resisting harm.",
+  intellect: "Reasoning and know-how — mechanics, electronics, navigation.",
+  perception: "Awareness — spotting trouble, tracking, sensors.",
+  presence: "Force of personality — negotiation, deception, intimidation.",
+};
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const fmtMod = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 const bgLabel = (id?: string) => backgrounds.find((b) => b.id === id)?.label ?? (id ? cap(id) : "");
@@ -155,11 +165,19 @@ function SheetSection({ label, children }: { label: string; children: ReactNode 
   );
 }
 
-function TraitRow({ k, v }: { k: string; v?: string }) {
+function TraitRow({ k, v, tip }: { k: string; v?: string; tip?: string }) {
   if (!v) return null;
   return (
     <div className="flex justify-between gap-3 text-[13px]">
-      <span className="shrink-0 text-neutral-500">{k}</span>
+      <span
+        className={
+          "shrink-0 text-neutral-500" +
+          (tip ? " cursor-help underline decoration-dotted decoration-neutral-700 underline-offset-2" : "")
+        }
+        title={tip}
+      >
+        {k}
+      </span>
       <span className="text-right text-neutral-200">{v}</span>
     </div>
   );
@@ -240,12 +258,23 @@ function StatusTab({
             {weapons.length > 0 && (
               <SheetSection label="Weapons">
                 <div className="space-y-0.5">
-                  {weapons.map((g, i) => (
-                    <div key={i} className="flex justify-between gap-2 text-[12px]" title={g.detail}>
-                      <span className="text-neutral-200">{g.name}</span>
-                      <span className="tabular-nums text-neutral-500">{g.damage}</span>
-                    </div>
-                  ))}
+                  {weapons.map((g, i) => {
+                    const dry = g.rounds === 0;
+                    return (
+                      <div key={i} className="flex justify-between gap-2 text-[12px]" title={g.detail}>
+                        <span className="text-neutral-200">{g.name}</span>
+                        <span className="tabular-nums text-neutral-500">
+                          {g.damage}
+                          {typeof g.rounds === "number" && (
+                            <span className={dry ? "text-bad" : "text-neutral-600"}>
+                              {" · "}
+                              {dry ? "no ammo" : `${g.rounds} rds`}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </SheetSection>
             )}
@@ -307,7 +336,11 @@ function TraitsTab({ state }: { state: CampaignState }) {
       <SheetSection label="Attributes">
         <div className="grid grid-cols-6 gap-1">
           {ATTR_ORDER.map((a) => (
-            <div key={a} className="rounded border border-edge/60 bg-ink/40 px-1 py-1 text-center" title={cap(a)}>
+            <div
+              key={a}
+              className="cursor-help rounded border border-edge/60 bg-ink/40 px-1 py-1 text-center"
+              title={`${cap(a)} — ${ATTR_HINT[a]}`}
+            >
               <div className="text-[9px] uppercase text-neutral-600">{a.slice(0, 3)}</div>
               <div className="text-[13px] font-semibold text-neutral-100">{fmtMod(pc.attributes[a] ?? 0)}</div>
             </div>
@@ -347,10 +380,26 @@ function TraitsTab({ state }: { state: CampaignState }) {
       {(pc.background || pc.bias || pc.alignment || pc.ambition) && (
         <SheetSection label="Traits">
           <div className="space-y-0.5">
-            <TraitRow k="Background" v={bgLabel(pc.background)} />
-            <TraitRow k="Focus" v={pc.bias ? cap(pc.bias) : undefined} />
-            <TraitRow k="Code" v={pc.alignment ? cap(pc.alignment) : undefined} />
-            <TraitRow k="Ambition" v={pc.ambition ? cap(pc.ambition) : undefined} />
+            <TraitRow
+              k="Background"
+              v={bgLabel(pc.background)}
+              tip="Who you were before you started drifting — your opening gear, contacts, and reputation grew out of it."
+            />
+            <TraitRow
+              k="Focus"
+              v={pc.bias ? cap(pc.bias) : undefined}
+              tip="The lean you chose at creation — where your attribute and skill emphasis concentrated."
+            />
+            <TraitRow
+              k="Code"
+              v={pc.alignment ? cap(pc.alignment) : undefined}
+              tip="Your moral code — the narrator holds you to how you said this character behaves."
+            />
+            <TraitRow
+              k="Ambition"
+              v={pc.ambition ? cap(pc.ambition) : undefined}
+              tip="The long game — what your character is ultimately chasing across the campaign."
+            />
           </div>
         </SheetSection>
       )}
