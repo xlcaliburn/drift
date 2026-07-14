@@ -159,11 +159,15 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // A choice's attached check / combat action rides along to the engine.
+        // fromChoice marks a CLICKED option (vs. typed text): a clicked choice's
+        // check is already decided (shown on the chip), so the engine won't add a
+        // surprise roll — the badge is the contract.
         body: JSON.stringify({
           campaignId,
           playerText: text,
           check: action?.check,
           combatAction: action?.combatAction,
+          fromChoice: !!action,
         }),
       });
 

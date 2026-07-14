@@ -108,6 +108,9 @@ export async function POST(req: NextRequest) {
   const preCheck = body.check ? CheckSpec.safeParse(body.check).data : undefined;
   // Combat action from a clicked combat chip (routes through the combat engine).
   const combatAction = body.combatAction ? CombatActionSpec.safeParse(body.combatAction).data : undefined;
+  // The action came from a CLICKED choice (not typed). A clicked choice's check is
+  // already decided and shown on the chip, so the model can't add a surprise roll.
+  const fromChoice: boolean = Boolean(body.fromChoice);
   if (!campaignId) {
     return NextResponse.json({ error: "campaignId is required" }, { status: 400 });
   }
@@ -203,6 +206,7 @@ export async function POST(req: NextRequest) {
               playerText,
               focusIds: session.focusIds,
               preCheck,
+              fromChoice,
               // Scene memory (mutated in place by the runtime; session owns it).
               sceneCard: session.sceneCard,
               npcRelations: session.npcRelations,

@@ -42,6 +42,10 @@ export interface JsonTurnInput {
   playerText: string;
   /** Check attached to the clicked choice — engine rolls it before narrating. */
   preCheck?: CheckSpec;
+  /** The action was a CLICKED choice (not typed). Its check is already decided and
+   *  shown on the chip, so a checkless clicked choice must NOT get a surprise
+   *  model-proposed roll — the badge is the contract (typed free text still can). */
+  fromChoice?: boolean;
   focusIds?: string[];
   /** Shared per-scene tick-cap set ("charId:skill"); mutated in place. */
   tickedSet?: Set<string>;
@@ -308,7 +312,9 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
         `${contextSlice}\n\n---\nPLAYER: ${input.playerText}` +
         (engineLines.length
           ? `\n${engineLines.join("\n")}\nNarrate this result. If the engine dealt DAMAGE or a CRITICAL FAILURE, show concretely HOW it went wrong and how they got hurt. Do not request another roll.`
-          : ""),
+          : input.fromChoice && !input.preCheck
+            ? `\n(This is a pre-offered option with NO skill check — resolve its outcome FULLY in this one beat. Do NOT request a "roll"; it won't fire.)`
+            : ""),
     },
   ];
   const promptDump = `=== SYSTEM ===\n${system.map((b) => b.text).join("\n\n")}\n\n=== MESSAGES ===\n${messages
@@ -428,10 +434,15 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   //    fight instead (same reroute as a clicked check). ───────────────────────
   const rollVerb = plan.roll?.verb ? checkFromVerb(plan.roll.verb) : null;
   const rollSkill = rollVerb?.skill ?? plan.roll?.skill;
-  if (plan.roll && rollSkill && !input.preCheck && pc && !combat && COMBAT_SKILLS.has(rollSkill)) {
+  // A CLICKED choice's stakes are fixed at offer time (the chip badge). If it came
+  // with no check, the model can't bolt one on now — that's the "no indicator but
+  // it rolled" bug. Typed free text stays unconstrained (no chip to contradict). An
+  // explicit combatStart is still allowed (a deliberate ambush beat); only the
+  // plan.roll skill/reroute path is gated here.
+  if (plan.roll && rollSkill && !input.preCheck && !input.fromChoice && pc && !combat && COMBAT_SKILLS.has(rollSkill)) {
     toolCalls.push("combat_start");
     combat = openFightFromSkill(rollSkill, plan.roll.dc);
-  } else if (plan.roll && rollSkill && !input.preCheck && pc && !combat) {
+  } else if (plan.roll && rollSkill && !input.preCheck && !input.fromChoice && pc && !combat) {
     toolCalls.push("roll_check");
     const res = runtime.execute("roll_check", {
       characterId: pc.id,
