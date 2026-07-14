@@ -7,6 +7,7 @@ import { shipIsOwned } from "@/shared/recap";
 import { backgrounds } from "@/content/creation";
 import type { CombatState } from "@/shared/combat";
 import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
+import { allItems, itemCount, describeEffect } from "@/shared/items";
 import skillsMeta from "@/content/skills.json";
 
 const ATTR_ORDER = ["might", "reflex", "vitality", "intellect", "perception", "presence"] as const;
@@ -118,7 +119,7 @@ export default function Sidebar({
         {tab === "clocks" && <ClocksTab state={state} />}
       </div>
 
-      {showDetails && pc && <DetailsModal character={pc} onClose={() => setShowDetails(false)} />}
+      {showDetails && pc && <DetailsModal state={state} character={pc} onClose={() => setShowDetails(false)} />}
     </>
   );
 
@@ -269,6 +270,19 @@ function StatusTab({
               </div>
             ))}
           </div>
+          {/* Own hull, visible during a ship fight (full ship card is in More details). */}
+          {combat.scale === "ship" && state.ship && (
+            <div className="mt-2 border-t border-bad/30 pt-1.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[13px] text-neutral-200">{state.ship.name} (you)</span>
+                <span className="tabular-nums text-[11px] text-neutral-500">
+                  {state.ship.hp}/{state.ship.maxHp}
+                  {state.ship.shieldReady && <span className="text-accent"> ⛨</span>}
+                </span>
+              </div>
+              <Bar value={state.ship.hp} max={state.ship.maxHp} tone="bg-good" height="h-1" />
+            </div>
+          )}
         </div>
       )}
       {state.characters.map((c) => {
@@ -349,16 +363,9 @@ function StatusTab({
         );
       })}
 
-      <div>
-        <div className="mb-1.5 text-[11px] uppercase tracking-wide text-neutral-500">Ship</div>
-        <ShipTab state={state} />
-      </div>
 
       <div className="rounded border border-edge p-2">
-        <div className="mb-1 flex items-baseline justify-between text-[11px] uppercase tracking-wide text-neutral-500">
-          <span>Here &amp; now</span>
-          {sceneCard && <span className="normal-case text-neutral-600">scene {sceneCard.seq}</span>}
-        </div>
+        <div className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">Here &amp; now</div>
         {/* Whereabouts: the scene's free-text place (a ship, the black) when the
             narrator set one, else the fixed station; the station shows as context. */}
         <div className="text-neutral-200">{sceneCard?.place ?? loc?.name ?? "Unknown"}</div>
@@ -369,6 +376,15 @@ function StatusTab({
         {/* The live scene: what's happening, who's here, what's been established. */}
         {sceneCard?.situation && (
           <p className="mt-1 text-[12px] italic leading-snug text-neutral-300">{sceneCard.situation}</p>
+        )}
+        {sceneCard?.dangers && sceneCard.dangers.length > 0 && (
+          <div className="mt-1.5 rounded border border-bad/40 bg-bad/5 px-2 py-1">
+            {sceneCard.dangers.map((d, i) => (
+              <div key={i} className="text-[12px] font-medium text-bad">
+                ⚠ {d}
+              </div>
+            ))}
+          </div>
         )}
         {sceneCard && sceneCard.presentNpcIds.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">
@@ -397,14 +413,10 @@ function StatusTab({
           </div>
         )}
 
+        {/* The current objective only — the full thread list lives in More details. */}
         {active.length > 0 && (
-          <div className="mt-1.5 border-t border-edge/60 pt-1.5">
-            <div className="text-[10px] uppercase tracking-wide text-neutral-600">Open threads</div>
-            {active.slice(0, 4).map((t) => (
-              <div key={t.id} className="mt-0.5 text-[12px] text-neutral-400">
-                • {t.title}
-              </div>
-            ))}
+          <div className="mt-1.5 border-t border-edge/60 pt-1.5 text-[12px] text-neutral-400">
+            <span className="text-neutral-600">Now:</span> {active[0].title}
           </div>
         )}
       </div>
@@ -475,7 +487,7 @@ function TraitsTab({ state }: { state: CampaignState }) {
         </div>
       </SheetSection>
 
-      <SheetSection label="Skills — all you can attempt">
+      <SheetSection label="Skills — improve max once per skill per scene">
         <div className="space-y-2">
           {allSkillRows(pc.skills).map((s) => {
             const learned = s.level > 0 || s.ticks > 0;
@@ -516,15 +528,21 @@ function TraitsTab({ state }: { state: CampaignState }) {
   );
 }
 
-/** Popup — story & extended info, kept out of the always-on rail. */
+/** Popup — extended info kept out of the always-on rail, split into tabs:
+ *  Story (who they are), Equipment (weapons/armor detail), Items (consumables +
+ *  tools with effects), Ship & threads. */
 function DetailsModal({
+  state,
   character,
   onClose,
 }: {
+  state: CampaignState;
   character: CampaignState["characters"][number];
   onClose: () => void;
 }) {
   const c = character;
+  const [tab, setTab] = useState<"story" | "equipment" | "items" | "ship">("story");
+  const activeThreads = state.threads.filter((t) => t.status === "active");
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 p-4" onClick={onClose}>
       <div
@@ -537,7 +555,63 @@ function DetailsModal({
             ✕
           </button>
         </div>
-        {(c.background || c.bias || c.alignment || c.ambition) && (
+
+        <div className="mt-3 flex border-b border-edge text-xs">
+          {(
+            [
+              ["story", "Story"],
+              ["equipment", "Equipment"],
+              ["items", "Items"],
+              ["ship", "Ship & threads"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={
+                "flex-1 py-2 uppercase tracking-wide " +
+                (tab === id ? "border-b-2 border-accent text-accent" : "text-neutral-500")
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "equipment" && <EquipmentDetail character={c} />}
+        {tab === "items" && <ItemsDetail character={c} />}
+        {tab === "ship" && (
+          <>
+            <SheetSection label="Ship">
+              <ShipTab state={state} />
+            </SheetSection>
+            {activeThreads.length > 0 && (
+              <SheetSection label="Open threads">
+                <div className="space-y-1.5">
+                  {activeThreads.map((t) => (
+                    <div key={t.id}>
+                      <div className="text-neutral-200">{t.title}</div>
+                      {t.body && <p className="text-[12px] leading-snug text-neutral-500">{t.body}</p>}
+                    </div>
+                  ))}
+                </div>
+              </SheetSection>
+            )}
+          </>
+        )}
+        {tab === "story" && (
+          <StoryDetail character={c} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Story tab — traits, signature, moral line, voice, backstory. */
+function StoryDetail({ character: c }: { character: CampaignState["characters"][number] }) {
+  return (
+    <>
+      {(c.background || c.bias || c.alignment || c.ambition) && (
           <SheetSection label="Traits">
             <div className="space-y-0.5">
               <TraitRow
@@ -587,8 +661,99 @@ function DetailsModal({
             <p className="whitespace-pre-wrap leading-relaxed text-neutral-300">{c.backstory}</p>
           </SheetSection>
         )}
-      </div>
-    </div>
+    </>
+  );
+}
+
+/** Equipment tab — weapons and armor, with the numbers that matter. */
+function EquipmentDetail({ character: c }: { character: CampaignState["characters"][number] }) {
+  const weapons = c.gear.filter((g) => g.damage);
+  const armor = c.gear.filter((g) => !g.damage && g.acBonus);
+  return (
+    <>
+      <SheetSection label="Weapons">
+        {weapons.length === 0 && <p className="text-neutral-500">Unarmed.</p>}
+        <div className="space-y-2">
+          {weapons.map((g, i) => (
+            <div key={i} className="rounded border border-edge/60 bg-ink/40 p-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-semibold text-neutral-100">{g.name}</span>
+                <span className="tabular-nums text-neutral-400">{g.damage} dmg</span>
+              </div>
+              <div className="mt-0.5 text-[12px] text-neutral-500">
+                {typeof g.rounds === "number"
+                  ? g.rounds === 0
+                    ? "Out of ammo"
+                    : `${g.rounds} rounds left`
+                  : "No ammo tracking"}
+                {g.detail ? ` · ${g.detail}` : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      </SheetSection>
+      <SheetSection label="Armor">
+        {armor.length === 0 && <p className="text-neutral-500">No armor — AC is reflexes alone.</p>}
+        <div className="space-y-2">
+          {armor.map((g, i) => (
+            <div key={i} className="rounded border border-edge/60 bg-ink/40 p-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-semibold text-neutral-100">{g.name}</span>
+                <span className="tabular-nums text-good">+{g.acBonus} AC</span>
+              </div>
+              {g.detail && <div className="mt-0.5 text-[12px] text-neutral-500">{g.detail}</div>}
+            </div>
+          ))}
+        </div>
+      </SheetSection>
+    </>
+  );
+}
+
+/** Items tab — consumables (with counts + what they do) and carried tools. */
+function ItemsDetail({ character: c }: { character: CampaignState["characters"][number] }) {
+  // Catalog consumables the character holds (incl. the legacy stims counter).
+  const consumables = allItems()
+    .filter((it) => it.type === "consumable")
+    .map((it) => ({ it, n: itemCount(c, it.id) }))
+    .filter((x) => x.n > 0);
+  // Everything else they carry: tools/flavor gear (no damage, no AC, no catalog).
+  const tools = c.gear.filter((g) => !g.damage && !g.acBonus && !g.itemId);
+  return (
+    <>
+      <SheetSection label="Consumables">
+        {consumables.length === 0 && <p className="text-neutral-500">None — docks and looting restock these.</p>}
+        <div className="space-y-2">
+          {consumables.map(({ it, n }) => (
+            <div key={it.id} className="rounded border border-edge/60 bg-ink/40 p-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-semibold text-neutral-100">
+                  {it.name} <span className="text-neutral-500">×{n}</span>
+                </span>
+                <span className="text-[11px] uppercase tracking-wide text-neutral-600">
+                  {it.combat ? "usable in combat" : "out of combat"}
+                </span>
+              </div>
+              <div className="mt-0.5 text-[12px] text-neutral-400">{describeEffect(it)}</div>
+            </div>
+          ))}
+        </div>
+      </SheetSection>
+      <SheetSection label="Tools & possessions">
+        {tools.length === 0 && <p className="text-neutral-500">Nothing beyond the essentials.</p>}
+        <div className="space-y-2">
+          {tools.map((g, i) => (
+            <div key={i} className="rounded border border-edge/60 bg-ink/40 p-2">
+              <span className="font-semibold text-neutral-100">
+                {g.name}
+                {g.qty && g.qty > 1 ? <span className="text-neutral-500"> ×{g.qty}</span> : null}
+              </span>
+              {g.detail && <div className="mt-0.5 text-[12px] text-neutral-500">{g.detail}</div>}
+            </div>
+          ))}
+        </div>
+      </SheetSection>
+    </>
   );
 }
 

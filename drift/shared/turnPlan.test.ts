@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractJsonObject, parseTurnPlan, repairTurnPlan } from "./turnPlan";
+import { extractJsonObject, parseTurnPlan, repairTurnPlan, REPAIR_FALLBACK_NARRATION } from "./turnPlan";
 
 describe("extractJsonObject", () => {
   it("parses a bare JSON object", () => {
@@ -82,6 +82,15 @@ describe("repairTurnPlan", () => {
     const n = repairTurnPlan("").narration;
     expect(n.length).toBeGreaterThan(1);
     expect(n).not.toBe("…");
+  });
+
+  it("a nothing-usable repair lands EXACTLY on the sentinel (turn-failure detection)", () => {
+    // jsonTurn aborts the turn (retryable error) when repair returns the sentinel
+    // with no choices — this pins the coupling so a reworded stub can't silently
+    // break failure detection.
+    const p = repairTurnPlan("");
+    expect(p.narration).toBe(REPAIR_FALLBACK_NARRATION);
+    expect(p.choices).toEqual([]);
   });
 
   it("salvages narration + choice labels from JSON that failed validation", () => {

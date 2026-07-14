@@ -25,6 +25,9 @@ export interface SceneCard {
   place?: string;
   /** Model-appended micro-facts (promises/threats/agreements) made this scene. */
   beats: string[];
+  /** ONGOING environmental dangers active right now ("toxic coolant fog") —
+   *  model-overwritten; shown to the player and the narrator every turn. */
+  dangers?: string[];
   /** Transcript index where this scene began — the summarizer's slice start. */
   startTranscriptIdx: number;
 }
@@ -80,6 +83,9 @@ export function carryScene(prev: SceneCard, startTranscriptIdx: number): SceneCa
     situation: "",
     place: prev.place,
     beats: [],
+    // Dangers are scene-scoped: a new scene starts clear; the narrator re-states
+    // any hazard that genuinely persists (overwrite semantics).
+    dangers: [],
     startTranscriptIdx,
   };
 }

@@ -42,6 +42,18 @@ describe("scene card (tier NOW)", () => {
     expect(next.startTranscriptIdx).toBe(42);
   });
 
+  it("dangers overwrite and clear with []; a new scene starts clear", () => {
+    const card = freshSceneCard(2);
+    const rt = new TurnRuntime(baseState(), rng, { sceneCard: card });
+    rt.updateScene(undefined, undefined, undefined, ["toxic coolant fog", "sparking conduit"]);
+    expect(card.dangers).toEqual(["toxic coolant fog", "sparking conduit"]);
+    rt.updateScene(undefined, undefined, undefined, ["toxic coolant fog"]); // conduit dealt with
+    expect(card.dangers).toEqual(["toxic coolant fog"]);
+    rt.updateScene(undefined, undefined, undefined, []); // all clear
+    expect(card.dangers).toEqual([]);
+    expect(carryScene(card, 0).dangers).toEqual([]); // never carried across scenes
+  });
+
   it("situation overwrites; beats append, dedupe, and cap at MAX_BEATS", () => {
     const card = freshSceneCard();
     const rt = new TurnRuntime(baseState(), rng, { sceneCard: card });
@@ -52,6 +64,38 @@ describe("scene card (tier NOW)", () => {
     for (let i = 0; i < MAX_BEATS + 3; i++) rt.updateScene(undefined, [`beat ${i}`]);
     expect(card.beats.length).toBe(MAX_BEATS); // oldest evicted, capped
     expect(card.beats).not.toContain("Doyle promised 200c");
+  });
+});
+
+describe("narrative gear changes", () => {
+  it("a looted CATALOG item (medkit) becomes the mechanical item — usable via useItem", () => {
+    const rt = new TurnRuntime(baseState(), { int: (_min, max) => max });
+    expect(rt.applyGearChange("a Medkit", "gain")).toContain("Gained: Medkit");
+    const g = rt.state.characters[0].gear.find((x) => x.itemId === "medkit");
+    expect(g).toBeTruthy(); // itemId attached → possession check passes
+    expect(rt.applyGearChange("medkit", "gain")).toContain("×2"); // second one stacks
+    // And it actually WORKS: the heal applies (the reported medkit bug).
+    rt.state = {
+      ...rt.state,
+      characters: rt.state.characters.map((c) => (c.kind === "pc" ? { ...c, hp: 1 } : c)),
+    };
+    const res = rt.useItem("medkit") as { line?: string; error?: string };
+    expect(res.error).toBeUndefined();
+    expect(rt.state.characters[0].hp).toBeGreaterThan(1);
+  });
+
+  it("gain adds a flavor item (deduped); lose removes it — catalog items protected", () => {
+    const s = baseState();
+    s.characters[0].gear = [{ name: "Stim", itemId: "stim", qty: 2 }] as typeof s.characters[0]["gear"];
+    const rt = new TurnRuntime(s, rng);
+    expect(rt.applyGearChange("vacuum-rated facemask", "gain", "looted from the locker")).toContain("Gained");
+    expect(rt.applyGearChange("Vacuum-Rated Facemask", "gain")).toBeNull(); // dedupe, case-insensitive
+    expect(rt.state.characters[0].gear.some((g) => g.name === "vacuum-rated facemask")).toBe(true);
+    expect(rt.applyGearChange("vacuum-rated facemask", "lose")).toContain("Lost");
+    expect(rt.state.characters[0].gear.some((g) => g.name === "vacuum-rated facemask")).toBe(false);
+    // Catalog-owned gear can't be removed narratively (spent via useItem only).
+    expect(rt.applyGearChange("Stim", "lose")).toBeNull();
+    expect(rt.state.characters[0].gear.some((g) => g.name === "Stim")).toBe(true);
   });
 });
 

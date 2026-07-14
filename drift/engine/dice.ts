@@ -51,10 +51,16 @@ export function rollDamage(expr: string, rng: RNG): number {
   return Math.max(0, total);
 }
 
-/** Maximum possible value of a dice expression (used for crit resolution). */
+/** Maximum possible value of a dice expression (used for crit resolution).
+ *  Tolerates the same shapes rollDamage does — flat ("8"), dice ("2d6"),
+ *  dice+flat ("1d6+2") — returning 0 for the unparseable. */
 export function maxDice(notation: string): number {
-  const { count, sides, flat } = parseDice(notation);
-  return count * sides + flat;
+  const m = notation.trim().toLowerCase().match(/^(\d+)(?:d(\d+))?\s*([+-]\s*\d+)?$/);
+  if (!m) return 0;
+  const count = parseInt(m[1], 10);
+  const sides = m[2] ? parseInt(m[2], 10) : 0;
+  const flat = m[3] ? parseInt(m[3].replace(/\s/g, ""), 10) : 0;
+  return Math.max(0, (sides ? count * sides : count) + flat);
 }
 
 /** Format a multi-die roll like "2d8: (3,7) = 10". */

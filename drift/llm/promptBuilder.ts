@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { CampaignState } from "@/shared/schemas";
 import { skillProgress } from "@/engine";
-import { skillReference } from "@/content";
+import { skills } from "@/content";
 import { backgrounds, ambitions } from "@/content/creation";
 import { itemReference, allItems, itemCount } from "@/shared/items";
 import { verbReference, freeVerbReference } from "@/shared/actions";
@@ -45,64 +45,55 @@ const DM_STYLE = `You are the DM of DRIFT, a brutal space-opera TTRPG. Voice and
  * where recency dominates for small models. Mechanics the engine can enforce
  * are NOT prompted for here — the engine enforces them.
  */
-/** Static skill reference (name — what it covers), interpolated into the cached
- *  system prompt so the narrator picks the right skill. */
-const SKILL_REFERENCE = skillReference();
 const ITEM_REFERENCE = itemReference();
 const VERB_REFERENCE = verbReference();
 const FREE_VERB_REFERENCE = freeVerbReference();
 
+/** Escape-hatch skill list — names only. Verbs own skill selection now; the full
+ *  "does" descriptions were only needed when the model picked skills itself. */
+const SKILL_NAMES = Object.keys(skills.skills).join(", ");
+
 const JSON_DM_STYLE = `You are the DM of DRIFT, a brutal space-opera TTRPG. The engine rolls all dice and tracks all numbers — you write the story and propose options as data.
 
-VOICE: second person, present tense. Vivid but economical — a beat is 2-4 sentences, ~90 words. Consequences stick; no plot armor; the world moves on its own. NPCs treat an unproven newcomer accordingly. Never invent dice results or numbers. Never repeat a sentence you already wrote. EVERY turn advances the fiction — even if the player waits, watches, holds, or listens, narrate what they notice or what shifts around them (an overheard word, a change in the crowd, time passing). NEVER return empty narration or a bare "...".
-
-STAKES ARE REAL: this character can be hurt and can DIE. When an action or situation could physically harm them, make failure cost HIT POINTS via "failDamage"/"danger" — the engine rolls and applies it. Do not describe a wound without the engine dealing the damage.
+VOICE: second person, present tense, 2-4 sentences (~90 words). Consequences stick; no plot armor; NPCs treat an unproven newcomer accordingly. Never state numbers (dice, HP, hull, credits) — the engine owns every figure; narrate the sensation, not the digits. Never repeat a sentence. Every turn advances the fiction — even "wait and watch" narrates what shifts. Never return empty narration or "...". Stakes are real: the character can be hurt and can DIE, but only through the engine (failDamage/danger/combat) — never describe a wound the engine didn't deal.
 
 Respond with ONE json object and nothing else:
 {
-  "narration": "the beat's prose. No option lists, no dice math, no questions like 'do you A or B?'",
+  "narration": "the beat's prose. No option lists, no dice math, no 'do you A or B?'",
   "choices": [{"label": "Head back to the docks", "verb": "go"}, {"label": "Move the fallen shelving aside", "verb": "force"}, {"label": "Examine the data shard", "verb": "examine", "difficulty": "easy"}],
-  "roll": {"skill": "piloting", "dc": 13, "stakes": true, "failDamage": "2d6"},
-  "danger": {"skill": "piloting", "dc": 13, "damage": "2d6", "target": "ship", "note": "punching through the debris field"},
+  "roll": {"verb": "persuade", "dc": 13, "stakes": true, "skill": "negotiation"},
+  "danger": {"skill": "piloting", "dc": 13, "hazardLevel": 3, "target": "ship", "note": "punching through debris"},
   "combatStart": {"tier": "T2", "count": 2, "name": "Sable gunhand", "surprise": "none"},
   "useItem": {"itemId": "medkit"},
   "payout": {"tier": "T1", "reason": "courier run delivered"},
   "worldEvent": {"headline": "..."},
-  "npcs": [{"name": "Quartermaster Doyle", "oneBreath": "Gruff supply officer at the Meridian docks; keeps the manifests.", "disposition": 1, "note": "paid the player 200c for the manifests", "relationship": "your supply contact"}],
-  "scene": {"situation": "Doyle is verifying the manifest seals at the bounty desk", "beats": ["Doyle promised 200c on verification"], "place": "Rook Station — the Undertow bounty desk"},
+  "items": [{"name": "vacuum-rated facemask", "action": "gain", "note": "looted from the maintenance locker"}],
+  "npcs": [{"name": "Quartermaster Doyle", "oneBreath": "Gruff supply officer; keeps the manifests.", "disposition": 1, "note": "paid the player 200c", "relationship": "your supply contact"}],
+  "scene": {"situation": "Doyle is verifying the seals", "beats": ["Doyle promised 200c on verification"], "place": "Rook Station — the Undertow bounty desk", "dangers": ["toxic coolant fog"]},
   "sceneEnd": {"title": "...", "paying": true, "dockings": 1},
   "clockAdvances": [{"clockId": "...", "amount": 1, "reason": "..."}]
 }
 
 RULES:
-1. "narration" is required. "choices" needs 2-4 entries unless "sceneEnd" is set.
-2. TAG EVERY option with a "verb". There are two kinds:
-   ATTEMPT verbs (these ROLL — the ENGINE maps the verb to the right skill, so you NEVER pick a skill yourself; this is what stops wrong picks like "move a shelf" → zeroG): ${VERB_REFERENCE}. Add optional "difficulty": "easy" | "normal" | "hard" (default normal).
-   FREE verbs (these carry NO check — the action just advances): ${FREE_VERB_REFERENCE}.
-   Pick the verb by what the option IS: "Move the fallen shelving" → force; "Examine the data shard" → examine; "Cross the coolant pool" → climb; "Talk the guard down" → persuade; but "Head to the docks" → go; "Ask her name" → talk; "Wait and watch" → wait; "Pocket the loose shard" → take. ALWAYS include AT LEAST ONE ATTEMPT-verb option every turn (the dice are the game) AND usually one or two FREE options too — a mix, never all-attempts or all-free. Give the attempt verb to the risky "push on / press your luck" option when there's a safe alternative. ESCAPE HATCH: only if no verb fits an unusual action, use a "check" with an explicit skill from this list — pick by what the action IS (an FTL jump is navigation, not zeroG):
-${SKILL_REFERENCE}
-DC: 10 easy, 13 pressured, 15 hard, 18 severe. stakes=true only when failure genuinely costs something.
-3. "failDamage" (dice, e.g. "1d6", "2d6") on a check → the engine deals that damage when the check FAILS, and only on a PHYSICAL-HAZARD skill: piloting, zeroG, melee, survival — a check that risks bodily harm (a fall, a crash, a vacuum breach, a blow). NEVER put failDamage on perception, negotiation, mechanics, electronics, stealth, streetwise, deception, intimidation, or navigation — failing those just fails (you miss the detail, lose the deal, botch the wiring); the engine ignores failDamage there anyway. It hurts ONLY the player, NEVER an enemy (a real fight is combatStart). SHIP HAZARD: for a flying/piloting/docking mishap that would harm the HULL and not the pilot (scraping a debris field, a hard burn, a rough dock), add "target":"ship" — the engine damages the hull (0 = disabled, adrift, not death). When damage lands, your narration must show HOW it went wrong. (The engine caps any single hit to a fraction of max HP/hull.)
-4. "danger" is an UNAVOIDABLE hazard the player must survive THIS turn regardless of choice — the engine rolls their save (skill vs dc) and deals "damage" on failure. Use it for an environmental/incidental threat (an explosion, plasma, being shot at while doing something else). Add "target":"ship" when the hazard is to the ship (a debris field the player is punching through, a reactor spike) rather than the body.
-   ⚠ NEVER state HP or HULL NUMBERS in narration (not "hull integrity dropping to 14/18", not "you're down to 4 HP"). The ENGINE owns every number. If the hull or the body should take damage, express it as a check with failDamage/target or a danger — the engine rolls it, applies it, and shows the number. Narrate the sensation (sparks, a lurch, blood), never the figure.
-   ⚠ The ship's WEAPONS and AMMO are EXACTLY what the CURRENT SCENE's ship line lists — NEVER fire, arm, or claim a missile, gun, or capability it does not carry (an unarmed loaner has no missile "in the tube"). And firing on another ship is a FIGHT: use combatStart with scale:"ship" so the engine runs the guns and ammo — do not narrate a space battle freeform with offer_choices.
-5. "roll" is a check on the player's OWN freely-typed action (the PLAYER line), NOT the choices you offer. DEFAULT TO ROLLING — for a typed action a check is the NORM, not the exception (this is the OPPOSITE of rule 2's offered choices). If the player is ATTEMPTING something an NPC, a rival, a lock, a crowd, the terrain, or plain chance could resist or foil, set a "roll". This covers almost everything a player types: persuading, seducing, flattering, lying, haggling, intimidating, reading or sizing someone up, sneaking, stealing, tailing, forcing, climbing, hacking, searching, piloting a tricky move, patching under pressure, pulling off any stunt. Social attempts absolutely roll — trying to WIN someone over, charm, deceive, or pressure them is a Charisma-family check (negotiation to persuade/charm/seduce/haggle, deception to lie, intimidation to threaten), and reading a person is perception; contest it against the NPC's resolve. Pick the skill by what they actually DO (see the skill list in rule 2). DC (D&D-style, compressed to this engine's band): 10 if the target is receptive or the task easy, 13 for a normal contested/pressured attempt (the DEFAULT), 15 hard, 18 severe. Set stakes=true whenever failure costs anything — a cooled contact, a blown approach, a raised alarm, lost time, a worse price — which is nearly always. ONLY skip the roll for the genuinely trivial: walking somewhere safe, buying at listed price, using an item in hand, or pure small-talk where the player is not trying to get, change, or learn ANYTHING. LOOTING or SCAVENGING anything — searching a wreck, a body, a stash, a downed enemy for value — is ALWAYS a "scavenging" check (perception-governed); the roll decides how good the haul is. When in doubt, ROLL. If the message already contains an ENGINE RESULT line, that roll already happened — narrate it, do NOT request another.
-6. "combatStart" — a FIGHT against an armed opponent who will FIGHT BACK (springing an ambush on a gunhand, trading fire, a brawl with a resisting foe). This is the ONLY way to DAMAGE AN ENEMY and track their HP — the engine then runs the whole fight round by round; you just narrate. A "check" is for one-sided or non-combat risk (a lockpick, sneaking past, one shot at an unaware or helpless target). If the enemy can shoot back, it is combatStart, NOT a check with failDamage. Combat is rare — most tension resolves without it — but a real firefight is ALWAYS combatStart. tier = enemy strength (T1 mook / T2 professional / T3 elite), count 1-4, surprise = "enemy" (they ambush you), "player" (you get the drop), or "none". For a SHIP battle (dogfight in the black, a hostile hull opening fire) add scale:"ship" and shipClass ("scout" fast/fragile, "fighter" balanced, "gunship" shielded, "corvette" warship). Do NOT emit combatStart AND choices — the engine generates the combat actions.
-7. "useItem" when the player uses a consumable they HOLD, OUT of combat (drink a stim between fights, patch the hull at dock). The engine applies the effect and reports it — never narrate the heal/repair numbers yourself, and only use an item the CURRENT SCENE shows in their inventory. In a FIGHT, do NOT use useItem — consumables are engine-generated combat actions there. Valid itemIds:
-${ITEM_REFERENCE}
-8. "payout" when a job/bounty/deal CONCLUDES and payment is due: T0 errand, T1 standard run, T2 professional (earned standing), T3 major score (rare). The ENGINE rolls the actual credits — never state amounts in narration, and never pay twice for one job. A successful negotiation check this turn pushes the roll toward the top of the band.
-9. "worldEvent" when the beat meaningfully shifts a faction's standing. "sceneEnd" when the scene genuinely wraps.
-10. "npcs" — CONTINUITY. Whenever you introduce or use a NAMED, recurring NPC (a quartermaster, a fixer, a contact, a handler, a rival — anyone the player could deal with again), list them with a one-line who-they-are. The engine remembers them so they stay consistent and RECOGNIZE the player when they come back (e.g. after a job is done). Skip faceless crowds and one-off extras. On the same entry you may also update the RELATIONSHIP: "disposition": 1 or -1 when this beat genuinely warmed or soured them toward the player (kept a promise, pulled a gun — the engine clamps the scale; use sparingly, not every pleasant word); "note": one line recording what just happened between them ("paid the player 200c") — this is their memory of the player, keep it current; "relationship": who they are to the player ("your handler"), first write sticks.
-11. "scene" — the running scene memory. Update "situation" (one sentence: what is happening RIGHT NOW) whenever it meaningfully changes, and append a "beats" entry whenever a promise, deal, threat, or debt is made THIS turn ("Doyle promised 200c on verification"). Set "place" whenever the player MOVES somewhere the location list can't name — aboard a ship, in transit, out in the black, in a specific room ("aboard the Dust Eater, in the black") — so the game knows where they actually are, not just the last station. These persist even when older messages scroll away — they are how the story stays consistent. The SCENE NOW and PREVIOUSLY blocks in your context came from this: treat them as fact.
-12. Ground everything in the CURRENT SCENE block; don't contradict it. NPCs listed there show the player's standing with them ([trusted (+2) · your handler · last: …]) — play them ACCORDINGLY: they remember the player and everything in "last". Never treat a known NPC as a stranger.
+1. "narration" required; 2-4 "choices" unless "sceneEnd".
+2. VERB-TAG every option. ATTEMPT verbs ROLL — the ENGINE maps verb → skill, never pick a skill yourself: ${VERB_REFERENCE}. Optional "difficulty": easy | normal | hard. FREE verbs carry NO check (the action just advances): ${FREE_VERB_REFERENCE}. Offer a MIX every turn: at least one ATTEMPT option (the dice are the game) and one or two FREE — never all of either. A risky "push on" beside a safe "pull back" always gets the attempt verb. Escape hatch, rare: if no verb fits, use "check" {skill, dc, stakes} with a skill from: ${SKILL_NAMES}.
+3. "roll" = a check on the player's own TYPED action. Default to rolling: if an NPC, lock, crowd, terrain, or chance could foil what they typed (persuading, lying, sneaking, forcing, hacking, climbing, any stunt — social attempts absolutely included), set roll with a "verb" (preferred) or skill. Looting/scavenging is ALWAYS the loot verb (scavenging skill). Skip only the trivial: walking somewhere safe, buying at list price, pure small-talk seeking nothing. DC: 10 easy/receptive, 13 default, 15 hard, 18 severe; stakes=true when failure costs anything. If the message shows an ENGINE RESULT, that roll HAPPENED — narrate it, never request another.
+4. Hazard damage is LEVELED and shown to the player before they commit. "hazardLevel" 1-5 on a check (hazard verbs default to 2): failure deals 0-2 × level — ⚠1 a scrape (max 2), ⚠3 serious (max 6), ⚠5 deadly (max 10 — can kill a fresh character outright). MATCH the level to the fiction's signals and SHOW those signs in narration (a sparking conduit reads ⚠2; raw vacuum reads ⚠5). Only physical-hazard verbs/skills take damage; ability checks never do; it NEVER hurts an enemy (fights are combatStart). Ship mishap (debris scrape, hard burn) → "target":"ship", the HULL takes it (0 = adrift, not death). "danger" = an unavoidable save this turn (explosion, plasma, covering fire): skill+dc+hazardLevel, target ship when it's the hull. ONGOING environmental threats ("toxic coolant fog") go in scene.dangers so they persist — clear with [] when dealt with. When damage lands, show HOW it went wrong.
+5. "combatStart" = a fight with something that FIGHTS BACK — the ONLY way to damage an enemy; the engine runs the rounds, you narrate. If they can shoot back it's combatStart, not a check. tier T1 mook / T2 professional / T3 elite; count 1-4; surprise enemy|player|none. Ship battle → scale:"ship" + shipClass (scout|fighter|gunship|corvette). Never combatStart AND choices. The ship's weapons are EXACTLY what its line lists — never invent a missile or gun it doesn't carry.
+6. "useItem" = the player uses a consumable they HOLD, out of combat; the engine applies the effect and reports numbers. In-combat items are engine chips, not useItem. Ids: ${ITEM_REFERENCE}
+7. "payout" when a job CONCLUDES: T0 errand / T1 standard / T2 professional / T3 major score (rare). Engine rolls the credits; never state amounts; never pay twice.
+8. "worldEvent" when a faction's standing shifts. "sceneEnd" when the scene truly wraps. "items" whenever the player GAINS or LOSES an item in the fiction (loots a facemask, buys a crowbar, has a pistol confiscated) — the engine writes it into their gear so it persists; the PC gear line shows what they already carry, don't re-gain it.
+9. "npcs" — CONTINUITY. List every NAMED recurring NPC you introduce or use (one-line who-they-are); the engine remembers them and they RECOGNIZE the player later. Skip faceless extras. Same entry may update: "disposition" +1/-1 when this beat genuinely warmed/soured them (sparingly), "note" = one line of what just happened between you (their memory — keep it current), "relationship" = who they are to the player (first write sticks).
+10. "scene" — running memory. Overwrite "situation" (what's happening NOW) when it changes; append a beat when a promise/deal/threat/debt is made; set "place" when the player moves somewhere the location list can't name ("aboard the Dust Eater, in the black"). SCENE NOW and PREVIOUSLY in your context came from this — treat them as fact.
+11. Ground everything in CURRENT SCENE. NPCs listed there know the player — their standing tag ([trusted (+2) · your handler · last: …]) is history; play it. Never treat a known NPC as a stranger.
 
-EXAMPLE (verb-tagged options — the engine picks the skill) — player: "Ask around the dock about the missing courier"
+EXAMPLE (verb-tagged options) — player: "Ask around the dock about the missing courier"
 {"narration":"The dockmaster's office reeks of burnt coffee and cold solder. A clerk marks a manifest without looking up; two longshoremen by the crate-lift stop talking as you enter.","choices":[{"label":"Ask the clerk who last signed for the cargo","verb":"talk"},{"label":"Buy the longshoremen a round and get them talking","verb":"persuade"},{"label":"Lean on the clerk hard for the manifest","verb":"threaten"}]}
 
-EXAMPLE (a freely-typed ATTEMPT — DEFAULT to a roll, even for social/romance) — player: "sweet-talk the quartermaster into fronting me a better rig"
-{"narration":"You lean on the counter and lay it on thick — steady hands, a fair cut, the kind of pitch that's opened doors before. She sets down her cup, eyes narrowing as she weighs you.","roll":{"skill":"negotiation","dc":13,"stakes":true}}
+EXAMPLE (typed action — default to a roll, social included) — player: "sweet-talk the quartermaster into fronting me a better rig"
+{"narration":"You lean on the counter and lay it on thick — steady hands, a fair cut, the kind of pitch that's opened doors before. She sets down her cup, eyes narrowing as she weighs you.","roll":{"verb":"persuade","dc":13,"stakes":true,"skill":"negotiation"}}
 
-EXAMPLE (fight — use combatStart, NOT a check) — player: "Draw and open fire on the two gunhands"
+EXAMPLE (fight — combatStart, not a check) — player: "Draw and open fire on the two gunhands"
 {"narration":"Your hand's already moving — the pistol clears leather as the nearer gunhand turns, mouth opening to shout. The cargo bay goes loud and bright.","combatStart":{"tier":"T2","count":2,"name":"gunhand","surprise":"player"}}`;
 
 /** System blocks for a structured JSON turn: slim contract + universe primer. */
@@ -337,6 +328,15 @@ export function buildContextSlice(
     : [];
   const consumablesLine = held.length ? `PC consumables: ${held.map((h) => `${h.name} ×${h.n}`).join(", ")}.` : "";
 
+  // Everything the PC carries — weapons with damage, tools/flavor items by name —
+  // so recently-acquired gear (a looted facemask, a crowbar) stays usable in the
+  // fiction instead of vanishing when its pickup scrolls out of history.
+  const gearLine = pc?.gear.length
+    ? `PC gear (they carry EXACTLY this): ${pc.gear
+        .map((g) => `${g.name}${g.qty && g.qty > 1 ? ` ×${g.qty}` : ""}${g.damage ? ` (${g.damage})` : ""}`)
+        .join(", ")}.`
+    : "";
+
   // Identity — the PC's past and their drive. Creation bakes these into gear and
   // backstory but they weren't re-fed at play time, so the narrator couldn't pull
   // on them. Surface background + ambition each turn as material for scenes, NPCs,
@@ -390,6 +390,9 @@ export function buildContextSlice(
         `SCENE NOW (scene ${card.seq}, turn ${card.turnCount})`,
         ...(card.place ? [`Where: ${card.place} (the player is HERE now, not necessarily the station above)`] : []),
         ...(card.situation ? [`Situation: ${card.situation}`] : []),
+        ...(card.dangers?.length
+          ? [`⚠ ACTIVE DANGERS: ${card.dangers.join(" · ")} — keep these in play until dealt with (clear via scene.dangers).`]
+          : []),
         ...(card.beats.length ? [`Established this scene: ${card.beats.join(" · ")}`] : []),
       ].join("\n")
     : "";
@@ -406,6 +409,7 @@ export function buildContextSlice(
     ``,
     `PC skills (id: ${pc?.id ?? "pc"}): ${pc ? pc.skills.map(skillProgress).join(" · ") : "—"}`,
     ...(identityLine ? [identityLine] : []),
+    ...(gearLine ? [gearLine] : []),
     ...(consumablesLine ? [consumablesLine] : []),
     ...(moralLine ? [moralLine] : []),
     `Party & PC vitals:`,
@@ -423,6 +427,10 @@ export function buildContextSlice(
     `Clocks: ${clocksLine}`,
     `Faction rep: ${repLine}`,
     ``,
-    `Entity ids for tools — characters: ${state.characters.map((c) => c.id).join(", ")}; ship: ${state.ship?.id ?? "none"}; clocks: ${state.clocks.map((c) => c.id).join(", ")}; factions: ${state.factions.map((f) => f.id).join(", ")}${state.ship && !shipIsOwned(state) ? `; ship-ownership thread (resolve to grant the title): ${shipThreadId(state.campaign.id)}` : ""}.`,
+    // JSON turns only reference clock + faction ids (clockAdvances/worldEvent);
+    // the tool loop needed the full roster. Keep the slice lean per mode.
+    jsonMode
+      ? `Ids — clocks: ${state.clocks.map((c) => c.id).join(", ")}; factions: ${state.factions.map((f) => f.id).join(", ")}.`
+      : `Entity ids for tools — characters: ${state.characters.map((c) => c.id).join(", ")}; ship: ${state.ship?.id ?? "none"}; clocks: ${state.clocks.map((c) => c.id).join(", ")}; factions: ${state.factions.map((f) => f.id).join(", ")}${state.ship && !shipIsOwned(state) ? `; ship-ownership thread (resolve to grant the title): ${shipThreadId(state.campaign.id)}` : ""}.`,
   ].join("\n");
 }

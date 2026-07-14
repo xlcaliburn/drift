@@ -197,7 +197,7 @@ export async function deepseekChat(params: {
 
   const data = (await res.json()) as {
     choices: Array<{
-      message: { content: string | null; tool_calls?: OAToolCall[] };
+      message: { content: string | null; reasoning_content?: string | null; tool_calls?: OAToolCall[] };
       finish_reason: string;
     }>;
     usage?: {
@@ -211,6 +211,11 @@ export async function deepseekChat(params: {
   const content: NormalizedResponse["content"] = [];
   if (choice?.message?.content) {
     content.push({ type: "text", text: choice.message.content });
+  } else if (choice?.message?.reasoning_content) {
+    // Hybrid models sometimes spend the whole budget "thinking" and leave content
+    // empty. The thinking often CONTAINS the drafted JSON — surface it as text so
+    // the caller's extractor can salvage it instead of falling back to a stub.
+    content.push({ type: "text", text: choice.message.reasoning_content });
   }
   for (const tc of choice?.message?.tool_calls ?? []) {
     content.push({
@@ -297,6 +302,7 @@ export async function deepseekChatStream(params: {
   const decoder = new TextDecoder();
   let buffer = "";
   let text = "";
+  let reasoning = "";
   let finishReason = "";
   const toolAcc = new Map<number, { id: string; name: string; args: string }>();
   let usage = { prompt_tokens: 0, completion_tokens: 0, prompt_cache_hit_tokens: 0 };
@@ -314,7 +320,7 @@ export async function deepseekChatStream(params: {
       if (payload === "[DONE]") continue;
       let chunk: {
         choices?: Array<{
-          delta?: { content?: string | null; tool_calls?: OAToolCallDelta[] };
+          delta?: { content?: string | null; reasoning_content?: string | null; tool_calls?: OAToolCallDelta[] };
           finish_reason?: string | null;
         }>;
         usage?: typeof usage;
@@ -330,6 +336,10 @@ export async function deepseekChatStream(params: {
         text += content;
         params.onDelta?.(content);
       }
+      // Hybrid-model thinking: accumulate silently (never streamed to the player);
+      // used as fallback text if the visible content comes back empty.
+      const reasoningDelta = choice?.delta?.reasoning_content;
+      if (reasoningDelta) reasoning += reasoningDelta;
       for (const tc of choice?.delta?.tool_calls ?? []) {
         const idx = tc.index ?? 0;
         const cur = toolAcc.get(idx) ?? { id: "", name: "", args: "" };
@@ -345,6 +355,7 @@ export async function deepseekChatStream(params: {
 
   const content: NormalizedResponse["content"] = [];
   if (text) content.push({ type: "text", text });
+  else if (reasoning) content.push({ type: "text", text: reasoning }); // salvage a thinking-only response
   for (const [, tc] of [...toolAcc.entries()].sort((a, b) => a[0] - b[0])) {
     content.push({ type: "tool_use", id: tc.id, name: tc.name, input: safeParseArgs(tc.args) });
   }

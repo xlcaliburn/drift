@@ -16,8 +16,9 @@
     "maxDebitPerTurn": 500
   },
   "damageRules": {
-    "failDamageFractionCap": 0.34,
-    "note": "A failed hazard check or danger save deals at most this fraction of the target's MAX HP (rounded up, min 1), so one bad roll can't gut a low-HP character (e.g. never 5 of 7). Non-hazard skill checks deal NO damage on failure — see skills.json hazardNote."
+    "hazardBase": 2,
+    "maxHazardLevel": 5,
+    "note": "Failed hazard checks / danger saves deal rng(0..hazardBase) × hazardLevel. Level 1-5, shown to the player as ⚠ on the option BEFORE they commit: ⚠1 scrape (max 2) … ⚠5 deadly (max 10 — can one-shot a fresh 10-HP character). Ability checks (non-hazard skills) never deal damage on failure."
   },
   "tickRule": {
     "minDcForTick": 13,

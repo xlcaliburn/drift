@@ -44,6 +44,10 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
   const [busy, setBusy] = useState(false);
   // Terminal state — the PC has died; the story is over and input is locked.
   const [dead, setDead] = useState(false);
+  // A turn that failed retryably (narrator glitch): nothing was saved server-side;
+  // this holds the exact action so one click resumes where the player left off.
+  const [failedAction, setFailedAction] = useState<{ action?: ChoiceOption; text: string } | null>(null);
+  const lastSentRef = useRef<{ action?: ChoiceOption; text: string } | null>(null);
   // Live narration while a turn streams in. null = not streaming; "" = streaming
   // but no text yet (waiting on first token). Committed to `chat` on done.
   const [streamingText, setStreamingText] = useState<string | null>(null);
@@ -55,6 +59,8 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
   const [showSheet, setShowSheet] = useState(false); // mobile sidebar drawer
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackState, setFeedbackState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  // The player's own submitted reports + status, shown inside the feedback modal.
+  const [myFeedback, setMyFeedback] = useState<{ id: string; title: string; summary: string; status: string }[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -126,12 +132,25 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
     if (atBottom) chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat, choices, streamingText, atBottom]);
 
-  async function send(action?: ChoiceOption) {
-    const text = (action?.label ?? input).trim();
+  // Load the player's own reports whenever the feedback modal opens (and after a
+  // successful submit) so they can track each one's status.
+  useEffect(() => {
+    if (!showFeedback) return;
+    fetch("/api/feedback?mine=1")
+      .then((r) => r.json())
+      .then((d) => setMyFeedback(Array.isArray(d.requests) ? d.requests : []))
+      .catch(() => {});
+  }, [showFeedback, feedbackState]);
+
+  async function send(action?: ChoiceOption, opts?: { retryText?: string }) {
+    const text = (opts?.retryText ?? action?.label ?? input).trim();
     if (!text || busy || dead) return;
+    lastSentRef.current = { action, text };
+    setFailedAction(null);
     setInput("");
     setChoices([]);
-    setChat((c) => [...c, { role: "player", text }]);
+    // A retry resumes the SAME action — the player line is already in the chat.
+    if (!opts?.retryText) setChat((c) => [...c, { role: "player", text }]);
     setBusy(true);
     setStreamingText("");
     let streamed = "";
@@ -173,6 +192,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             text?: string;
             lines?: string[];
             error?: string;
+            retryable?: boolean;
             narration?: string;
             state?: CampaignState;
             choices?: unknown;
@@ -219,6 +239,9 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             finished = true;
           } else if (evt.type === "error") {
             setChat((c) => [...c, { role: "system", text: `⚠ ${evt.error ?? "narration failed"}` }]);
+            // Retryable glitch: nothing was saved server-side — offer to resume
+            // the exact same action once the issue clears.
+            if (evt.retryable && lastSentRef.current) setFailedAction(lastSentRef.current);
             finished = true;
           }
         }
@@ -360,6 +383,34 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                 </button>
               </div>
             </div>
+
+            {/* Your previous reports + where they stand. */}
+            {myFeedback.length > 0 && (
+              <div className="mt-4 border-t border-edge pt-3">
+                <div className="mb-1.5 text-[11px] uppercase tracking-wide text-neutral-500">Your reports</div>
+                <div className="scrollbar-thin max-h-44 space-y-1.5 overflow-y-auto">
+                  {myFeedback.map((r) => (
+                    <div key={r.id} className="flex items-baseline justify-between gap-2" title={r.summary}>
+                      <span className="min-w-0 truncate text-[13px] text-neutral-300">{r.title}</span>
+                      <span
+                        className={
+                          "shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide " +
+                          (r.status === "done"
+                            ? "bg-good/15 text-good"
+                            : r.status === "approved"
+                              ? "bg-accent/15 text-accent"
+                              : r.status === "declined"
+                                ? "bg-bad/15 text-bad"
+                                : "bg-edge text-neutral-400")
+                        }
+                      >
+                        {r.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -458,14 +509,29 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                         onClick={() => send(c)}
                         disabled={!hasApiKey}
                         className="flex items-center gap-2 rounded-full border border-edge bg-panel px-4 py-2 text-left text-[15px] text-neutral-200 transition hover:border-accent hover:text-accent disabled:opacity-40"
-                        title={c.check ? `Skill check: ${c.check.skill} vs DC ${c.check.dc}` : undefined}
+                        title={
+                          c.check
+                            ? `Skill check: ${c.check.skill ?? c.verb} vs DC ${c.check.dc}` +
+                              (c.check.hazardLevel
+                                ? ` · danger ${"⚠".repeat(c.check.hazardLevel)} — up to ${c.check.hazardLevel * 2} damage on failure`
+                                : "")
+                            : undefined
+                        }
                       >
                         <span>{c.label}</span>
                         {c.check && (
                           <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium capitalize text-accent">
-                            🎲 {c.check.skill}
+                            🎲 {c.check.skill ?? c.verb}
                           </span>
                         )}
+                        {c.check?.hazardLevel ? (
+                          <span
+                            className="shrink-0 rounded-full bg-bad/15 px-1.5 py-0.5 text-[11px] font-medium text-bad"
+                            title={`Danger level ${c.check.hazardLevel} — up to ${c.check.hazardLevel * 2} damage on failure`}
+                          >
+                            {"⚠".repeat(Math.min(5, c.check.hazardLevel))}
+                          </span>
+                        ) : null}
                       </button>
                     ))}
                   </div>
@@ -473,6 +539,19 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
               </div>
             )}
 
+            {failedAction && !busy && !dead && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-bad/50 bg-bad/5 px-4 py-2.5">
+                <span className="min-w-0 truncate text-sm text-neutral-300">
+                  ⚠ Turn failed — nothing was lost. Your action: <span className="italic">“{failedAction.text}”</span>
+                </span>
+                <button
+                  onClick={() => send(failedAction.action, { retryText: failedAction.text })}
+                  className="shrink-0 rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-ink transition hover:opacity-90"
+                >
+                  ↻ Retry
+                </button>
+              </div>
+            )}
             {dead ? (
               <div className="flex flex-col items-center gap-3 rounded-lg border border-bad/50 bg-bad/5 px-4 py-4 text-center">
                 <p className="text-[15px] text-bad">

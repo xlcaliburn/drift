@@ -24,26 +24,32 @@ const optionalNullable = <T extends z.ZodTypeAny>(schema: T) =>
  *  (ACTIONS.md) overrides `skill` when present — the engine derives the skill,
  *  so the model can tag a typed action with a verb instead of guessing a skill. */
 export const CheckSpec = z.object({
-  skill: z.string().min(1),
+  /** Optional when `verb` is given — the engine derives the skill from the verb. */
+  skill: optionalNullable(z.string().min(1)),
   verb: optionalNullable(z.enum(VERB_LIST)),
   dc: z.coerce.number().int().min(5).max(30),
   /** Only stakes=true rolls at DC 13+ earn skill ticks (levelling). */
   stakes: z.coerce.boolean().default(false),
-  /** Damage the engine rolls and applies when this check FAILS — e.g. "1d6",
-   *  "2d6", "8". This is how failure becomes real (and lethal). */
+  /** Danger level 1-5: a failed hazard check deals (0..2) × level damage. Shown
+   *  to the player as ⚠ on the option BEFORE they commit; 5 can one-shot a fresh
+   *  character. The engine owns the roll. */
+  hazardLevel: optionalNullable(z.coerce.number().int().min(1).max(5)),
+  /** Legacy dice form ("1d6") — the engine converts it to a hazard level. */
   failDamage: optionalNullable(z.string().regex(/^\s*\d+\s*(d\s*\d+)?\s*([+-]\s*\d+)?\s*$/i)),
-  /** What the failDamage hits: "pc" (default, character HP) or "ship" (hull) —
+  /** What a failure hits: "pc" (default, character HP) or "ship" (hull) —
    *  a flying/docking mishap damages the SHIP, not the pilot. Engine-clamped. */
   target: optionalNullable(z.enum(["pc", "ship"])),
 });
 export type CheckSpec = z.infer<typeof CheckSpec>;
 
 /** An unavoidable hazard the PC (or ship) must survive THIS turn: a save (skill
- *  vs DC); on failure the engine rolls `damage` and applies it to the target. */
+ *  vs DC); on failure the engine deals (0..2) × hazardLevel to the target. */
 export const DangerSpec = z.object({
   skill: z.string().min(1),
   dc: z.coerce.number().int().min(5).max(30),
-  damage: z.string().regex(/^\s*\d+\s*(d\s*\d+)?\s*([+-]\s*\d+)?\s*$/i),
+  hazardLevel: optionalNullable(z.coerce.number().int().min(1).max(5)),
+  /** Legacy dice form — converted to a hazard level by the engine. */
+  damage: optionalNullable(z.string().regex(/^\s*\d+\s*(d\s*\d+)?\s*([+-]\s*\d+)?\s*$/i)),
   note: optionalNullable(z.string()),
   /** "pc" (default, character HP) or "ship" (hull damage — debris, a hard burn). */
   target: optionalNullable(z.enum(["pc", "ship"])),
@@ -136,6 +142,19 @@ export const TurnPlan = z.object({
       }),
     ).max(4),
   ),
+  /** Items the player GAINED or LOST in the fiction this turn (a looted facemask,
+   *  a bought crowbar, a confiscated pistol). The engine adds/removes them from
+   *  gear so they persist in state and context — they never vanish when the
+   *  narration scrolls away. */
+  items: optionalNullable(
+    z.array(
+      z.object({
+        name: z.string().min(1).max(60),
+        action: z.enum(["gain", "lose"]).default("gain"),
+        note: optionalNullable(z.string().max(120)),
+      }),
+    ).max(4),
+  ),
   /** Scene-card updates (CONTINUITY.md tier NOW): `situation` overwrites the
    *  one-line "what is happening"; `beats` appends promises/threats/agreements
    *  made this turn (engine caps both). */
@@ -146,6 +165,9 @@ export const TurnPlan = z.object({
       /** Where the player IS now — set when they move somewhere the location
        *  table can't name (aboard a ship, in transit, in the black). */
       place: optionalNullable(z.string().max(120)),
+      /** ONGOING environmental dangers active right now ("toxic coolant fog").
+       *  OVERWRITES the current list — send [] when the danger is dealt with. */
+      dangers: optionalNullable(z.array(z.string().min(1).max(80)).max(3)),
     }),
   ),
   /** Scene wrap — engine runs the checklist (wages, fees, clocks). */
@@ -202,6 +224,11 @@ export function extractJsonObject(text: string): unknown | null {
   return null;
 }
 
+/** The stub repairTurnPlan emits when a response held NOTHING usable — exported
+ *  so the turn pipeline can recognize a truly failed generation and error out
+ *  (with retry) instead of quietly advancing the story on this filler. */
+export const REPAIR_FALLBACK_NARRATION = "The moment holds, and the lanes keep turning around you.";
+
 export interface ParsedPlan {
   plan: TurnPlan | null;
   /** Human-readable validation error (fed back to the model on retry). */
@@ -244,9 +271,10 @@ export function repairTurnPlan(text: string): TurnPlan {
   }
   const { narration, choices } = parseInlineMenu(text.trim());
   return TurnPlan.parse({
-    // A non-empty in-fiction beat beats a bare "…" when generation returns nothing
-    // (e.g. a passive "wait and watch" the model under-answered).
-    narration: narration || "The moment holds, and the lanes keep turning around you.",
+    // Sentinel beat when generation returned nothing salvageable. Callers treat a
+    // repair that lands EXACTLY here as a FAILED turn (surface an error + retry)
+    // rather than advancing the story on fabricated filler.
+    narration: narration || REPAIR_FALLBACK_NARRATION,
     choices: choices.map((label) => ({ label })),
   });
 }

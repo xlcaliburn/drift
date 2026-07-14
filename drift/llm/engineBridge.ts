@@ -24,7 +24,7 @@ import {
 } from "@/engine/combatEngine";
 import { fleeDC, threatLevel } from "@/shared/combat";
 import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
-import { catalogItem, itemCount } from "@/shared/items";
+import { catalogItem, itemCount, allItems } from "@/shared/items";
 import {
   freshSceneCard,
   dispositionLabel,
@@ -204,6 +204,7 @@ export class TurnRuntime {
     // narrators rarely call — so nobody leveled). The per-character set enforces
     // the max-1-tick-per-skill-per-scene cap across the whole scene.
     let tick: string | undefined;
+    let tickCapped: string | undefined;
     if (res.tickEligible) {
       const skillName = String(input.skill);
       const perChar = new Set(
@@ -220,6 +221,10 @@ export class TurnRuntime {
         };
         this.events.push(award.event);
         tick = award.event.breakdown;
+      } else {
+        // Tick-eligible but this skill already improved this scene (1/scene cap) —
+        // tell the player, or the un-moving bar reads as a bug.
+        tickCapped = skillName;
       }
     }
     // Real stakes: a failed roll that carries failDamage HURTS — but only from a
@@ -227,24 +232,26 @@ export class TurnRuntime {
     // A failed ability check (perception, negotiation, mechanics…) never costs HP —
     // it just fails (D&D: ability checks don't deal damage, saves do). And any hit
     // is capped at a fraction of max HP, so one bad roll can't gut you (no 5-of-7).
+    // Hazard damage (flat, transparent): a failed hazard check deals
+    // rng(0..hazardBase) × hazardLevel — level 1-5, shown to the player as ⚠
+    // BEFORE they commit. Level 5 max = 10 = a fresh character's base HP, so a
+    // deadly hazard can genuinely one-shot; a ⚠1 scrape caps at 2. Legacy dice
+    // (failDamage "2d6") are converted to a level so old shapes keep working.
     let harm: { taken: number; hpAfter: number; downed: boolean; died: boolean } | undefined;
     let shipHarm: { taken: number; hpAfter: number; disabled: boolean } | undefined;
-    if (res.outcome === "failure" && input.failDamage) {
+    if (res.outcome === "failure" && (input.hazardLevel || input.failDamage)) {
       const skill = String(input.skill);
-      const frac = economy.damageRules.failDamageFractionCap;
-      if (input.target === "ship" && this.state.ship) {
-        // A flying/docking mishap damages the HULL, not the pilot — engine-owned,
-        // capped like PC damage. Hull 0 = disabled (adrift), never death.
-        const rolled = rollDamage(String(input.failDamage), this.rng);
-        const dealt = Math.min(rolled, Math.max(1, Math.ceil(this.state.ship.maxHp * frac)));
-        if (dealt > 0) {
-          const sh = this.applyShipDamage(dealt);
-          shipHarm = { taken: sh.taken, hpAfter: sh.hpAfter, disabled: sh.disabled };
-        }
-      } else if (input.target !== "ship" && (Boolean(input.hazard) || isHazardSkill(skill))) {
-        const rolled = rollDamage(String(input.failDamage), this.rng);
-        const dealt = Math.min(rolled, Math.max(1, Math.ceil(character.maxHp * frac)));
-        if (dealt > 0) harm = this.applyDamage(character.id, dealt, `Failed ${skill} check.`);
+      const explicit = input.hazardLevel ? Number(input.hazardLevel) : 0;
+      const derived = !explicit && input.failDamage ? Math.ceil(maxDice(String(input.failDamage)) / 2) : 0;
+      const level = Math.max(1, Math.min(economy.damageRules.maxHazardLevel, explicit || derived || 1));
+      const dealt = this.rng.int(0, economy.damageRules.hazardBase) * level;
+      if (dealt > 0 && input.target === "ship" && this.state.ship) {
+        // A flying/docking mishap damages the HULL, not the pilot. Hull 0 =
+        // disabled (adrift), never death.
+        const sh = this.applyShipDamage(dealt);
+        shipHarm = { taken: sh.taken, hpAfter: sh.hpAfter, disabled: sh.disabled };
+      } else if (dealt > 0 && input.target !== "ship" && (Boolean(input.hazard) || isHazardSkill(skill))) {
+        harm = this.applyDamage(character.id, dealt, `Failed ${skill} check.`);
       }
     }
     return {
@@ -255,6 +262,7 @@ export class TurnRuntime {
       criticalFailure: res.criticalFailure,
       tickEligible: res.tickEligible,
       ...(tick ? { tick } : {}),
+      ...(tickCapped ? { tickCapped } : {}),
       ...(harm && harm.taken > 0
         ? { damage: harm.taken, hpAfter: harm.hpAfter, downed: harm.downed, died: harm.died }
         : {}),
@@ -648,17 +656,73 @@ export class TurnRuntime {
     return { added: true, id };
   }
 
+  /**
+   * Narrative item pickup/loss (a looted facemask, a confiscated pistol): the
+   * model proposes, the engine writes it into the PC's GEAR so it persists in
+   * state, context, and the sidebar — it can never vanish with old messages.
+   * Gains dedupe by name (flavor items, no catalog id — ITEMS.md IT-1); losses
+   * only remove non-catalog gear (catalog stacks are spent via useItem, and the
+   * model may not delete mechanical items). Returns a display line, or null.
+   */
+  applyGearChange(name: string, action: "gain" | "lose", note?: string): string | null {
+    const pc = this.pc();
+    if (!pc) return null;
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    // A gained item that IS a catalog item (a looted "medkit") must become the
+    // MECHANICAL item — with itemId — or useItem's possession check will fail
+    // and the model will narrate heals that never happen (the medkit bug).
+    const norm = trimmed.toLowerCase().replace(/^(a|an|the)\s+/, "");
+    const cat =
+      action === "gain"
+        ? allItems().find((it) => it.name.toLowerCase() === norm || it.id.toLowerCase() === norm)
+        : undefined;
+    const existing = pc.gear.find((g) =>
+      cat ? g.itemId === cat.id : g.name.toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (action === "gain") {
+      if (cat) {
+        // Catalog item: stack it (a second medkit is +1, not a no-op).
+        const gear = existing
+          ? pc.gear.map((g) => (g === existing ? { ...g, qty: (g.qty ?? 1) + 1 } : g))
+          : [...pc.gear, { name: cat.name, itemId: cat.id, qty: 1 }];
+        this.state = {
+          ...this.state,
+          characters: this.state.characters.map((c) => (c.id === pc.id ? { ...c, gear } : c)),
+        };
+        const n = (existing?.qty ?? 0) + 1;
+        return `🎒 Gained: ${cat.name}${n > 1 ? ` (×${n})` : ""}`;
+      }
+      if (existing) return null; // flavor item already carried — nothing to do
+      const gear = [...pc.gear, { name: trimmed, ...(note?.trim() ? { detail: note.trim() } : {}) }];
+      this.state = {
+        ...this.state,
+        characters: this.state.characters.map((c) => (c.id === pc.id ? { ...c, gear } : c)),
+      };
+      return `🎒 Gained: ${trimmed}`;
+    }
+    if (!existing || existing.itemId) return null; // absent, or catalog-owned (engine-only)
+    const gear = pc.gear.filter((g) => g !== existing);
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((c) => (c.id === pc.id ? { ...c, gear } : c)),
+    };
+    return `🎒 Lost: ${existing.name}`;
+  }
+
   /** Mark an NPC as present in the current scene — they ride retrieval every
    *  turn of the scene without needing to be re-named (CONTINUITY tier NOW). */
   markPresent(npcId: string) {
     if (!this.sceneCard.presentNpcIds.includes(npcId)) this.sceneCard.presentNpcIds.push(npcId);
   }
 
-  /** Apply the model's scene-card proposal: `situation` and `place` overwrite,
-   *  `beats` append. Engine caps them (F-2/F-4) — the card cannot grow unbounded. */
-  updateScene(situation?: string, beats?: string[], place?: string) {
+  /** Apply the model's scene-card proposal: `situation`/`place`/`dangers`
+   *  overwrite, `beats` append. Engine caps everything (F-2/F-4). */
+  updateScene(situation?: string, beats?: string[], place?: string, dangers?: string[]) {
     if (situation?.trim()) this.sceneCard.situation = situation.trim().slice(0, MAX_SITUATION_CHARS);
     if (place?.trim()) this.sceneCard.place = place.trim().slice(0, 120);
+    // Overwrite semantics: [] explicitly CLEARS a dealt-with danger.
+    if (dangers) this.sceneCard.dangers = dangers.map((d) => d.trim().slice(0, 80)).filter(Boolean).slice(0, 3);
     for (const b of beats ?? []) {
       const beat = b.trim().slice(0, MAX_BEAT_CHARS);
       if (!beat) continue;

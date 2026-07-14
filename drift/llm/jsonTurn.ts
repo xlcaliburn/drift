@@ -6,9 +6,16 @@ import { buildJsonSystem, buildContextSlice, retrieveEntities } from "./promptBu
 import { deepseekChat, deepseekChatStream, isDeepSeekModel, resolveModel } from "./deepseek";
 import { sanitizeHistory, trimToLastSentence } from "./narrator";
 import { NarrationExtractor } from "./jsonStream";
-import { parseTurnPlan, repairTurnPlan, type TurnPlan, type CheckSpec, type ChoiceOption } from "@/shared/turnPlan";
+import {
+  parseTurnPlan,
+  repairTurnPlan,
+  REPAIR_FALLBACK_NARRATION,
+  type TurnPlan,
+  type CheckSpec,
+  type ChoiceOption,
+} from "@/shared/turnPlan";
 import { SCENE_TURN_CAP, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
-import { checkFromVerb, verbRolls } from "@/shared/actions";
+import { checkFromVerb, verbFromLabel, verbRolls } from "@/shared/actions";
 import type { CombatState } from "@/shared/combat";
 import type { SpawnSpec, ShipClass } from "@/engine/combatEngine";
 import { stripInlineMenu } from "@/shared/narration";
@@ -79,9 +86,11 @@ export interface JsonTurnResult {
   };
 }
 
-/** JSON envelope + a ~90-word narration fits comfortably; the prose budget is
- *  enforced by the prompt (the 450-token spirit), the envelope needs headroom. */
-const JSON_MAX_TOKENS = 600;
+/** JSON envelope + a ~90-word narration fits in ~400 tokens — but hybrid DeepSeek
+ *  models sometimes THINK first (reasoning_content), and if the cap lands mid-
+ *  thought the visible content comes back empty. Headroom lets a thinking pass
+ *  finish AND emit the JSON; flash output is cheap ($0.28/M → ~0.04¢ worst case). */
+const JSON_MAX_TOKENS = 1600;
 
 /** Default enemy ship class when the model gives only a tier for a ship fight. */
 const TIER_TO_CLASS: Record<"T1" | "T2" | "T3", string> = { T1: "scout", T2: "fighter", T3: "gunship" };
@@ -90,18 +99,55 @@ const TIER_TO_CLASS: Record<"T1" | "T2" | "T3", string> = { T1: "scout", T2: "fi
  *  fight (see openFightFromSkill). smallArms → on-foot, gunnery → ship. */
 const COMBAT_SKILLS = new Set(["smallArms", "gunnery"]);
 
+/** The narrator produced nothing usable after retry + repair. The turn is
+ *  ABORTED — the route surfaces a retryable error and persists NOTHING, so the
+ *  player resumes exactly where they left off once the issue clears. */
+export class TurnGenerationError extends Error {
+  readonly retryable = true;
+  constructor(detail: string) {
+    super(detail);
+    this.name = "TurnGenerationError";
+  }
+}
+
 /** A bare gun-skill check carries only a rough DC; read it as enemy toughness. */
 function dcToTier(dc: number): "T1" | "T2" | "T3" {
   return dc >= 17 ? "T3" : dc >= 13 ? "T2" : "T1";
 }
 
+/**
+ * Resolve every choice's check from its verb — the model's tag when present,
+ * else INFERRED from the label's leading words ("Search the lockers" → loot).
+ * The engine owns skill selection either way; untagged non-attempt labels stay
+ * plain. This also makes the check badge deterministic on the client.
+ */
+function resolveChoiceChecks(choices: TurnPlan["choices"]): TurnPlan["choices"] {
+  return choices.map((c) => {
+    if (c.check) return c;
+    const verb = c.verb ?? verbFromLabel(c.label);
+    if (!verb) return c;
+    const built = checkFromVerb(verb, c.difficulty ?? undefined);
+    if (!built) return { ...c, verb }; // free verb — stays check-free
+    return {
+      ...c,
+      verb,
+      check: { skill: built.skill, dc: built.dc, stakes: built.stakes, hazardLevel: built.hazardLevel },
+    };
+  });
+}
+
 function defaultModel(): string {
-  return resolveModel(process.env.NARRATOR_MODEL ?? "deepseek-v4-pro");
+  // Routine turns fill a JSON template — a fast CHAT model, not a reasoning one.
+  // v4-pro burned its whole token budget on hidden reasoning and hit max_tokens
+  // before emitting any JSON, so every turn fell back to a canned beat. The
+  // engine owns the hard logic (verbs→skills, DCs, damage); flash writes prose.
+  return resolveModel(process.env.NARRATOR_MODEL ?? "deepseek-v4-flash");
 }
 
 type RollResult = {
   breakdown?: string;
   tick?: string;
+  tickCapped?: string;
   outcome?: string;
   critical?: boolean;
   criticalFailure?: boolean;
@@ -114,13 +160,19 @@ type RollResult = {
   error?: string;
 };
 
-/** Player-facing lines (dice → crit → tick → damage), pre-prefixed for display. */
+/** Player-facing lines, pre-prefixed for display. Dice, crit, and skill-tick are
+ *  ONE compact line ("🎲 … · ✨ CRIT · ⬆ Mechanics 2→3/6"); damage stays its own
+ *  line (it's the consequence, not the roll). */
 function rollDisplayLines(res: RollResult): string[] {
   const lines: string[] = [];
-  if (res.breakdown) lines.push(`🎲 ${res.breakdown}`);
-  if (res.criticalFailure) lines.push("💥 CRITICAL FAILURE — a natural 1");
-  else if (res.critical) lines.push("✨ CRITICAL SUCCESS — a natural 20");
-  if (res.tick) lines.push(`⬆ ${res.tick}`);
+  if (res.breakdown) {
+    const bits = [`🎲 ${res.breakdown}`];
+    if (res.criticalFailure) bits.push("💥 CRITICAL FAILURE (nat 1)");
+    else if (res.critical) bits.push("✨ CRITICAL SUCCESS (nat 20)");
+    if (res.tick) bits.push(`⬆ ${res.tick}`);
+    else if (res.tickCapped) bits.push(`⬆ ${res.tickCapped}: already improved this scene (max 1/skill/scene)`);
+    lines.push(bits.join(" · "));
+  }
   if (res.damage) {
     lines.push(`💥 Took ${res.damage} damage${res.died ? " — KILLED" : res.downed ? " — DOWNED" : ""}`);
   }
@@ -205,22 +257,27 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     return cbt.active ? cbt : null;
   }
 
-  if (input.preCheck && pc) {
-    if (COMBAT_SKILLS.has(input.preCheck.skill)) {
+  // The clicked check's skill: verb-derived when tagged (engine owns the mapping),
+  // else the explicit skill. A check with neither is skipped (nothing to roll).
+  const preVerb = input.preCheck?.verb ? checkFromVerb(input.preCheck.verb) : null;
+  const preSkill = preVerb?.skill ?? input.preCheck?.skill ?? null;
+  if (input.preCheck && preSkill && pc) {
+    if (COMBAT_SKILLS.has(preSkill)) {
       toolCalls.push("combat_start");
-      combat = openFightFromSkill(input.preCheck.skill, input.preCheck.dc);
+      combat = openFightFromSkill(preSkill, input.preCheck.dc);
     } else {
       toolCalls.push("roll_check");
       const res = runtime.execute("roll_check", {
         characterId: pc.id,
-        skill: input.preCheck.skill,
+        skill: preSkill,
         dc: input.preCheck.dc,
         stakes: input.preCheck.stakes,
         failDamage: input.preCheck.failDamage,
+        hazardLevel: input.preCheck.hazardLevel ?? preVerb?.hazardLevel,
         target: input.preCheck.target ?? undefined,
       }) as RollResult;
       if (res.breakdown) {
-        lastRoll = { skill: input.preCheck.skill, outcome: res.outcome };
+        lastRoll = { skill: preSkill, outcome: res.outcome };
         engineLines.push(engineContextLine(res));
         emit(rollDisplayLines(res));
       }
@@ -319,19 +376,29 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     const raw2 = await callWithFallback(false);
     rawResponses.push(raw2);
     const second = parseTurnPlan(raw2);
-    return second.plan ?? repairTurnPlan(raw2 || raw);
+    if (second.plan) return second.plan;
+    // Last resort: salvage what we can. If the repair produced ONLY the sentinel
+    // stub (no real narration, no choices), the model gave us nothing — fail the
+    // turn honestly instead of advancing the story on filler.
+    const repaired = repairTurnPlan(raw2 || raw);
+    if (repaired.narration === REPAIR_FALLBACK_NARRATION && repaired.choices.length === 0) {
+      throw new TurnGenerationError(
+        `narrator returned no usable turn (model=${activeModel}, stop=${lastStop}, ` +
+          `raw lengths=${raw.length}/${raw2.length})`,
+      );
+    }
+    return repaired;
   }
 
   let plan = await plannedCall(true);
+  // Resolve every choice's check up front — the model's verb tag, or a verb
+  // INFERRED from the label ("Search the lockers" → loot) when it forgot to tag.
+  plan = { ...plan, choices: resolveChoiceChecks(plan.choices) };
 
   // ── Enforce at least one checked choice (the dice must always be on offer). ──
-  // The prompt asks for it, but DeepSeek routinely forgets — so the ENGINE checks
-  // and bounces it back once: if a normal turn's choices carry no check, ask for
-  // the same narration with a check on the most consequential option. (Skipped for
-  // combat/scene-end turns, which drop choices, and when a check already happened
-  // — the clicked pre-check or a mid-turn roll on the player's typed action.)
-  // A choice "has a check" only via an explicit check or an ATTEMPT verb — a FREE
-  // verb (go/talk/wait/take…) is check-free and must NOT satisfy the requirement.
+  // Runs AFTER verb/label resolution, so an inferred attempt already satisfies it
+  // — the bounce-back to the model is the last resort, not the norm. A FREE verb
+  // (go/talk/wait/take…) is check-free and must NOT satisfy the requirement.
   const wantsCheck = (p: TurnPlan) =>
     p.choices.length > 0 &&
     !p.choices.some((c) => c.check || verbRolls(c.verb)) &&
@@ -344,10 +411,10 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     messages.push({
       role: "user",
       content:
-        "None of your options carried a skill check — every turn must offer at least one. Re-send the SAME json turn, keeping your narration WORD FOR WORD, but attach a \"check\" {skill, dc, stakes:true} to the single most consequential/uncertain option (the 'push on / press your luck' one if present).",
+        "None of your options carried a skill check — every turn must offer at least one. Re-send the SAME json turn, keeping your narration WORD FOR WORD, but tag the single most consequential/uncertain option with an ATTEMPT \"verb\" (or a \"check\" {skill, dc, stakes:true}).",
     });
     const retry = await plannedCall(false);
-    if (retry.choices.length) plan = retry; // take the retry even if it still lacks one — no infinite loop
+    if (retry.choices.length) plan = { ...retry, choices: resolveChoiceChecks(retry.choices) };
   }
   let narration = plan.narration;
 
@@ -366,7 +433,8 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       skill: rollSkill,
       dc: plan.roll.dc,
       stakes: plan.roll.stakes,
-      failDamage: rollVerb?.failDamage ?? plan.roll.failDamage,
+      failDamage: plan.roll.failDamage,
+      hazardLevel: plan.roll.hazardLevel ?? rollVerb?.hazardLevel,
       target: plan.roll.target ?? undefined,
     }) as RollResult;
     if (res.breakdown) {
@@ -394,7 +462,8 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       dc: plan.danger.dc,
       stakes: true,
       failDamage: plan.danger.damage,
-      hazard: true, // a danger is a physical hazard save — damage is legitimate (still capped)
+      hazardLevel: plan.danger.hazardLevel ?? undefined,
+      hazard: true, // a danger is a physical hazard save — damage is legitimate on any skill
       target: plan.danger.target ?? undefined,
     }) as RollResult;
     if (res.breakdown) {
@@ -423,6 +492,9 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     toolCalls.push("use_item");
     const res = runtime.useItem(plan.useItem.itemId, pc.id) as { line?: string; error?: string };
     if (res.line) emit([res.line]);
+    // Failed use (e.g. the model thinks they hold an item they don't) must be
+    // VISIBLE — otherwise the narration claims a heal that never happened.
+    else if (res.error) emit([`⚠ Can't use item: ${res.error}`]);
   }
   // Persist any named NPCs the narrator introduced so the world remembers them
   // (continuity — recognized when the player returns), mark them present in the
@@ -441,12 +513,21 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       if (rel.line) emit([rel.line]); // D-4: standing changes are visible, like ticks
     }
   }
-  // Scene-card proposal: situation/place overwrite, beats append (engine-capped).
+  // Narrative item pickups/losses → real gear entries (persist in state/context).
+  if (plan.items?.length) {
+    for (const it of plan.items.slice(0, 4)) {
+      toolCalls.push("gear_change");
+      const line = runtime.applyGearChange(it.name, it.action ?? "gain", it.note ?? undefined);
+      if (line) emit([line]);
+    }
+  }
+  // Scene-card proposal: situation/place/dangers overwrite, beats append.
   if (plan.scene) {
     runtime.updateScene(
       plan.scene.situation ?? undefined,
       plan.scene.beats ?? undefined,
       plan.scene.place ?? undefined,
+      plan.scene.dangers ?? undefined,
     );
   }
   if (plan.worldEvent) {
@@ -507,21 +588,11 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   narration = stripInlineMenu(narration.trim());
   if (lastStop === "max_tokens") narration = trimToLastSentence(narration);
   const cap = inTutorial(runtime.state) ? TUTORIAL_CHOICE_COUNT : 4;
-  // A verb-tagged choice → the ENGINE builds its check (skill from the verb, not
-  // the model's guess). The resolved check rides to the client and back as the
-  // pre-check on click, so the right skill rolls (ACTIONS.md).
-  const verbResolved = plan.choices.map((c) => {
-    if (c.verb && !c.check) {
-      const built = checkFromVerb(c.verb, c.difficulty ?? undefined);
-      if (built) {
-        return { ...c, check: { skill: built.skill, dc: built.dc, stakes: built.stakes, failDamage: built.failDamage } };
-      }
-    }
-    return c;
-  });
+  // Checks were resolved up front (resolveChoiceChecks) — tagged or label-inferred
+  // verbs already carry their engine-built check into the client chips.
   // When combat begins, its action chips are generated by the route from the
   // fresh CombatState — the model's narrative choices are dropped.
-  const choices = plan.sceneEnd || combat ? [] : verbResolved.slice(0, cap);
+  const choices = plan.sceneEnd || combat ? [] : plan.choices.slice(0, cap);
   if (plan.choices.length) toolCalls.push("offer_choices");
 
   const exchangeDump =

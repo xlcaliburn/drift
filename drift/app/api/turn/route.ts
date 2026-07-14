@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { runJsonTurn } from "@/llm/jsonTurn";
+import { runJsonTurn, TurnGenerationError } from "@/llm/jsonTurn";
 import { runCombatTurn } from "@/llm/combatTurn";
 import { combatActions } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
@@ -159,6 +159,14 @@ export async function POST(req: NextRequest) {
       const send = (obj: unknown) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
 
+      // Scene memory is mutated IN PLACE during the turn (turnCount, beats,
+      // relations). Snapshot it so a failed turn rolls back cleanly — a retry
+      // must start from exactly the state the player left off in.
+      const memorySnapshot = {
+        sceneCard: structuredClone(session.sceneCard),
+        npcRelations: structuredClone(session.npcRelations),
+        npcs: session.state.npcs,
+      };
       try {
         // Shared per-scene tick-cap set — mutated in place by the engine bridge,
         // persisted back after the turn, reset when a scene ends.
@@ -344,7 +352,22 @@ export async function POST(req: NextRequest) {
         });
       } catch (err) {
         console.error("turn error", err);
-        send({ type: "error", error: err instanceof Error ? err.message : "narration failed" });
+        // Roll back the in-place scene-memory mutations: the failed turn never
+        // happened, so a retry resumes from exactly where the player left off.
+        session.sceneCard = memorySnapshot.sceneCard;
+        session.npcRelations = memorySnapshot.npcRelations;
+        session.state.npcs = memorySnapshot.npcs;
+        setSession(campaignId, session);
+        const retryable = err instanceof TurnGenerationError;
+        send({
+          type: "error",
+          retryable,
+          error: retryable
+            ? "The narrator glitched — nothing was saved and your action wasn't lost. Hit retry (or try again later)."
+            : err instanceof Error
+              ? err.message
+              : "narration failed",
+        });
       } finally {
         controller.close();
       }

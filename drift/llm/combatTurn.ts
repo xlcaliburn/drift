@@ -63,7 +63,7 @@ function endChoices(outcome: CombatOutcome): ChoiceOption[] {
 }
 
 export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnResult> {
-  const model = resolveModel(input.model ?? resolveModel(process.env.NARRATOR_MODEL ?? "deepseek-v4-pro"));
+  const model = resolveModel(input.model ?? resolveModel(process.env.NARRATOR_MODEL ?? "deepseek-v4-flash"));
   let activeModel = model;
   let fellBack = false;
   const startedAt = Date.now();
@@ -96,7 +96,9 @@ export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnR
   let stopReason = "end_turn";
   try {
     if (isDeepSeekModel(activeModel)) {
-      const params = { model: activeModel, maxTokens: 300, system, messages };
+      // 800 not 300: hybrid DeepSeek models may spend tokens thinking before the
+      // visible prose; headroom keeps a thinking pass from truncating the round.
+      const params = { model: activeModel, maxTokens: 800, system, messages };
       const resp = input.onDelta
         ? await deepseekChatStream({ ...params, onDelta: (t) => input.onDelta!(t) })
         : await deepseekChat(params);

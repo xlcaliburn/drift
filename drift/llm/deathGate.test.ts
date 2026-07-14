@@ -6,6 +6,9 @@ import type { RNG } from "@/engine";
 // d20 = 1 → any check vs a high DC fails (and 1 is not a crit), so failDamage lands.
 const minRng: RNG = { int: (min) => min };
 const maxRng: RNG = { int: (_min, max) => max };
+// Fails the d20 (rolls 1) but MAXES the hazard-damage roll (0..2 → 2), so damage
+// = 2 × hazardLevel deterministically.
+const failHard: RNG = { int: (min, max) => (max === 20 ? 1 : max) };
 
 /** A low-HP PC with `resolved` completed quests (>=3 ends the tutorial). */
 function pcState(resolved: number): CampaignState {
@@ -26,18 +29,14 @@ function pcState(resolved: number): CampaignState {
   } as unknown as CampaignState;
 }
 
-// zeroG is a hazard skill, so failure hurts — but the hit is capped to a fraction
-// of max HP, so it takes several to drop a 5-HP character.
+// A deadly (⚠5) hazard hit with failHard deals 2 × 5 = 10 — one-shots a 5-HP PC.
 const hazardHit = (rt: TurnRuntime) =>
-  rt.execute("roll_check", { characterId: "pc-1", skill: "zeroG", dc: 99, stakes: false, failDamage: "100" });
-const hitUntilDown = (rt: TurnRuntime) => {
-  for (let i = 0; i < 6 && rt.state.characters[0].hp > 0; i++) hazardHit(rt);
-};
+  rt.execute("roll_check", { characterId: "pc-1", skill: "zeroG", dc: 99, stakes: false, hazardLevel: 5 });
 
 describe("death gate", () => {
-  it("in the tutorial (<3 quests), repeated hits DOWN but never kill — no permadeath", () => {
-    const rt = new TurnRuntime(pcState(0), minRng);
-    hitUntilDown(rt); // driven to 0 HP: downed
+  it("in the tutorial (<3 quests), even a deadly hit DOWNS but never kills", () => {
+    const rt = new TurnRuntime(pcState(0), failHard);
+    hazardHit(rt); // 10 damage vs 5 HP → 0: downed
     expect(rt.state.characters[0].hp).toBe(0);
     expect(rt.state.characters[0].injuries.some((i) => i.name === "Downed")).toBe(true);
     hazardHit(rt); // struck while down — would kill, but tutorial forbids it
@@ -48,35 +47,51 @@ describe("death gate", () => {
   });
 
   it("after the tutorial (>=3 quests), a hit while down KILLS", () => {
-    const rt = new TurnRuntime(pcState(3), minRng);
-    hitUntilDown(rt); // downed
+    const rt = new TurnRuntime(pcState(3), failHard);
+    hazardHit(rt); // downed
     expect(rt.state.characters[0].injuries.some((i) => i.name === "Downed")).toBe(true);
     hazardHit(rt); // struck while down → dead
     expect(TurnRuntime.isDead(rt.state.characters[0])).toBe(true);
   });
 });
 
-describe("failure damage is gated + capped (D&D-style)", () => {
+describe("failure damage is gated + leveled (0-2 × hazardLevel)", () => {
   it("a failed ability check (perception) deals NO damage", () => {
-    const rt = new TurnRuntime(pcState(3), minRng); // hp 5, fails vs dc 99
+    const rt = new TurnRuntime(pcState(3), failHard); // hp 5, fails vs dc 99
     rt.execute("roll_check", { characterId: "pc-1", skill: "perception", dc: 99, failDamage: "100" });
     expect(rt.state.characters[0].hp).toBe(5); // untouched — perception can't hurt you
   });
 
-  it("a failed hazard check (zeroG) deals damage, capped to a fraction of max HP", () => {
-    const rt = new TurnRuntime(pcState(3), minRng); // hp 5, maxHp 5 → cap = ceil(5*0.34) = 2
-    rt.execute("roll_check", { characterId: "pc-1", skill: "zeroG", dc: 99, failDamage: "100" });
-    expect(rt.state.characters[0].hp).toBe(3); // 5 - 2 (capped), not 5 - 100
+  it("a ⚠1 hazard scrape deals at most 2; a ⚠5 deadly hit can one-shot", () => {
+    const scrape = new TurnRuntime(pcState(3), failHard);
+    scrape.execute("roll_check", { characterId: "pc-1", skill: "zeroG", dc: 99, hazardLevel: 1 });
+    expect(scrape.state.characters[0].hp).toBe(3); // 5 - (2×1)
+
+    const deadly = new TurnRuntime(pcState(3), failHard);
+    deadly.execute("roll_check", { characterId: "pc-1", skill: "zeroG", dc: 99, hazardLevel: 5 });
+    expect(deadly.state.characters[0].hp).toBe(0); // 2×5 = 10 ≥ 5 → downed outright
   });
 
-  it("a danger save (hazard flag) deals damage on any skill but stays capped", () => {
-    const rt = new TurnRuntime(pcState(3), minRng);
-    rt.execute("roll_check", { characterId: "pc-1", skill: "perception", dc: 99, failDamage: "100", hazard: true });
-    expect(rt.state.characters[0].hp).toBe(3); // danger vs a trap can hurt even on a perception save — but capped
+  it("damage can also roll ZERO — a lucky escape at any level", () => {
+    const rt = new TurnRuntime(pcState(3), minRng); // damage roll (0..2) → 0
+    rt.execute("roll_check", { characterId: "pc-1", skill: "zeroG", dc: 99, hazardLevel: 5 });
+    expect(rt.state.characters[0].hp).toBe(5); // failed the check, dodged the harm
+  });
+
+  it("legacy dice failDamage converts to a level (2d6 → ⚠5 territory stays bounded)", () => {
+    const rt = new TurnRuntime(pcState(3), failHard);
+    rt.execute("roll_check", { characterId: "pc-1", skill: "zeroG", dc: 99, failDamage: "1d4" });
+    expect(rt.state.characters[0].hp).toBe(1); // ceil(4/2)=2 → 2×2=4 → 5-4
+  });
+
+  it("a danger save (hazard flag) deals leveled damage on any skill", () => {
+    const rt = new TurnRuntime(pcState(3), failHard);
+    rt.execute("roll_check", { characterId: "pc-1", skill: "perception", dc: 99, hazardLevel: 1, hazard: true });
+    expect(rt.state.characters[0].hp).toBe(3); // a trap can hurt even on a perception save
   });
 
   it("scavenging is a real skill and never deals failure damage (looting can't hurt you)", () => {
-    const rt = new TurnRuntime(pcState(3), minRng);
+    const rt = new TurnRuntime(pcState(3), failHard);
     const r = rt.execute("roll_check", { characterId: "pc-1", skill: "scavenging", dc: 99, failDamage: "100" }) as {
       breakdown: string;
     };
@@ -84,16 +99,16 @@ describe("failure damage is gated + capped (D&D-style)", () => {
     expect(rt.state.characters[0].hp).toBe(5); // a bad haul, not a wound
   });
 
-  it("target:ship routes failure damage to the HULL (capped), not the pilot", () => {
+  it("target:ship routes leveled damage to the HULL, not the pilot", () => {
     const s = pcState(3);
     s.ship = { id: "ship-1", campaignId: "c", name: "Magpie", shipClass: "scout", hp: 18, maxHp: 18, ac: 12, evasiveAcBonus: 2, damageReduction: 0, weapons: [], hasShield: false, shieldReady: false, hasPointDefense: false, burstDriveReady: false, dcModifier: 0, buyoutRemaining: 0 } as unknown as CampaignState["ship"];
-    const rt = new TurnRuntime(s, minRng);
+    const rt = new TurnRuntime(s, failHard);
     const r = rt.execute("roll_check", {
-      characterId: "pc-1", skill: "piloting", dc: 99, failDamage: "100", target: "ship",
+      characterId: "pc-1", skill: "piloting", dc: 99, hazardLevel: 3, target: "ship",
     }) as { shipDamage?: number };
     expect(rt.state.characters[0].hp).toBe(5); // pilot untouched
-    expect(rt.state.ship!.hp).toBe(11); // 18 - ceil(18*0.34)=7 → capped, not -100
-    expect(r.shipDamage).toBe(7);
+    expect(rt.state.ship!.hp).toBe(12); // 18 - (2×3)
+    expect(r.shipDamage).toBe(6);
   });
 });
 

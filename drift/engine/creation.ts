@@ -30,8 +30,9 @@ export function buildCharacterFromCreation(
   }));
   addSkillLevel(skills, bg.signatureSkill, 1);
 
-  // Vitals derived from attributes + gear.
-  const maxHp = Math.max(1, 6 + attributes.vitality);
+  // Vitals derived from attributes + gear. Base 10: pairs with the hazard-damage
+  // scale (⚠5 max = 10 = exactly one-shot territory for a fresh character).
+  const maxHp = Math.max(1, 10 + attributes.vitality);
   const armorBonus = bg.gear.reduce((sum, g) => sum + (g.acBonus ?? 0), 0);
   const ac = 10 + attributes.reflex + armorBonus;
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkFromVerb, verbRolls, ACTION_VERBS, FREE_VERBS, VERB_LIST } from "./actions";
+import { checkFromVerb, verbFromLabel, verbRolls, ACTION_VERBS, FREE_VERBS, VERB_LIST } from "./actions";
 import skills from "@/content/skills.json";
 
 describe("action verbs → engine checks", () => {
@@ -7,7 +7,7 @@ describe("action verbs → engine checks", () => {
     const c = checkFromVerb("force");
     expect(c?.skill).toBe("athletics");
     expect(c?.stakes).toBe(true);
-    expect(c?.failDamage).toBe("1d6"); // hazard: a failed heave can hurt
+    expect(c?.hazardLevel).toBe(2); // hazard verb: a failed heave can hurt (⚠⚠)
   });
 
   it("maps the social verbs to their skills", () => {
@@ -18,9 +18,9 @@ describe("action verbs → engine checks", () => {
     expect(checkFromVerb("examine")?.skill).toBe("perception");
   });
 
-  it("non-hazard verbs carry no failDamage", () => {
-    expect(checkFromVerb("examine")?.failDamage).toBeUndefined();
-    expect(checkFromVerb("persuade")?.failDamage).toBeUndefined();
+  it("non-hazard verbs carry no hazard level (failure can't hurt)", () => {
+    expect(checkFromVerb("examine")?.hazardLevel).toBeUndefined();
+    expect(checkFromVerb("persuade")?.hazardLevel).toBeUndefined();
   });
 
   it("difficulty maps to a DC; default falls back to the verb's", () => {
@@ -52,6 +52,16 @@ describe("action verbs → engine checks", () => {
     const covered = new Set(Object.values(ACTION_VERBS).map((d) => d.skill));
     const uncovered = Object.keys(skills.skills).filter((s) => !covered.has(s));
     expect(uncovered.sort()).toEqual([...COMBAT_ONLY].sort());
+  });
+
+  it("infers the verb from an untagged label (the missing-tooltip bug)", () => {
+    expect(verbFromLabel("Search the lockers for a mask")).toBe("loot"); // search → loot → scavenging
+    expect(verbFromLabel("Move the fallen shelving")).toBe("force");
+    expect(verbFromLabel("Try to force the hatch")).toBe("force"); // leading filler stripped
+    expect(verbFromLabel("Open fire on the freighter")).toBe("attack"); // multi-word alias
+    expect(verbFromLabel("Ask around the docks")).toBe("network"); // beats bare "ask"
+    expect(verbFromLabel("Head back to the ship")).toBe("go"); // free verb — no check
+    expect(verbFromLabel("Accept the offer")).toBeNull(); // no verb → plain choice
   });
 
   it("FREE verbs carry NO check and don't roll", () => {

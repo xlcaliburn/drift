@@ -65,8 +65,9 @@ export interface VerbCheck {
   skill: string;
   dc: number;
   stakes: boolean;
-  /** Present for hazard verbs — a failed attempt can hurt (engine-capped). */
-  failDamage?: string;
+  /** Hazard verbs carry a danger level (1-5): failure deals (0..2) × level.
+   *  Shown to the player as ⚠ on the chip BEFORE they commit. */
+  hazardLevel?: number;
   /** Attack verbs route to combat via the existing gun-skill reroute. */
   combat?: boolean;
 }
@@ -80,7 +81,7 @@ export function checkFromVerb(verb: string, difficulty?: string): VerbCheck | nu
     skill: def.skill,
     dc,
     stakes: true,
-    ...(def.hazard ? { failDamage: "1d6" } : {}),
+    ...(def.hazard ? { hazardLevel: 2 } : {}), // verb default: dangerous (⚠⚠); model may override
     ...(def.combat ? { combat: true } : {}),
   };
 }
@@ -102,4 +103,37 @@ export function freeVerbReference(): string {
 /** Whether a verb is an attempt (rolls a check) vs. a free action (no check). */
 export function verbRolls(verb: string | undefined | null): boolean {
   return !!verb && verb in ACTION_VERBS;
+}
+
+// Alias → verb lookup for label inference (multi-word aliases included).
+const ALIAS_TO_VERB: [string, string][] = (() => {
+  const pairs: [string, string][] = [];
+  for (const [verb, def] of Object.entries(ACTION_VERBS)) {
+    pairs.push([verb, verb]);
+    for (const a of def.aliases) pairs.push([a.toLowerCase(), verb]);
+  }
+  for (const [verb, def] of Object.entries(FREE_VERBS)) {
+    pairs.push([verb, verb]);
+    for (const a of def.aliases) pairs.push([a.toLowerCase(), verb]);
+  }
+  // Longest alias first so "open fire" beats "open", "ask around" beats "ask".
+  return pairs.sort((a, b) => b[0].length - a[0].length);
+})();
+
+/**
+ * Infer the verb from a choice label the model forgot to tag ("Search the
+ * lockers" → loot). Matches verb/alias at the START of the label (first ~3
+ * words, so "Try to force the hatch" still hits "force"). Conservative: no
+ * match → null → the option stays a plain, check-free choice.
+ */
+export function verbFromLabel(label: string): string | null {
+  const head = label
+    .toLowerCase()
+    .replace(/^["'“”]+/, "")
+    .replace(/^(try to|attempt to|carefully|quietly|quickly)\s+/, "")
+    .slice(0, 40);
+  for (const [alias, verb] of ALIAS_TO_VERB) {
+    if (head.startsWith(alias + " ") || head === alias) return verb;
+  }
+  return null;
 }

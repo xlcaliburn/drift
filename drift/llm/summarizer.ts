@@ -41,7 +41,7 @@ export async function summarizeScene(
     if (isDeepSeekModel(model)) {
       const resp = await deepseekChat({
         model,
-        maxTokens: 400,
+        maxTokens: 800, // headroom for hybrid-model thinking before the JSON
         system: [{ type: "text", text: SYSTEM }],
         messages: [{ role: "user", content: user }],
       });

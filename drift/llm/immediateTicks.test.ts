@@ -3,9 +3,10 @@ import type { CampaignState } from "@/shared/schemas";
 import { TurnRuntime } from "./engineBridge";
 import type { RNG } from "@/engine";
 
-/** Fixed-roll RNG so outcomes are deterministic. */
+/** Fixed d20; every other roll (hazard damage 0..2) maxes, so damage is
+ *  deterministic: 2 × hazardLevel. */
 const rollRng = (d20: number): RNG => ({
-  int: (min: number, max: number) => (min === 1 && max === 20 ? d20 : min),
+  int: (min: number, max: number) => (min === 1 && max === 20 ? d20 : max),
 });
 
 function stateWithPc(): CampaignState {
@@ -73,19 +74,19 @@ describe("immediate tick award on qualifying rolls", () => {
     expect(roll(rt, { stakes: false }).tick).toBeUndefined();
   });
 
-  it("deals failDamage on a failed HAZARD check (real stakes), capped to a fraction of max HP", () => {
-    // d20=1 → failure. zeroG is a hazard skill; maxHp 8 → cap = ceil(8*0.34) = 3.
+  it("deals leveled damage on a failed HAZARD check (0-2 × hazardLevel)", () => {
+    // d20=1 → failure. zeroG is a hazard skill; ⚠2 → damage roll 2 × 2 = 4.
     const rt = new TurnRuntime(stateWithPc(), rollRng(1));
     const res = rt.execute("roll_check", {
       characterId: "pc-1",
       skill: "zeroG",
       dc: 13,
       stakes: true,
-      failDamage: "4",
+      hazardLevel: 2,
     }) as { outcome: string; damage?: number };
     expect(res.outcome).toBe("failure");
-    expect(res.damage).toBe(3); // capped from 4
-    expect(rt.state.characters[0].hp).toBe(5); // 8 → 5
+    expect(res.damage).toBe(4);
+    expect(rt.state.characters[0].hp).toBe(4); // 8 → 4
   });
 
   it("a failed ABILITY check (stealth) never deals damage", () => {
@@ -109,15 +110,13 @@ describe("immediate tick award on qualifying rolls", () => {
     s.threads = [1, 2, 3].map((i) => ({
       id: `t-${i}`, campaignId: "c", title: "done", body: "", status: "resolved", entityRefs: [],
     })) as CampaignState["threads"];
-    const rt = new TurnRuntime(s, rollRng(1)); // always fail
-    // Capped hits (3 each) drive 8 → 5 → 2 → 0, DOWNED.
+    const rt = new TurnRuntime(s, rollRng(1)); // always fail; damage roll maxes
+    // A ⚠5 deadly hazard deals 2 × 5 = 10: 8 → 0, DOWNED in one hit.
     const hit = () =>
-      rt.execute("roll_check", { characterId: "pc-1", skill: "zeroG", dc: 13, stakes: true, failDamage: "9" }) as {
+      rt.execute("roll_check", { characterId: "pc-1", skill: "zeroG", dc: 13, stakes: true, hazardLevel: 5 }) as {
         downed?: boolean;
         died?: boolean;
       };
-    hit();
-    hit();
     const down = hit();
     expect(down.downed).toBe(true);
     expect(rt.state.characters[0].hp).toBe(0);

@@ -34,6 +34,26 @@ export async function listRequests(): Promise<FeatureRequest[]> {
   });
 }
 
+/** A single user's submissions, newest first — the player-facing status list. */
+export async function listRequestsByAuthor(authorId: string): Promise<FeatureRequest[]> {
+  if (!hasSupabase()) {
+    return [...store.values()]
+      .filter((r) => r.authorId === authorId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+  const { fromRow } = await import("@/db/queries");
+  const { data, error } = await (await db())
+    .from("feature_requests")
+    .select("*")
+    .eq("author_id", authorId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.flatMap((r) => {
+    const parsed = FeatureRequest.safeParse(fromRow(r));
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
 export async function saveRequest(req: FeatureRequest): Promise<void> {
   if (!hasSupabase()) {
     store.set(req.id, req);

@@ -45,7 +45,7 @@ describe("buildCharacterFromCreation", () => {
   });
 
   it("derives vitals and keeps parity credits", () => {
-    expect(c.maxHp).toBe(6); // 6 + vitality(0)
+    expect(c.maxHp).toBe(10); // 10 + vitality(0)
     expect(c.ac).toBe(13); // 10 + reflex(3) + no armor
     expect(c.credits).toBe(120); // thin, equal-footing "minion" pocket
     expect(c.kind).toBe("pc");
