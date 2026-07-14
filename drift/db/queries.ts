@@ -12,6 +12,7 @@ import {
   Clock,
   Thread,
   Contract,
+  WorldEvent,
   type CampaignState,
 } from "@/shared/schemas";
 import type { ChatEntry } from "@/shared/chat";
@@ -19,6 +20,7 @@ import type { EngineEvent } from "@/engine";
 import type { CombatState } from "@/shared/combat";
 import type { SceneCard, NpcRelations, SceneMemory } from "@/shared/scene";
 import type { ChoiceOption } from "@/shared/turnPlan";
+import type { Dossier } from "@/shared/multiplayer";
 
 /**
  * Row mapping: DB columns are snake_case, app types are camelCase. We convert
@@ -240,6 +242,59 @@ export async function loadRecentScenes(
     }))
     .filter((s) => s.summary.length > 0)
     .reverse();
+}
+
+// ── Universe-shared PC dossiers (MULTIPLAYER.md) ─────────────────────────────
+
+/**
+ * Upsert a PC's public dossier into the UNIVERSE-scoped dossiers table so every
+ * other campaign in the same world can read it (shared narrative canon — like the
+ * npcs table). Keyed by campaign_id (one PC per campaign); last-write-wins, so a
+ * rebuild each turn just refreshes the row. The full public projection rides in
+ * the `data` jsonb column verbatim; universe_id + character_id are lifted out for
+ * indexed cross-campaign reads. Stamps updated_at at write time.
+ */
+export async function upsertDossier(db: SupabaseClient, dossier: Dossier): Promise<void> {
+  await db.from("dossiers").upsert({
+    campaign_id: dossier.campaignId,
+    character_id: dossier.characterId,
+    universe_id: dossier.universeId,
+    data: dossier,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+/**
+ * A campaign's most recent world_events (spillover it authored), newest first,
+ * capped small. Fed into buildDossier so a dossier can surface the PC's notable
+ * deeds. Returns [] on error so a dossier rebuild degrades to no-deeds, never throws.
+ */
+export async function loadWorldEventsBySource(
+  db: SupabaseClient,
+  sourceCampaignId: string,
+  limit = 5,
+): Promise<WorldEvent[]> {
+  const { data, error } = await db
+    .from("world_events")
+    .select("*")
+    .eq("source_campaign_id", sourceCampaignId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  return data.map((r) => WorldEvent.parse(fromRow(r)));
+}
+
+/** Load every PC dossier in a universe (the `data` jsonb parsed as Dossier[]). */
+export async function loadDossiersByUniverse(
+  db: SupabaseClient,
+  universeId: string,
+): Promise<Dossier[]> {
+  const { data, error } = await db
+    .from("dossiers")
+    .select("data")
+    .eq("universe_id", universeId);
+  if (error || !data) return [];
+  return data.map((r) => r.data as Dossier);
 }
 
 export interface CampaignSummary {

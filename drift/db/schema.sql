@@ -210,6 +210,19 @@ create table if not exists world_events (
   created_at         timestamptz default now()
 );
 
+-- ── Universe-shared PC dossiers (015) ─────────────────────────────────────
+-- A dossier is a PC's PUBLIC profile — the read-surface other campaigns in the
+-- same universe pull to cameo that character as an NPC. Universe-scoped like the
+-- shared npcs table; one per campaign (campaign_id PK), full public projection in
+-- `data` jsonb (shared/multiplayer.ts Dossier shape, validated in app code).
+create table if not exists dossiers (
+  campaign_id   text primary key references campaigns(id) on delete cascade,
+  character_id  text,
+  universe_id   text not null references universes(id) on delete cascade,
+  data          jsonb not null,
+  updated_at    timestamptz not null default now()
+);
+
 -- ── Feature requests (players propose, owner approves/declines) ────────────
 create table if not exists feature_requests (
   id            text primary key,
@@ -229,6 +242,7 @@ create index if not exists idx_world_events_universe on world_events(universe_id
 create index if not exists idx_world_events_factions on world_events using gin(faction_ids);
 create index if not exists idx_scenes_campaign on scenes(campaign_id, seq);
 create index if not exists idx_rolls_scene on rolls(scene_id);
+create index if not exists idx_dossiers_universe on dossiers(universe_id);
 
 -- ── Row-level security (deny-by-default lockdown) ──────────────────────────
 -- RLS is enabled on EVERY table with NO policies: anon/publishable-key access
@@ -252,6 +266,7 @@ alter table scenes           enable row level security;
 alter table turns            enable row level security;
 alter table rolls            enable row level security;
 alter table world_events     enable row level security;
+alter table dossiers         enable row level security;
 alter table feature_requests enable row level security;
 -- ── 002_auth: profiles, usage metering, campaign ownership ─────────────────
 -- Run this in the Supabase SQL editor BEFORE anyone signs in (the trigger must

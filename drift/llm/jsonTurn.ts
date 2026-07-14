@@ -18,6 +18,7 @@ import { SCENE_TURN_CAP, type SceneCard, type NpcRelations, type SceneMemory } f
 import { checkFromVerb, verbFromLabel, verbRolls } from "@/shared/actions";
 import { extractNpcNames, extractRoleNpcs, knownEntityNames, isPlausibleNpcName } from "@/shared/npcExtract";
 import type { CombatState } from "@/shared/combat";
+import type { Dossier } from "@/shared/multiplayer";
 import type { SpawnSpec, ShipClass } from "@/engine/combatEngine";
 import { stripInlineMenu } from "@/shared/narration";
 import { graduatedTutorialThisTurn, inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
@@ -54,6 +55,8 @@ export interface JsonTurnInput {
   npcRelations?: NpcRelations;
   /** Recent scene summaries for the PREVIOUSLY block (oldest→newest). */
   recentScenes?: SceneMemory[];
+  /** Other players' reachable dossiers in this universe (cross-campaign cameos). */
+  otherDossiers?: Dossier[];
   model?: string;
   rng?: RNG;
   apiKey?: string;
@@ -299,11 +302,19 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   // needed for someone standing in the room (CONTINUITY tier NOW).
   const focusWithPresent = [...new Set([...(input.focusIds ?? []), ...runtime.sceneCard.presentNpcIds])];
   const retrieved = retrieveEntities(input.state, input.playerText, focusWithPresent);
-  const contextSlice = buildContextSlice(input.state, input.playerText, focusWithPresent, retrieved, true, {
-    sceneCard: runtime.sceneCard,
-    npcRelations: runtime.npcRelations,
-    recentScenes: input.recentScenes ?? [],
-  });
+  const contextSlice = buildContextSlice(
+    input.state,
+    input.playerText,
+    focusWithPresent,
+    retrieved,
+    true,
+    {
+      sceneCard: runtime.sceneCard,
+      npcRelations: runtime.npcRelations,
+      recentScenes: input.recentScenes ?? [],
+    },
+    input.otherDossiers,
+  );
   const messages: Anthropic.MessageParam[] = [
     ...sanitizeHistory(input.history),
     {

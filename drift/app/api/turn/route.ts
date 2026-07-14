@@ -3,7 +3,7 @@ import { runJsonTurn, TurnGenerationError } from "@/llm/jsonTurn";
 import { runCombatTurn } from "@/llm/combatTurn";
 import { combatActions, interpretCombatText } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
-import { getSession, setSession, persistSession } from "@/lib/state";
+import { getSession, setSession, persistSession, loadReachableDossiers } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
 import { recordAiCall } from "@/lib/audit";
@@ -201,18 +201,28 @@ export async function POST(req: NextRequest) {
                 );
               return runCombatTurn({ ...common, combat: session.combat!, action, playerText });
             })()
-          : await runJsonTurn({
-              ...common,
-              playerText,
-              focusIds: session.focusIds,
-              preCheck,
-              fromChoice,
-              // Scene memory (mutated in place by the runtime; session owns it).
-              sceneCard: session.sceneCard,
-              npcRelations: session.npcRelations,
-              recentScenes: session.recentScenes,
-              model: cinematic ? "claude-sonnet-5" : undefined,
-            });
+          : await (async () => {
+              // Cross-campaign cameos: other players' characters reachable in this
+              // universe. Best-effort — a load failure never breaks a turn ([] in
+              // keyless mode too). Only the non-combat JSON path needs them.
+              const otherDossiers = await loadReachableDossiers(
+                session.state.universe.id,
+                campaignId,
+              ).catch(() => []);
+              return runJsonTurn({
+                ...common,
+                playerText,
+                focusIds: session.focusIds,
+                preCheck,
+                fromChoice,
+                // Scene memory (mutated in place by the runtime; session owns it).
+                sceneCard: session.sceneCard,
+                npcRelations: session.npcRelations,
+                recentScenes: session.recentScenes,
+                otherDossiers,
+                model: cinematic ? "claude-sonnet-5" : undefined,
+              });
+            })();
 
         // Combat owns the choices while active (engine-generated chips); otherwise
         // use the model's choices, falling back to generic actions if it gave none.

@@ -8,6 +8,7 @@ import { verbReference, freeVerbReference } from "@/shared/actions";
 import { relationSuffix, RECENT_SCENES_IN_PROMPT, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_DIRECTIVE, TUTORIAL_JSON_DIRECTIVE } from "@/shared/tutorial";
+import type { Dossier } from "@/shared/multiplayer";
 
 /**
  * DM style rules — the voice of the game. Kept static and marked for prompt
@@ -87,6 +88,7 @@ RULES:
 9. "npcs" — CONTINUITY. List EVERY distinct figure now in the scene the player can see, speak to, or square off against — a boss, a contact, a new arrival, a bodyguard, a named foe — each with a one-line who-they-are. Give a short handle to anyone unnamed but present ("the wrecker woman" → name:"Wrecker woman" or invent "Kessa"). A GROUP is one entry ("Draven's enforcers"). The engine tracks who's present and they RECOGNIZE the player later — so a figure you narrate but omit here goes missing from the game. Only skip true background (a distant, faceless crowd). Same entry may update: "note" = one line of what just happened between you (their memory — keep it current) and "relationship" = who they are to the player (first write sticks) EVERY turn; but "disposition" +1/-1 ONLY lands on a turn a job/quest actually completes (a "payout") — the engine ignores standing nudges otherwise, so don't narrate someone's trust deepening over idle chat. Standing is earned by finishing work.
 10. "scene" — running memory. Overwrite "situation" (what's happening NOW) when it changes; append a beat when a promise/deal/threat/debt is made; set "place" when the player moves somewhere the location list can't name ("aboard the Dust Eater, in the black"). SCENE NOW and PREVIOUSLY in your context came from this — treat them as fact.
 11. Ground everything in CURRENT SCENE. NPCs listed there know the player — their standing tag ([trusted (+2) · your handler · last: …]) is history; play it. Never treat a known NPC as a stranger.
+12. OTHER PLAYERS' CHARACTERS (if any are listed in context) are REAL characters from other players' live games — canon, not yours to invent. You MAY bring ONE in as an NPC when it fits the scene naturally (they're here now, or word of them reaches the player), but play them TRUE to their dossier — their capability tier, faction, voice, and deeds. You may NEVER invent or alter their sheet: no stats, no rolls on their behalf beyond narration, no deeds they didn't do. If something noteworthy passes between the player and that character, fire "worldEvent" so it can echo back into that character's own game. Do NOT force a cameo — only when it's natural; most turns have none.
 
 EXAMPLE (verb-tagged options) — player: "Ask around the dock about the missing courier"
 {"narration":"The dockmaster's office reeks of burnt coffee and cold solder. A clerk marks a manifest without looking up; two longshoremen by the crate-lift stop talking as you enter.","choices":[{"label":"Ask the clerk who last signed for the cargo","verb":"talk"},{"label":"Buy the longshoremen a round and get them talking","verb":"persuade"},{"label":"Lean on the clerk hard for the manifest","verb":"threaten"}]}
@@ -154,6 +156,61 @@ function proximityTag(n: { id: string; locationId?: string }, present: Set<strin
   if (present.has(n.id)) return " [immediate]";
   if (n.locationId && currentLoc && n.locationId === currentLoc) return " [nearby]";
   return "";
+}
+
+/**
+ * Cross-campaign cameo pool (MULTIPLAYER.md): from the OTHER players' dossiers
+ * reachable in this universe, pick up to `cap` the narrator may bring in as an
+ * NPC. Only living characters qualify. Same-location dossiers are PREFERRED (they
+ * can plausibly be here now), then the rest fill remaining slots. Ordering is
+ * deterministic — same-location first, then by name — so no Math.random and the
+ * same turn always yields the same pool.
+ */
+export function reachableDossiers(
+  dossiers: Dossier[],
+  currentLocationId: string | undefined,
+  cap = 2,
+): Dossier[] {
+  const alive = dossiers.filter((d) => d.alive);
+  const here = alive
+    .filter((d) => currentLocationId && d.locationId === currentLocationId)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const elsewhere = alive
+    .filter((d) => !(currentLocationId && d.locationId === currentLocationId))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return [...here, ...elsewhere].slice(0, Math.max(0, cap));
+}
+
+/**
+ * Render the OTHER PLAYERS' CHARACTERS context block from the selected dossiers.
+ * Lean by design (token cost): name, faction, tier, a voice/role line, whether
+ * they're here now vs. elsewhere, and 1-2 recent deed headlines.
+ */
+function otherCharactersBlock(
+  dossiers: Dossier[],
+  factionName: (id?: string) => string,
+  currentLocationId: string | undefined,
+): string {
+  if (!dossiers.length) return "";
+  const lines = dossiers.map((d) => {
+    const here = currentLocationId && d.locationId === currentLocationId ? "HERE NOW" : "elsewhere";
+    const faction = d.factionId ? factionName(d.factionId) : "unaligned";
+    const voice = d.voiceNotes?.trim() || d.role?.trim() || d.reputation?.trim() || "";
+    const deeds = d.deeds
+      .slice(-2)
+      .map((x) => x.headline)
+      .filter(Boolean);
+    const bits = [
+      `  - ${d.name} (${faction}, ${d.capabilityTier}, ${here})`,
+      voice ? `: ${voice}` : "",
+      deeds.length ? ` — known for: ${deeds.join("; ")}` : "",
+    ];
+    return bits.join("");
+  });
+  return (
+    `OTHER PLAYERS' CHARACTERS IN THE WORLD (real, canon — from other players' games; play TRUE to this, invent no mechanics; bring in at most ONE, only when natural):\n` +
+    lines.join("\n")
+  );
 }
 
 /**
@@ -265,6 +322,8 @@ export function buildContextSlice(
   jsonMode = false,
   /** Scene memory (CONTINUITY.md): card + relations + recent summaries. */
   memory?: { sceneCard?: SceneCard; npcRelations?: NpcRelations; recentScenes?: SceneMemory[] },
+  /** Reachable dossiers of OTHER players' characters in this universe (cross-campaign cameos). */
+  otherDossiers?: Dossier[],
 ): string {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
   const { npcs, threads } = retrieved ?? retrieveEntities(state, playerText, focusIds);
@@ -398,6 +457,15 @@ export function buildContextSlice(
       ].join("\n")
     : "";
 
+  // Cross-campaign cameo pool: other players' characters the narrator may bring
+  // in as an NPC this scene (same-location preferred). Lean block, capped at 2.
+  const cameos = reachableDossiers(otherDossiers ?? [], loc?.id);
+  const otherChars = otherCharactersBlock(
+    cameos,
+    (id) => (id ? state.factions.find((f) => f.id === id)?.name ?? id : "unaligned"),
+    loc?.id,
+  );
+
   return [
     // While the player is still on training wheels, lead with the tutorial
     // directive so it outranks the static style rules for this beat.
@@ -428,6 +496,7 @@ export function buildContextSlice(
           .join("\n")}`
       : `NPCs in play: none flagged`,
     ``,
+    ...(otherChars ? [otherChars, ``] : []),
     threads.length ? `Relevant threads:\n${threads.map((t) => `  - ${t.title} (id: ${t.id}): ${t.body}`).join("\n")}` : `Relevant threads: none flagged`,
     ``,
     `Clocks: ${clocksLine}`,

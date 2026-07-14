@@ -25,6 +25,8 @@ export type Deed = z.infer<typeof Deed>;
 
 export const Dossier = z.object({
   characterId: z.string(),
+  /** The campaign this PC belongs to — excludes self on cross-campaign reads. */
+  campaignId: z.string(),
   universeId: z.string(),
   name: z.string(),
   factionId: z.string().optional(),
@@ -32,6 +34,10 @@ export const Dossier = z.object({
   reputation: z.string().optional(),
   capabilityTier: CapabilityTier,
   standing: z.string().optional(),
+  /** Last-known whereabouts — powers same-location reachability. */
+  locationId: z.string().optional(),
+  /** False once the character has died — referenced as dead, never cameo'd alive. */
+  alive: z.boolean().default(true),
   deeds: z.array(Deed).default([]),
   voiceNotes: z.string().optional(),
   updatedAt: z.string().optional(),

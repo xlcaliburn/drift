@@ -7,6 +7,7 @@ import type { CombatState } from "@/shared/combat";
 import { freshSceneCard, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import { mergeNpcs } from "@/shared/npcMerge";
 import type { ChoiceOption } from "@/shared/turnPlan";
+import type { Dossier } from "@/shared/multiplayer";
 
 /** Campaign-scoped NPCs (narrator-introduced or creation relations) carry these id
  *  prefixes; universe-seed NPCs do not. Used to split the two for persistence. */
@@ -170,10 +171,52 @@ export async function persistSession(campaignId: string, session: SessionData): 
       npcRelations: session.npcRelations,
       lastChoices: session.lastChoices,
     });
+    // Build this PC's PUBLIC dossier and promote it into the UNIVERSE-scoped
+    // dossiers table so other campaigns in the same world can cameo the character
+    // (shared canon — mirrors the NPC promotion above). Recent world_events feed
+    // the deeds. Guarded on its own so a failure here NEVER breaks the turn.
+    try {
+      const { buildDossier } = await import("@/shared/dossier");
+      const { loadWorldEventsBySource, upsertDossier } = await import("@/db/queries");
+      const worldEvents = await loadWorldEventsBySource(db, campaignId, 5);
+      const dossier = { ...buildDossier(session.state, worldEvents), updatedAt: new Date().toISOString() };
+      await upsertDossier(db, dossier);
+    } catch (e) {
+      console.error(
+        `[state] failed to promote dossier for campaign ${campaignId}:`,
+        e instanceof Error ? e.message : e,
+      );
+    }
   } catch (e) {
     console.error(
       `[state] failed to persist campaign ${campaignId}:`,
       e instanceof Error ? e.message : e,
     );
+  }
+}
+
+/**
+ * Every PC dossier reachable from this campaign — all dossiers in the same
+ * universe EXCEPT the caller's own. This is the read-surface a turn pulls to
+ * cameo other players' characters as NPCs (shared narrative canon). Cross-campaign
+ * play needs the DB, so keyless/in-memory mode returns [] rather than crashing.
+ * Errors are logged and degrade to [] — a dossier read must never break a turn.
+ */
+export async function loadReachableDossiers(
+  universeId: string,
+  selfCampaignId: string,
+): Promise<Dossier[]> {
+  if (!hasSupabase()) return [];
+  try {
+    const { getServiceClient, loadDossiersByUniverse } = await import("@/db/queries");
+    const db = getServiceClient();
+    const all = await loadDossiersByUniverse(db, universeId);
+    return all.filter((d) => d.campaignId !== selfCampaignId);
+  } catch (e) {
+    console.error(
+      `[state] failed to load reachable dossiers for universe ${universeId}:`,
+      e instanceof Error ? e.message : e,
+    );
+    return [];
   }
 }
