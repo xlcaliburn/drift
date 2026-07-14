@@ -107,6 +107,9 @@ type RollResult = {
   damage?: number;
   downed?: boolean;
   died?: boolean;
+  shipDamage?: number;
+  shipHpAfter?: number;
+  shipDisabled?: boolean;
   error?: string;
 };
 
@@ -119,6 +122,9 @@ function rollDisplayLines(res: RollResult): string[] {
   if (res.tick) lines.push(`⬆ ${res.tick}`);
   if (res.damage) {
     lines.push(`💥 Took ${res.damage} damage${res.died ? " — KILLED" : res.downed ? " — DOWNED" : ""}`);
+  }
+  if (res.shipDamage) {
+    lines.push(`🛠 Hull took ${res.shipDamage}${res.shipDisabled ? " — DISABLED (adrift)" : ` — ${res.shipHpAfter} left`}`);
   }
   return lines;
 }
@@ -133,7 +139,10 @@ function engineContextLine(res: RollResult): string {
   const dmg = res.damage
     ? ` · ${res.damage} damage${res.died ? " (KILLED)" : res.downed ? " (DOWNED)" : ""}`
     : "";
-  return `ENGINE RESULT: ${res.breakdown ?? ""}${crit}${res.tick ? ` · ${res.tick}` : ""}${dmg}`;
+  const ship = res.shipDamage
+    ? ` · hull -${res.shipDamage}${res.shipDisabled ? " (DISABLED, adrift)" : ` (${res.shipHpAfter} hull left)`}`
+    : "";
+  return `ENGINE RESULT: ${res.breakdown ?? ""}${crit}${res.tick ? ` · ${res.tick}` : ""}${dmg}${ship}`;
 }
 
 export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult> {
@@ -207,6 +216,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
         dc: input.preCheck.dc,
         stakes: input.preCheck.stakes,
         failDamage: input.preCheck.failDamage,
+        target: input.preCheck.target ?? undefined,
       }) as RollResult;
       if (res.breakdown) {
         lastRoll = { skill: input.preCheck.skill, outcome: res.outcome };
@@ -327,6 +337,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       dc: plan.roll.dc,
       stakes: plan.roll.stakes,
       failDamage: plan.roll.failDamage,
+      target: plan.roll.target ?? undefined,
     }) as RollResult;
     if (res.breakdown) {
       lastRoll = { skill: plan.roll.skill, outcome: res.outcome };
@@ -354,6 +365,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       stakes: true,
       failDamage: plan.danger.damage,
       hazard: true, // a danger is a physical hazard save — damage is legitimate (still capped)
+      target: plan.danger.target ?? undefined,
     }) as RollResult;
     if (res.breakdown) {
       engineLines.push(engineContextLine(res));

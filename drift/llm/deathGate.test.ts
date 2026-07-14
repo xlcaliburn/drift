@@ -74,6 +74,18 @@ describe("failure damage is gated + capped (D&D-style)", () => {
     rt.execute("roll_check", { characterId: "pc-1", skill: "perception", dc: 99, failDamage: "100", hazard: true });
     expect(rt.state.characters[0].hp).toBe(3); // danger vs a trap can hurt even on a perception save — but capped
   });
+
+  it("target:ship routes failure damage to the HULL (capped), not the pilot", () => {
+    const s = pcState(3);
+    s.ship = { id: "ship-1", campaignId: "c", name: "Magpie", shipClass: "scout", hp: 18, maxHp: 18, ac: 12, evasiveAcBonus: 2, damageReduction: 0, weapons: [], hasShield: false, shieldReady: false, hasPointDefense: false, burstDriveReady: false, dcModifier: 0, buyoutRemaining: 0 } as unknown as CampaignState["ship"];
+    const rt = new TurnRuntime(s, minRng);
+    const r = rt.execute("roll_check", {
+      characterId: "pc-1", skill: "piloting", dc: 99, failDamage: "100", target: "ship",
+    }) as { shipDamage?: number };
+    expect(rt.state.characters[0].hp).toBe(5); // pilot untouched
+    expect(rt.state.ship!.hp).toBe(11); // 18 - ceil(18*0.34)=7 → capped, not -100
+    expect(r.shipDamage).toBe(7);
+  });
 });
 
 describe("downed recovery", () => {

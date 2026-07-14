@@ -228,12 +228,22 @@ export class TurnRuntime {
     // it just fails (D&D: ability checks don't deal damage, saves do). And any hit
     // is capped at a fraction of max HP, so one bad roll can't gut you (no 5-of-7).
     let harm: { taken: number; hpAfter: number; downed: boolean; died: boolean } | undefined;
+    let shipHarm: { taken: number; hpAfter: number; disabled: boolean } | undefined;
     if (res.outcome === "failure" && input.failDamage) {
       const skill = String(input.skill);
-      if (Boolean(input.hazard) || isHazardSkill(skill)) {
+      const frac = economy.damageRules.failDamageFractionCap;
+      if (input.target === "ship" && this.state.ship) {
+        // A flying/docking mishap damages the HULL, not the pilot — engine-owned,
+        // capped like PC damage. Hull 0 = disabled (adrift), never death.
         const rolled = rollDamage(String(input.failDamage), this.rng);
-        const cap = Math.max(1, Math.ceil(character.maxHp * economy.damageRules.failDamageFractionCap));
-        const dealt = Math.min(rolled, cap);
+        const dealt = Math.min(rolled, Math.max(1, Math.ceil(this.state.ship.maxHp * frac)));
+        if (dealt > 0) {
+          const sh = this.applyShipDamage(dealt);
+          shipHarm = { taken: sh.taken, hpAfter: sh.hpAfter, disabled: sh.disabled };
+        }
+      } else if (input.target !== "ship" && (Boolean(input.hazard) || isHazardSkill(skill))) {
+        const rolled = rollDamage(String(input.failDamage), this.rng);
+        const dealt = Math.min(rolled, Math.max(1, Math.ceil(character.maxHp * frac)));
         if (dealt > 0) harm = this.applyDamage(character.id, dealt, `Failed ${skill} check.`);
       }
     }
@@ -247,6 +257,9 @@ export class TurnRuntime {
       ...(tick ? { tick } : {}),
       ...(harm && harm.taken > 0
         ? { damage: harm.taken, hpAfter: harm.hpAfter, downed: harm.downed, died: harm.died }
+        : {}),
+      ...(shipHarm && shipHarm.taken > 0
+        ? { shipDamage: shipHarm.taken, shipHpAfter: shipHarm.hpAfter, shipDisabled: shipHarm.disabled }
         : {}),
     };
   }

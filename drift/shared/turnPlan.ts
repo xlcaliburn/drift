@@ -25,19 +25,24 @@ export const CheckSpec = z.object({
   dc: z.coerce.number().int().min(5).max(30),
   /** Only stakes=true rolls at DC 13+ earn skill ticks (levelling). */
   stakes: z.coerce.boolean().default(false),
-  /** Damage the engine rolls and applies to the PC when this check FAILS —
-   *  e.g. "1d6", "2d6", "8". This is how failure becomes real (and lethal). */
+  /** Damage the engine rolls and applies when this check FAILS — e.g. "1d6",
+   *  "2d6", "8". This is how failure becomes real (and lethal). */
   failDamage: optionalNullable(z.string().regex(/^\s*\d+\s*(d\s*\d+)?\s*([+-]\s*\d+)?\s*$/i)),
+  /** What the failDamage hits: "pc" (default, character HP) or "ship" (hull) —
+   *  a flying/docking mishap damages the SHIP, not the pilot. Engine-clamped. */
+  target: optionalNullable(z.enum(["pc", "ship"])),
 });
 export type CheckSpec = z.infer<typeof CheckSpec>;
 
-/** An unavoidable hazard the PC must survive THIS turn: a save (skill vs DC); on
- *  failure the engine rolls `damage` and applies it. "If a danger is stated." */
+/** An unavoidable hazard the PC (or ship) must survive THIS turn: a save (skill
+ *  vs DC); on failure the engine rolls `damage` and applies it to the target. */
 export const DangerSpec = z.object({
   skill: z.string().min(1),
   dc: z.coerce.number().int().min(5).max(30),
   damage: z.string().regex(/^\s*\d+\s*(d\s*\d+)?\s*([+-]\s*\d+)?\s*$/i),
   note: optionalNullable(z.string()),
+  /** "pc" (default, character HP) or "ship" (hull damage — debris, a hard burn). */
+  target: optionalNullable(z.enum(["pc", "ship"])),
 });
 export type DangerSpec = z.infer<typeof DangerSpec>;
 
