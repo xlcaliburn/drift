@@ -5,6 +5,7 @@ import type { EngineEvent } from "@/engine";
 import type { ChatEntry } from "@/shared/chat";
 import type { CombatState } from "@/shared/combat";
 import { freshSceneCard, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
+import type { ChoiceOption } from "@/shared/turnPlan";
 
 /** Campaign-scoped NPCs (narrator-introduced or creation relations) carry these id
  *  prefixes; universe-seed NPCs do not. Used to split the two for persistence. */
@@ -46,6 +47,8 @@ export interface SessionData {
   npcRelations: NpcRelations;
   /** Recent scene summaries, oldest→newest (CONTINUITY.md tier RECENT). */
   recentScenes: SceneMemory[];
+  /** Last offered suggested actions, restored on refresh. */
+  lastChoices: ChoiceOption[];
 }
 
 const store = new Map<string, SessionData>();
@@ -96,6 +99,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
                 runtime.sceneCard ?? freshSceneCard(recentScenes.length + 1, runtime.transcript.length),
               npcRelations: runtime.npcRelations ?? {},
               recentScenes,
+              lastChoices: runtime.lastChoices ?? [],
             }
           : {
               state,
@@ -109,6 +113,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               sceneCard: freshSceneCard(),
               npcRelations: {},
               recentScenes,
+              lastChoices: [],
             };
       store.set(campaignId, session);
       return session;
@@ -151,6 +156,7 @@ export async function persistSession(campaignId: string, session: SessionData): 
       npcs: session.state.npcs.filter((n) => isCampaignNpc(n.id)),
       sceneCard: session.sceneCard,
       npcRelations: session.npcRelations,
+      lastChoices: session.lastChoices,
     });
   } catch (e) {
     console.error(

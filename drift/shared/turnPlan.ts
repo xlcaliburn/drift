@@ -134,6 +134,9 @@ export const TurnPlan = z.object({
     z.object({
       situation: optionalNullable(z.string().max(300)),
       beats: optionalNullable(z.array(z.string().min(1).max(200)).max(3)),
+      /** Where the player IS now — set when they move somewhere the location
+       *  table can't name (aboard a ship, in transit, in the black). */
+      place: optionalNullable(z.string().max(120)),
     }),
   ),
   /** Scene wrap — engine runs the checklist (wages, fees, clocks). */

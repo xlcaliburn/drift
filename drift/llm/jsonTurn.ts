@@ -411,9 +411,13 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       if (rel.line) emit([rel.line]); // D-4: standing changes are visible, like ticks
     }
   }
-  // Scene-card proposal: situation overwrites, beats append (engine-capped).
+  // Scene-card proposal: situation/place overwrite, beats append (engine-capped).
   if (plan.scene) {
-    runtime.updateScene(plan.scene.situation ?? undefined, plan.scene.beats ?? undefined);
+    runtime.updateScene(
+      plan.scene.situation ?? undefined,
+      plan.scene.beats ?? undefined,
+      plan.scene.place ?? undefined,
+    );
   }
   if (plan.worldEvent) {
     toolCalls.push("log_world_event");

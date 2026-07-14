@@ -100,6 +100,9 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
               ? combatActions(d.combat, combatPc ? usableConsumables(combatPc, d.combat.scale) : [], burstReady)
               : [],
           );
+        } else if (d.lastChoices?.length) {
+          // Restore the chips the player last saw so a refresh doesn't blank them.
+          setChoices(normalizeChoices(d.lastChoices));
         } else if (!restored.length) {
           setChoices(normalizeChoices(buildOpeningChoices(d.state)));
         }
@@ -203,12 +206,6 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
               setChat((c) => [...c, { role: "system", text: `☠ ${pcName} is dead. This character's story has ended.` }]);
             } else {
               setChoices(normalizeChoices(evt.choices));
-              if (evt.sceneEnded) {
-                setChat((c) => [
-                  ...c,
-                  { role: "system", text: "— scene ended · time and pay settled · pick your next move below —" },
-                ]);
-              }
             }
             // One-time "training wheels are off" beat when the tutorial just ended.
             if (evt.tutorialGraduated) {

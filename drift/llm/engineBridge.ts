@@ -654,10 +654,11 @@ export class TurnRuntime {
     if (!this.sceneCard.presentNpcIds.includes(npcId)) this.sceneCard.presentNpcIds.push(npcId);
   }
 
-  /** Apply the model's scene-card proposal: `situation` overwrites (1-liner),
-   *  `beats` append. Engine caps both (F-2/F-4) — the card cannot grow unbounded. */
-  updateScene(situation?: string, beats?: string[]) {
+  /** Apply the model's scene-card proposal: `situation` and `place` overwrite,
+   *  `beats` append. Engine caps them (F-2/F-4) — the card cannot grow unbounded. */
+  updateScene(situation?: string, beats?: string[], place?: string) {
     if (situation?.trim()) this.sceneCard.situation = situation.trim().slice(0, MAX_SITUATION_CHARS);
+    if (place?.trim()) this.sceneCard.place = place.trim().slice(0, 120);
     for (const b of beats ?? []) {
       const beat = b.trim().slice(0, MAX_BEAT_CHARS);
       if (!beat) continue;

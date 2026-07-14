@@ -33,5 +33,6 @@ export async function GET(req: NextRequest) {
     combat: session.combat,
     npcRelations: session.npcRelations,
     sceneCard: session.sceneCard,
+    lastChoices: session.lastChoices,
   });
 }

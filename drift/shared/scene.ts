@@ -19,6 +19,10 @@ export interface SceneCard {
   presentNpcIds: string[];
   /** Model-maintained one-liner: what is happening right now (overwrite). */
   situation: string;
+  /** Model-maintained whereabouts — where the player actually IS ("the black,
+   *  aboard the Dust Eater"), which the fixed location table can't express (on a
+   *  ship, in transit, in space). Persists across scenes until the player moves. */
+  place?: string;
   /** Model-appended micro-facts (promises/threats/agreements) made this scene. */
   beats: string[];
   /** Transcript index where this scene began — the summarizer's slice start. */
@@ -60,6 +64,24 @@ export const RECENT_SCENES_IN_PROMPT = 3;
 
 export function freshSceneCard(seq = 1, startTranscriptIdx = 0): SceneCard {
   return { seq, turnCount: 0, presentNpcIds: [], situation: "", beats: [], startTranscriptIdx };
+}
+
+/**
+ * Open the NEXT scene, carrying forward the persistent whereabouts (place) so the
+ * sidebar never blanks out — especially when the player hasn't actually moved.
+ * Scene-specific state (situation, who's present, beats) resets; the narrator
+ * refills it. seq++ and the transcript pointer advances to the new tail.
+ */
+export function carryScene(prev: SceneCard, startTranscriptIdx: number): SceneCard {
+  return {
+    seq: prev.seq + 1,
+    turnCount: 0,
+    presentNpcIds: [],
+    situation: "",
+    place: prev.place,
+    beats: [],
+    startTranscriptIdx,
+  };
 }
 
 const DISPOSITION_LABELS: Record<number, string> = {

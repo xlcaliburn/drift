@@ -10,7 +10,7 @@ import { recordAiCall } from "@/lib/audit";
 import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { buildFallbackChoices } from "@/shared/recap";
 import { CheckSpec, CombatActionSpec, type ChoiceOption } from "@/shared/turnPlan";
-import { freshSceneCard, type SceneCard, type SceneMemory } from "@/shared/scene";
+import { carryScene, type SceneCard, type SceneMemory } from "@/shared/scene";
 import { summarizeScene } from "@/llm/summarizer";
 import type { ChatEntry } from "@/shared/chat";
 import { hasSupabase } from "@/lib/state";
@@ -224,9 +224,7 @@ export async function POST(req: NextRequest) {
           { role: "dm" as const, text: result.narration || "…" },
           ...(pcDied
             ? [{ role: "system" as const, text: `— ${resultPc!.name} is dead · this character's story ends here —` }]
-            : result.sceneEnded
-              ? [{ role: "system" as const, text: "— scene ended · time and pay settled · pick your next move below —" }]
-              : []),
+            : []),
           // One-time beat when the tutorial ends this turn. Persisted here so a
           // later refresh rehydrates it, and also emitted live in the done payload.
           ...(result.tutorialGraduated
@@ -274,9 +272,11 @@ export async function POST(req: NextRequest) {
           tickedThisScene: [...tickedSet],
           // Active fight (null when combat ended or never started).
           combat: resultCombat,
-          sceneCard: sceneClosed
-            ? freshSceneCard(session.sceneCard.seq + 1, newTranscript.length)
-            : session.sceneCard,
+          // Carry whereabouts into the next scene so the sidebar never blanks (esp.
+          // when the player hasn't actually moved); scene-specific state resets.
+          sceneCard: sceneClosed ? carryScene(session.sceneCard, newTranscript.length) : session.sceneCard,
+          // Retain the offered choices so a refresh restores them (not just combat).
+          lastChoices: choices,
         };
         setSession(campaignId, updatedSession);
 

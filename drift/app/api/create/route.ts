@@ -81,6 +81,7 @@ export async function POST(req: NextRequest) {
     sceneCard: freshSceneCard(),
     npcRelations: {},
     recentScenes: [],
+    lastChoices: [],
   };
   setSession(campaignId, session0);
   await persistSession(campaignId, session0);

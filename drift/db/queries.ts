@@ -18,6 +18,7 @@ import type { ChatEntry } from "@/shared/chat";
 import type { EngineEvent } from "@/engine";
 import type { CombatState } from "@/shared/combat";
 import type { SceneCard, NpcRelations, SceneMemory } from "@/shared/scene";
+import type { ChoiceOption } from "@/shared/turnPlan";
 
 /**
  * Row mapping: DB columns are snake_case, app types are camelCase. We convert
@@ -128,6 +129,8 @@ export interface CampaignRuntime {
   sceneCard: SceneCard | null;
   /** Player's standing per NPC id (CONTINUITY.md tier CANON). */
   npcRelations: NpcRelations;
+  /** Last offered suggested actions, so a refresh restores the chips. */
+  lastChoices: ChoiceOption[];
   updatedAt?: string;
 }
 
@@ -138,7 +141,7 @@ export async function loadCampaignRuntime(
 ): Promise<CampaignRuntime | null> {
   const { data, error } = await db
     .from("campaign_runtime")
-    .select("transcript,history,log,focus_ids,ticked_this_scene,combat,npcs,scene_card,npc_relations,updated_at")
+    .select("transcript,history,log,focus_ids,ticked_this_scene,combat,npcs,scene_card,npc_relations,last_choices,updated_at")
     .eq("campaign_id", campaignId)
     .maybeSingle();
   if (error || !data) return null;
@@ -152,6 +155,7 @@ export async function loadCampaignRuntime(
     npcs: (data.npcs as Npc[]) ?? [],
     sceneCard: (data.scene_card as SceneCard | null) ?? null,
     npcRelations: (data.npc_relations as NpcRelations) ?? {},
+    lastChoices: (data.last_choices as ChoiceOption[]) ?? [],
     updatedAt: data.updated_at ? String(data.updated_at) : undefined,
   };
 }
@@ -162,7 +166,7 @@ export async function saveCampaignRuntime(
   campaignId: string,
   rt: Pick<
     CampaignRuntime,
-    "transcript" | "history" | "log" | "focusIds" | "tickedThisScene" | "combat" | "npcs" | "sceneCard" | "npcRelations"
+    "transcript" | "history" | "log" | "focusIds" | "tickedThisScene" | "combat" | "npcs" | "sceneCard" | "npcRelations" | "lastChoices"
   >,
 ): Promise<void> {
   await db.from("campaign_runtime").upsert({
@@ -176,6 +180,7 @@ export async function saveCampaignRuntime(
     npcs: rt.npcs,
     scene_card: rt.sceneCard,
     npc_relations: rt.npcRelations,
+    last_choices: rt.lastChoices,
     updated_at: new Date().toISOString(),
   });
 }

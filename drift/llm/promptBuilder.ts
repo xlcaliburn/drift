@@ -66,7 +66,7 @@ Respond with ONE json object and nothing else:
   "payout": {"tier": "T1", "reason": "courier run delivered"},
   "worldEvent": {"headline": "..."},
   "npcs": [{"name": "Quartermaster Doyle", "oneBreath": "Gruff supply officer at the Meridian docks; keeps the manifests.", "disposition": 1, "note": "paid the player 200c for the manifests", "relationship": "your supply contact"}],
-  "scene": {"situation": "Doyle is verifying the manifest seals at the bounty desk", "beats": ["Doyle promised 200c on verification"]},
+  "scene": {"situation": "Doyle is verifying the manifest seals at the bounty desk", "beats": ["Doyle promised 200c on verification"], "place": "Rook Station — the Undertow bounty desk"},
   "sceneEnd": {"title": "...", "paying": true, "dockings": 1},
   "clockAdvances": [{"clockId": "...", "amount": 1, "reason": "..."}]
 }
@@ -87,7 +87,7 @@ ${ITEM_REFERENCE}
 8. "payout" when a job/bounty/deal CONCLUDES and payment is due: T0 errand, T1 standard run, T2 professional (earned standing), T3 major score (rare). The ENGINE rolls the actual credits — never state amounts in narration, and never pay twice for one job. A successful negotiation check this turn pushes the roll toward the top of the band.
 9. "worldEvent" when the beat meaningfully shifts a faction's standing. "sceneEnd" when the scene genuinely wraps.
 10. "npcs" — CONTINUITY. Whenever you introduce or use a NAMED, recurring NPC (a quartermaster, a fixer, a contact, a handler, a rival — anyone the player could deal with again), list them with a one-line who-they-are. The engine remembers them so they stay consistent and RECOGNIZE the player when they come back (e.g. after a job is done). Skip faceless crowds and one-off extras. On the same entry you may also update the RELATIONSHIP: "disposition": 1 or -1 when this beat genuinely warmed or soured them toward the player (kept a promise, pulled a gun — the engine clamps the scale; use sparingly, not every pleasant word); "note": one line recording what just happened between them ("paid the player 200c") — this is their memory of the player, keep it current; "relationship": who they are to the player ("your handler"), first write sticks.
-11. "scene" — the running scene memory. Update "situation" (one sentence: what is happening RIGHT NOW) whenever it meaningfully changes, and append a "beats" entry whenever a promise, deal, threat, or debt is made THIS turn ("Doyle promised 200c on verification"). These persist even when older messages scroll away — they are how the story stays consistent. The SCENE NOW and PREVIOUSLY blocks in your context came from this: treat them as fact.
+11. "scene" — the running scene memory. Update "situation" (one sentence: what is happening RIGHT NOW) whenever it meaningfully changes, and append a "beats" entry whenever a promise, deal, threat, or debt is made THIS turn ("Doyle promised 200c on verification"). Set "place" whenever the player MOVES somewhere the location list can't name — aboard a ship, in transit, out in the black, in a specific room ("aboard the Dust Eater, in the black") — so the game knows where they actually are, not just the last station. These persist even when older messages scroll away — they are how the story stays consistent. The SCENE NOW and PREVIOUSLY blocks in your context came from this: treat them as fact.
 12. Ground everything in the CURRENT SCENE block; don't contradict it. NPCs listed there show the player's standing with them ([trusted (+2) · your handler · last: …]) — play them ACCORDINGLY: they remember the player and everything in "last". Never treat a known NPC as a stranger.
 
 EXAMPLE (a check is the EXCEPTION — most choices carry none) — player: "Ask around the dock about the missing courier"
@@ -372,6 +372,7 @@ export function buildContextSlice(
   const sceneNow = card
     ? [
         `SCENE NOW (scene ${card.seq}, turn ${card.turnCount})`,
+        ...(card.place ? [`Where: ${card.place} (the player is HERE now, not necessarily the station above)`] : []),
         ...(card.situation ? [`Situation: ${card.situation}`] : []),
         ...(card.beats.length ? [`Established this scene: ${card.beats.join(" · ")}`] : []),
       ].join("\n")

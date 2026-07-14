@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { CampaignState } from "@/shared/schemas";
 import { TurnRuntime } from "./engineBridge";
-import { freshSceneCard, MAX_BEATS, dispositionLabel, relationSuffix } from "@/shared/scene";
+import { freshSceneCard, carryScene, MAX_BEATS, dispositionLabel, relationSuffix } from "@/shared/scene";
 import type { RNG } from "@/engine";
 
 const rng: RNG = { int: (min) => min };
@@ -23,6 +23,23 @@ describe("scene card (tier NOW)", () => {
     rt.markPresent(id);
     rt.markPresent(id);
     expect(card.presentNpcIds).toEqual([id]);
+  });
+
+  it("place overwrites and persists into the next scene; scene-specific state resets", () => {
+    const card = freshSceneCard(3);
+    const rt = new TurnRuntime(baseState(), rng, { sceneCard: card });
+    const { id } = rt.registerNpc("Doyle");
+    rt.markPresent(id);
+    rt.updateScene("boarding the Dust Eater", ["Doyle promised 200c"], "aboard the Dust Eater, in the black");
+    expect(card.place).toBe("aboard the Dust Eater, in the black");
+
+    const next = carryScene(card, 42);
+    expect(next.seq).toBe(4);
+    expect(next.place).toBe("aboard the Dust Eater, in the black"); // whereabouts carry
+    expect(next.situation).toBe(""); // scene-specific reset
+    expect(next.beats).toEqual([]);
+    expect(next.presentNpcIds).toEqual([]);
+    expect(next.startTranscriptIdx).toBe(42);
   });
 
   it("situation overwrites; beats append, dedupe, and cap at MAX_BEATS", () => {
