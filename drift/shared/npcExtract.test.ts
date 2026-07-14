@@ -95,4 +95,15 @@ describe("extractDialogueNpcs — dialogue-gated registration", () => {
   it("catches the Name-colon-quote script form", () => {
     expect(extractDialogueNpcs('Vex: "We are done here."', known)).toEqual([{ handle: "Vex" }]);
   });
+
+  it("does NOT register a descriptor + sound-noun as a speaker (the 'Distant' bug)", () => {
+    // "shouts/cries/murmurs" double as speech verbs; a propagation verb (echo/ring/
+    // drift) after them means they're plural NOUNS and the leading word a descriptor.
+    expect(extractDialogueNpcs("Distant shouts echo from deeper in the Nest.", known)).toEqual([]);
+    expect(extractDialogueNpcs("Faint cries ring out across the bay.", known)).toEqual([]);
+    expect(extractDialogueNpcs("Muffled murmurs drift through the hull.", known)).toEqual([]);
+    // Still catches a real speaker whose line isn't ambient sound.
+    expect(extractDialogueNpcs("Distant shouted the coordinates twice.", known)).toEqual([]); // 'distant' is a stopword now
+    expect(extractDialogueNpcs("Vex shouts a warning.", known)).toEqual([{ handle: "Vex" }]);
+  });
 });

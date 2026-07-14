@@ -32,6 +32,8 @@ const NAME_STOPWORDS = new Set([
   // Interjections / adjectives a line can open with ("Good," she says).
   "good", "fine", "well", "right", "sure", "okay", "ok", "please", "thanks", "sorry", "hey", "listen",
   "maybe", "perhaps", "enough", "done", "wait", "hold", "easy", "steady", "quiet", "careful", "hurry",
+  // Ambient descriptors that open a sound/motion sentence ("Distant shouts echo…").
+  "distant", "faint", "nearby", "sudden", "muffled", "faraway", "somewhere", "overhead", "louder",
   // The action-verb catalog (choice labels) the model mis-lists as NPCs.
   "examine", "loot", "scavenge", "search", "tend", "force", "climb", "sneak", "hack", "repair", "pilot",
   "spacewalk", "plot", "persuade", "lie", "threaten", "network", "endure", "attack", "flee", "aim", "cover",
@@ -184,6 +186,14 @@ const DIALOGUE_PATTERNS: { re: RegExp; role: boolean }[] = [
   { re: new RegExp(`\\b(${NAME_PAT})\\s*:\\s*["“]`, "g"), role: false }, // Vex: "…"
 ];
 
+/** After a "Name + speech-verb" match, a propagation verb means the "verb" was
+ *  actually a plural sound-NOUN and the "name" a descriptor — NOT a speaker:
+ *  "Distant shouts ECHO", "Faint cries RING out", "Muffled murmurs DRIFT". Guards
+ *  the false positive where a sentence-initial adjective (Distant, Faint) precedes
+ *  a noun that doubles as a speech verb (shouts, cries, murmurs). */
+const SOUND_PROPAGATION_TAIL =
+  /^\s+(?:echo(?:e?s|ed)?|ring|rang|rung|rise|rose|risen|fill(?:s|ed)?|sound(?:s|ed)?|carr(?:y|ies|ied)|drift(?:s|ed)?|fade(?:s|d)?|grow(?:s|n)?|grew|erupt(?:s|ed)?|reverberat\w+|rippl\w+|roll(?:s|ed)?)\b/i;
+
 /** A figure found speaking in the narration: a proper-noun `handle`, or a role
  *  handle ("Fixer") carrying its `role` ("fixer"). */
 export interface DialogueNpc {
@@ -213,6 +223,9 @@ export function extractDialogueNpcs(narration: string, known: Set<string>, max =
         seen.add(lc);
         out.push({ handle: titleCase(lc), role: lc });
       } else {
+        // "Distant shouts echo…" — the matched 'verb' was a plural sound-NOUN and
+        // the 'name' a descriptor; a propagation verb right after gives it away.
+        if (SOUND_PROPAGATION_TAIL.test(narration.slice(m.index + m[0].length))) continue;
         const name = raw.replace(/['’]s$/i, "");
         const lc = name.toLowerCase();
         if (seen.has(lc) || known.has(lc) || !isPlausibleNpcName(name, known)) continue;

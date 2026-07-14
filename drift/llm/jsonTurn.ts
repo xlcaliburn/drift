@@ -407,7 +407,11 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
         failDamage: input.preCheck.failDamage,
         hazardLevel: input.preCheck.hazardLevel ?? preVerb?.hazardLevel,
         target: input.preCheck.target ?? undefined,
-        loot: preVerb?.loot,
+        // Scavenging IS the loot skill: a clicked choice's badge round-trips only the
+        // skill (not the verb), so recover the loot intent from the skill itself —
+        // else a successful "search the body" grants nothing and the narrator's
+        // invented items get rejected downstream (the reported "loot doesn't apply").
+        loot: preVerb?.loot || preSkill === "scavenging",
       }) as RollResult;
       if (res.breakdown) {
         lastRoll = { skill: preSkill, outcome: res.outcome };
@@ -602,7 +606,9 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       failDamage: plan.roll.failDamage,
       hazardLevel: plan.roll.hazardLevel ?? rollVerb?.hazardLevel,
       target: plan.roll.target ?? undefined,
-      loot: rollVerb?.loot,
+      // Scavenging IS the loot skill — loot even when the model gave only the skill
+      // ("scavenging") and no loot verb, so a successful strip actually hauls.
+      loot: rollVerb?.loot || rollSkill === "scavenging",
     }) as RollResult;
     if (res.breakdown) {
       lastRoll = { skill: rollSkill, outcome: res.outcome };
