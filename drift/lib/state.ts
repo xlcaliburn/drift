@@ -6,7 +6,7 @@ import type { ChatEntry } from "@/shared/chat";
 import type { CombatState } from "@/shared/combat";
 import { freshSceneCard, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import { mergeNpcs } from "@/shared/npcMerge";
-import { isShareableNpcName } from "@/shared/npcExtract";
+import { isShareableNpcName, isPlausibleNpcName } from "@/shared/npcExtract";
 import { mapLegacyGear } from "@/shared/items";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Dossier } from "@/shared/multiplayer";
@@ -147,7 +147,13 @@ export async function persistSession(campaignId: string, session: SessionData): 
     const db = getServiceClient();
     await saveCampaignState(db, session.state);
     // NPCs this campaign generated (narrator-introduced + creation relations).
-    const campaignNpcs = session.state.npcs.filter((n) => isCampaignNpc(n.id));
+    // Junk-named entries a past extraction let through ("Distant" from "Distant
+    // shouts echo…") are dropped here so they neither promote to the shared world
+    // NOR persist in the runtime cast — a warm session carrying one self-heals on
+    // its next save (isPlausibleNpcName now rejects such names).
+    const campaignNpcs = session.state.npcs.filter(
+      (n) => isCampaignNpc(n.id) && isPlausibleNpcName(n.name),
+    );
     // Promote them into the UNIVERSE-scoped npcs table so other campaigns in the
     // same world can meet them (shared canon). Stamp provenance if unset. Failure
     // to promote must not break the turn — the per-campaign runtime copy below is
