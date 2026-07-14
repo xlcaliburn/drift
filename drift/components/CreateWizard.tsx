@@ -196,6 +196,10 @@ export default function CreateWizard() {
     [uniqueSkill],
   );
   const isCustom = Boolean(usName || usDesc || tScenario) && !matchedPreset;
+  // The custom signature builder is collapsed by default (most players pick a
+  // preset); it opens on click and stays open once they've started customizing.
+  const [customOpen, setCustomOpen] = useState(false);
+  const showBuilder = customOpen || isCustom;
 
   const canFinish =
     name && factionId && bias && alignment && sex && background && ambition &&
@@ -509,10 +513,15 @@ export default function CreateWizard() {
             </div>
           </div>
 
-          {/* divider: everything below is the custom builder, not more presets */}
-          <div className="my-6 flex items-center gap-3">
+          {/* divider — click to expand the custom builder (collapsed by default) */}
+          <button
+            type="button"
+            onClick={() => setCustomOpen((v) => !v)}
+            className="my-6 flex w-full items-center gap-3"
+          >
             <div className="h-px flex-1 bg-edge" />
-            <span className="flex items-center gap-2 text-xs uppercase tracking-wide text-neutral-500">
+            <span className="flex items-center gap-2 text-xs uppercase tracking-wide text-neutral-500 transition hover:text-neutral-300">
+              <span className="text-[10px]">{showBuilder ? "▾" : "▸"}</span>
               or build your own
               {isCustom && (
                 <span className="rounded-full border border-accent/50 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
@@ -521,8 +530,10 @@ export default function CreateWizard() {
               )}
             </span>
             <div className="h-px flex-1 bg-edge" />
-          </div>
+          </button>
 
+          {showBuilder && (
+          <>
           <div className="mb-4 grid grid-cols-2 gap-3">
             <KindCard active={usKind === "passive"} onClick={() => setUsKind("passive")} title="Passive effects" desc="A small, constant buff to something you do. Reliable." />
             <KindCard active={usKind === "trigger"} onClick={() => setUsKind("trigger")} title="Signature moment" desc="In one narrow situation you define, a roll lands as a natural 20. Rare, decisive." />
@@ -573,6 +584,8 @@ export default function CreateWizard() {
               </Field>
               <p className="mt-2 text-xs text-neutral-500">The narrower the scenario, the more the GM will let it hit. Keep it to one clear situation.</p>
             </div>
+          )}
+          </>
           )}
 
           <Nav back={() => setStep(2)} next={usName && usDesc && (usKind === "passive" ? pTarget : tScenario) ? () => setStep(4) : undefined} />

@@ -94,6 +94,30 @@ export function combatActions(
   return actions;
 }
 
+/**
+ * Map a FREE-TYPED action during a live fight to a combat action, so typing can
+ * never bypass the engine (the player narrating "I gun them all down" must still
+ * resolve a real round). Keyword-parsed; the default is an attack on the named
+ * enemy, else the first living one — combat's overwhelming intent.
+ */
+export function interpretCombatText(
+  text: string,
+  combat: CombatState,
+  consumables: UsableConsumable[],
+): CombatAction {
+  const t = ` ${text.toLowerCase()} `;
+  if (/\b(flee|run|escape|retreat|disengage|break off|bail|burst|withdraw)\b/.test(t)) return { type: "flee" };
+  if (consumables.length && /\b(stim|heal|medkit|patch|shield cell|inject|use)\b/.test(t)) {
+    const named = consumables.find((c) => t.includes(c.name.toLowerCase()));
+    return { type: "item", itemId: (named ?? consumables[0]).itemId };
+  }
+  if (/\b(cover|duck|hide|shelter|evasive|evade|dodge|behind)\b/.test(t)) return { type: "cover" };
+  if (/\b(aim|steady|line up|line-up|focus|brace|sight)\b/.test(t)) return { type: "aim" };
+  const living = combat.enemies.filter((e) => e.hp > 0);
+  const named = living.find((e) => t.includes(e.name.toLowerCase()));
+  return { type: "attack", enemyId: (named ?? living[0])?.id };
+}
+
 const TIER_LEVEL: Record<CombatTier, number> = { T1: 1, T2: 2, T3: 3 };
 
 /** Highest threat tier currently in play. */

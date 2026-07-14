@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { runJsonTurn, TurnGenerationError } from "@/llm/jsonTurn";
 import { runCombatTurn } from "@/llm/combatTurn";
-import { combatActions } from "@/shared/combat";
+import { combatActions, interpretCombatText } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
 import { getSession, setSession, persistSession } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
@@ -183,20 +183,32 @@ export async function POST(req: NextRequest) {
         // Routing (tool loop retired — COMBAT.md D-7): a live fight + a combat
         // action runs the engine-owned combat round; everything else runs the
         // structured JSON turn (cinematic turns just use the pricier model there).
-        const result =
-          session.combat?.active && combatAction
-            ? await runCombatTurn({ ...common, combat: session.combat, action: combatAction })
-            : await runJsonTurn({
-                ...common,
-                playerText,
-                focusIds: session.focusIds,
-                preCheck,
-                // Scene memory (mutated in place by the runtime; session owns it).
-                sceneCard: session.sceneCard,
-                npcRelations: session.npcRelations,
-                recentScenes: session.recentScenes,
-                model: cinematic ? "claude-sonnet-5" : undefined,
-              });
+        // While a fight is live, EVERY input runs the engine-owned combat round —
+        // a clicked chip, or free text mapped to an action. This is the security
+        // boundary: typing "I gun them all down" can't skip the rolls/return fire.
+        const result = session.combat?.active
+          ? await (async () => {
+              const combatPc = session.state.characters.find((c) => c.kind === "pc");
+              const action =
+                combatAction ??
+                interpretCombatText(
+                  playerText,
+                  session.combat!,
+                  combatPc ? usableConsumables(combatPc, session.combat!.scale) : [],
+                );
+              return runCombatTurn({ ...common, combat: session.combat!, action, playerText });
+            })()
+          : await runJsonTurn({
+              ...common,
+              playerText,
+              focusIds: session.focusIds,
+              preCheck,
+              // Scene memory (mutated in place by the runtime; session owns it).
+              sceneCard: session.sceneCard,
+              npcRelations: session.npcRelations,
+              recentScenes: session.recentScenes,
+              model: cinematic ? "claude-sonnet-5" : undefined,
+            });
 
         // Combat owns the choices while active (engine-generated chips); otherwise
         // use the model's choices, falling back to generic actions if it gave none.

@@ -22,6 +22,9 @@ export interface CombatTurnInput {
   combat: CombatState;
   history: Anthropic.MessageParam[];
   action: CombatAction;
+  /** The player's raw typed action (when they didn't click a chip) — woven into
+   *  the narration for flavor, but the engine numbers are final. */
+  playerText?: string;
   tickedSet?: Set<string>;
   model?: string;
   rng?: RNG;
@@ -85,9 +88,13 @@ export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnR
     outcome === "continue"
       ? `Round ${nextCombat.round}. Enemies left: ${nextCombat.enemies.map((e) => `${e.name} ${e.hp}/${e.maxHp}`).join(", ") || "none"}.`
       : `Combat ${outcome}.`;
+  const intent =
+    input.playerText?.trim() && !/^(attack|fire on|take aim|take cover|flee|use |divert|throw|pop )/i.test(input.playerText.trim())
+      ? `The player tried to: "${input.playerText.trim()}". Flavor the round around that intent, but the ENGINE RESULTS above are what actually happened — honor them exactly.\n`
+      : "";
   const messages: Anthropic.MessageParam[] = [
     ...sanitizeHistory(input.history),
-    { role: "user", content: `COMBAT ROUND — ENGINE RESULTS:\n${lines.join("\n")}\n\n${status}\nNarrate this round.` },
+    { role: "user", content: `COMBAT ROUND — ENGINE RESULTS:\n${lines.join("\n")}\n\n${status}\n${intent}Narrate this round.` },
   ];
   const system: Anthropic.TextBlockParam[] = [{ type: "text", text: COMBAT_SYSTEM }];
   const promptDump = `=== SYSTEM ===\n${COMBAT_SYSTEM}\n\n=== ENGINE ===\n${lines.join("\n")}\n${status}`;
