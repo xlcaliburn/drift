@@ -576,6 +576,41 @@ export class TurnRuntime {
     };
   }
 
+  /**
+   * Persist a named NPC the narrator introduced/used this turn, so the world
+   * REMEMBERS them (continuity — an NPC recognized on return). Deduped by name:
+   * a new NPC is added to the cast at the current location; an existing one is
+   * refreshed to "here now" and gets a description if it lacked one. Returns
+   * whether a new NPC was created.
+   */
+  registerNpc(name: string, oneBreath?: string): { added: boolean; id: string } {
+    const trimmed = name.trim();
+    const here = this.state.campaign.currentLocationId;
+    const existing = this.state.npcs.find((n) => n.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      this.state = {
+        ...this.state,
+        npcs: this.state.npcs.map((n) =>
+          n.id === existing.id
+            ? { ...n, locationId: here ?? n.locationId, oneBreath: n.oneBreath || oneBreath || n.oneBreath }
+            : n,
+        ),
+      };
+      return { added: false, id: existing.id };
+    }
+    const slug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "npc";
+    const id = `npc-gen-${slug}-${this.state.npcs.length}`;
+    const npc = {
+      id,
+      universeId: this.state.universe.id,
+      name: trimmed,
+      oneBreath: (oneBreath ?? "").trim() || `Someone the player met${here ? " here" : ""}.`,
+      ...(here ? { locationId: here } : {}),
+    };
+    this.state = { ...this.state, npcs: [...this.state.npcs, npc] };
+    return { added: true, id };
+  }
+
   // ── Multi-turn combat (COMBAT.md) ──────────────────────────────────────────
 
   private pc(): Character | undefined {

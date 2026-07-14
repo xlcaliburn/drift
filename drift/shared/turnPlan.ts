@@ -106,6 +106,17 @@ export const TurnPlan = z.object({
       factionIds: z.array(z.string()).default([]),
     }),
   ),
+  /** Named NPCs introduced or used this turn — the engine persists new ones to the
+   *  world's cast (at the current location) so they're REMEMBERED and recognized
+   *  when the player returns. Keeps continuity across scenes. */
+  npcs: optionalNullable(
+    z.array(
+      z.object({
+        name: z.string().min(1).max(60),
+        oneBreath: optionalNullable(z.string()),
+      }),
+    ).max(4),
+  ),
   /** Scene wrap — engine runs the checklist (wages, fees, clocks). */
   sceneEnd: z
     .object({

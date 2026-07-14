@@ -363,6 +363,16 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     const res = runtime.useItem(plan.useItem.itemId, pc.id) as { line?: string; error?: string };
     if (res.line) emit([res.line]);
   }
+  // Persist any named NPCs the narrator introduced so the world remembers them
+  // (continuity — recognized when the player returns).
+  if (plan.npcs?.length) {
+    for (const npc of plan.npcs.slice(0, 4)) {
+      if (npc.name?.trim()) {
+        toolCalls.push("register_npc");
+        runtime.registerNpc(npc.name, npc.oneBreath ?? undefined);
+      }
+    }
+  }
   if (plan.worldEvent) {
     toolCalls.push("log_world_event");
     runtime.execute("log_world_event", {

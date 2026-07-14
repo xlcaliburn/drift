@@ -64,6 +64,7 @@ Respond with ONE json object and nothing else:
   "useItem": {"itemId": "medkit"},
   "payout": {"tier": "T1", "reason": "courier run delivered"},
   "worldEvent": {"headline": "..."},
+  "npcs": [{"name": "Quartermaster Doyle", "oneBreath": "Gruff supply officer at the Meridian docks; keeps the manifests."}],
   "sceneEnd": {"title": "...", "paying": true, "dockings": 1},
   "clockAdvances": [{"clockId": "...", "amount": 1, "reason": "..."}]
 }
@@ -81,7 +82,8 @@ DC: 10 easy, 13 pressured, 15 hard, 18 severe. stakes=true only when failure gen
 ${ITEM_REFERENCE}
 8. "payout" when a job/bounty/deal CONCLUDES and payment is due: T0 errand, T1 standard run, T2 professional (earned standing), T3 major score (rare). The ENGINE rolls the actual credits — never state amounts in narration, and never pay twice for one job. A successful negotiation check this turn pushes the roll toward the top of the band.
 9. "worldEvent" when the beat meaningfully shifts a faction's standing. "sceneEnd" when the scene genuinely wraps.
-10. Ground everything in the CURRENT SCENE block; don't contradict it.
+10. "npcs" — CONTINUITY. Whenever you introduce or use a NAMED, recurring NPC (a quartermaster, a fixer, a contact, a handler, a rival — anyone the player could deal with again), list them with a one-line who-they-are. The engine remembers them so they stay consistent and RECOGNIZE the player when they come back (e.g. after a job is done). Do this the FIRST time and any time you use them; skip faceless crowds and one-off extras. If the CURRENT SCENE already lists an NPC, that one is already remembered — you don't need to re-register it, just keep them consistent.
+11. Ground everything in the CURRENT SCENE block; don't contradict it. NPCs already listed there have met the player before — treat them as known, never as strangers.
 
 EXAMPLE (a check is the EXCEPTION — most choices carry none) — player: "Ask around the dock about the missing courier"
 {"narration":"The dockmaster's office reeks of burnt coffee and cold solder. A clerk marks a manifest without looking up; two longshoremen by the crate-lift stop talking as you enter.","choices":[{"label":"Ask the clerk who last signed for the courier's cargo"},{"label":"Buy the longshoremen a round and get them talking"},{"label":"Lean on the clerk hard for the manifest","check":{"skill":"intimidation","dc":13,"stakes":true}}]}

@@ -1,9 +1,22 @@
 import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
-import type { CampaignState, Scene } from "@/shared/schemas";
+import type { CampaignState, Scene, Npc } from "@/shared/schemas";
 import type { EngineEvent } from "@/engine";
 import type { ChatEntry } from "@/shared/chat";
 import type { CombatState } from "@/shared/combat";
+
+/** Campaign-scoped NPCs (narrator-introduced or creation relations) carry these id
+ *  prefixes; universe-seed NPCs do not. Used to split the two for persistence. */
+function isCampaignNpc(id: string): boolean {
+  return id.startsWith("npc-gen-") || id.startsWith("npc-rel-");
+}
+
+/** Merge the universe-seed cast with a campaign's private NPCs (campaign wins). */
+function mergeNpcs(seed: Npc[], extra: Npc[]): Npc[] {
+  const byId = new Map(seed.map((n) => [n.id, n]));
+  for (const n of extra) byId.set(n.id, n);
+  return [...byId.values()];
+}
 
 /**
  * Server-side campaign store.
@@ -55,6 +68,9 @@ export async function getSession(campaignId: string): Promise<SessionData | null
       // cold load resumes the latest run. Only fall back to a freshly-seeded
       // opening beat when nothing has been persisted yet (a legacy pre-M7 campaign).
       const { buildOpeningHistory } = await import("@/shared/recap");
+      // Fold the campaign's private NPCs (persisted on the runtime) back into the
+      // universe-seed cast so narrator-introduced NPCs survive a cold reload.
+      if (runtime?.npcs?.length) state.npcs = mergeNpcs(state.npcs, runtime.npcs);
       const session: SessionData =
         runtime && runtime.history.length
           ? {
@@ -114,6 +130,8 @@ export async function persistSession(campaignId: string, session: SessionData): 
       focusIds: session.focusIds,
       tickedThisScene: session.tickedThisScene,
       combat: session.combat,
+      // Only the campaign's OWN NPCs — never the universe-shared seed cast.
+      npcs: session.state.npcs.filter((n) => isCampaignNpc(n.id)),
     });
   } catch (e) {
     console.error(

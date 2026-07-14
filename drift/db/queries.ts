@@ -120,6 +120,9 @@ export interface CampaignRuntime {
   tickedThisScene: string[];
   /** Active multi-turn combat, or null. */
   combat: CombatState | null;
+  /** Campaign-scoped NPCs (narrator-introduced + creation relations) — kept here,
+   *  NOT in the universe-shared npcs table, so a player's cast stays private. */
+  npcs: Npc[];
   updatedAt?: string;
 }
 
@@ -130,7 +133,7 @@ export async function loadCampaignRuntime(
 ): Promise<CampaignRuntime | null> {
   const { data, error } = await db
     .from("campaign_runtime")
-    .select("transcript,history,log,focus_ids,ticked_this_scene,combat,updated_at")
+    .select("transcript,history,log,focus_ids,ticked_this_scene,combat,npcs,updated_at")
     .eq("campaign_id", campaignId)
     .maybeSingle();
   if (error || !data) return null;
@@ -141,6 +144,7 @@ export async function loadCampaignRuntime(
     focusIds: (data.focus_ids as string[]) ?? [],
     tickedThisScene: (data.ticked_this_scene as string[]) ?? [],
     combat: (data.combat as CombatState | null) ?? null,
+    npcs: (data.npcs as Npc[]) ?? [],
     updatedAt: data.updated_at ? String(data.updated_at) : undefined,
   };
 }
@@ -149,7 +153,7 @@ export async function loadCampaignRuntime(
 export async function saveCampaignRuntime(
   db: SupabaseClient,
   campaignId: string,
-  rt: Pick<CampaignRuntime, "transcript" | "history" | "log" | "focusIds" | "tickedThisScene" | "combat">,
+  rt: Pick<CampaignRuntime, "transcript" | "history" | "log" | "focusIds" | "tickedThisScene" | "combat" | "npcs">,
 ): Promise<void> {
   await db.from("campaign_runtime").upsert({
     campaign_id: campaignId,
@@ -159,6 +163,7 @@ export async function saveCampaignRuntime(
     focus_ids: rt.focusIds,
     ticked_this_scene: rt.tickedThisScene,
     combat: rt.combat,
+    npcs: rt.npcs,
     updated_at: new Date().toISOString(),
   });
 }
