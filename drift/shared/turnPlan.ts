@@ -93,6 +93,9 @@ export const EnemyGroupSpec = z.object({
   tier: z.enum(["T1", "T2", "T3"]),
   count: optionalNullable(z.coerce.number().int().min(1).max(4)),
   name: optionalNullable(z.string()),
+  /** A NAMED boss / major antagonist — the longer fight (engine gives them a
+   *  1.8× HP multiplier). A goon pack is NOT major. */
+  major: optionalNullable(z.boolean()),
 });
 export type EnemyGroupSpec = z.infer<typeof EnemyGroupSpec>;
 
@@ -140,6 +143,20 @@ export const TurnPlan = z.object({
       tier: z.enum(["T0", "T1", "T2", "T3"]),
       reason: optionalNullable(z.string()),
     }),
+  ),
+  /** Monetary bids/quotes the model PRESENTS but the player hasn't taken (a job's
+   *  posted pay, a rival buyer's counter-bid). An offer is a TIER, never a number —
+   *  the ENGINE rolls the figure inside the tier's band and shows it. A better
+   *  rival offer is a HIGHER tier. `from` labels who's offering. (ECONOMY.md —
+   *  this is the anti-runaway for narrated negotiations; the model must never
+   *  state a credit amount itself.) */
+  offers: optionalNullable(
+    z.array(
+      z.object({
+        tier: z.enum(["T0", "T1", "T2", "T3"]),
+        from: optionalNullable(z.string()),
+      }),
+    ).max(3),
   ),
   /** Canon feed entry when the beat shifts a faction's standing. */
   worldEvent: optionalNullable(

@@ -4,29 +4,29 @@
   "tiers": {
     "T1": {
       "label": "Mook",
-      "hpRange": [8, 10],
+      "hpRange": [8, 8],
       "ac": 13,
       "atk": 3,
       "damage": "1d8",
-      "notes": "Only as fodder alongside higher tiers now"
+      "notes": "Fixed 8 HP — general T1s are uniform. Only as fodder alongside higher tiers now"
     },
     "T2": {
       "label": "Professional",
-      "hpRange": [15, 20],
+      "hpRange": [14, 14],
       "acRange": [14, 15],
       "atk": 5,
       "damage": "2d8",
-      "notes": "Default threat. May carry shield (negate 1st hit); come in 2-4s"
+      "notes": "Default threat. Fixed 14 HP — general T2s are uniform (a named 'major' gets ×1.8). May carry shield (negate 1st hit); come in 2-4s"
     },
     "T3": {
       "label": "Elite/Boss",
-      "hpRange": [25, 35],
+      "hpRange": [24, 24],
       "ac": 16,
       "atk": 6,
       "damage": "2d10",
       "multiAttack": true,
       "moraleDc": 16,
-      "notes": "Shields, coordination, morale DC 16. May attack twice."
+      "notes": "Fixed 24 HP — general T3s are uniform (a named 'major' gets ×1.8). Shields, coordination, morale DC 16. May attack twice."
     }
   },
   "rampRule": {

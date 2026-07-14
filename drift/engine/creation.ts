@@ -32,9 +32,11 @@ export function buildCharacterFromCreation(
   }));
   addSkillLevel(skills, bg.signatureSkill, 1);
 
-  // Vitals derived from attributes + gear. Base 10: pairs with the hazard-damage
-  // scale (⚠5 max = 10 = exactly one-shot territory for a fresh character).
-  const maxHp = Math.max(1, 10 + attributes.vitality);
+  // Vitals derived from attributes + gear. Base 18: a fresh character survives
+  // several hits, so a lone T2 is a roughly even ~3-4 round duel rather than a
+  // one-shot. (Deliberate rebalance — hazard-damage numbers are unchanged; HP is
+  // the lever, so a fight lasts a handful of rounds instead of ending in one volley.)
+  const maxHp = Math.max(1, 18 + attributes.vitality);
   const armorBonus = bg.gear.reduce((sum, g) => sum + (g.acBonus ?? 0), 0);
   const ac = 10 + attributes.reflex + armorBonus;
 

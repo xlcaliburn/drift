@@ -19,8 +19,8 @@ describe("spawnCombatEnemies", () => {
     expect(es).toHaveLength(4); // clamped
     expect(es[0].tier).toBe("T2");
     expect(es[0].shieldReady).toBe(true);
-    expect(es[0].hp).toBe(20); // T2 hpRange max
-    expect(es[0].maxHp).toBe(20);
+    expect(es[0].hp).toBe(14); // T2 uniform HP (fixed [14,14])
+    expect(es[0].maxHp).toBe(14);
   });
 
   it("names a single enemy without a number suffix", () => {

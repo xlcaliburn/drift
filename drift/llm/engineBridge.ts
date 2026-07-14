@@ -450,6 +450,22 @@ export class TurnRuntime {
    * rolls the credits inside that tier's band. A negotiation check resolved this
    * turn shades the roll: success → upper half, failure → lower half.
    */
+  /**
+   * Roll a QUOTE inside a job tier's band — a monetary bid/offer the model
+   * PRESENTS (a job's posted pay, a rival buyer's counter). Unlike awardPayout
+   * this grants NOTHING: an offer is a figure the player is looking at, not a
+   * transfer. `mood` shades the roll exactly like a payout — a negotiation
+   * success this turn → upper half of the band, failure → lower half. Returns
+   * null for an unknown tier. (ECONOMY.md — engine-owned negotiation figures.)
+   */
+  quoteOffer(tier: "T0" | "T1" | "T2" | "T3", mood?: "high" | "low"): number | null {
+    const band = economy.jobPayouts[tier];
+    if (!Array.isArray(band)) return null;
+    const [lo, hi] = band as [number, number];
+    const mid = Math.round((lo + hi) / 2);
+    return this.rng.int(mood === "high" ? mid : lo, mood === "low" ? mid : hi);
+  }
+
   private awardPayout(input: Record<string, unknown>) {
     const tier = String(input.tier) as "T0" | "T1" | "T2" | "T3";
     const band = economy.jobPayouts[tier];
@@ -458,10 +474,8 @@ export class TurnRuntime {
     if (!pc) return { error: "no player character" };
     // A payout means a job/quest concluded — unlock disposition movement this turn.
     this.markQuestCompleted();
-    const [lo, hi] = band as [number, number];
-    const mid = Math.round((lo + hi) / 2);
     const mood = input.mood === "high" ? "high" : input.mood === "low" ? "low" : undefined;
-    const amount = this.rng.int(mood === "high" ? mid : lo, mood === "low" ? mid : hi);
+    const amount = this.quoteOffer(tier, mood)!; // band validated above → non-null
     this.state = {
       ...this.state,
       characters: this.state.characters.map((c) =>

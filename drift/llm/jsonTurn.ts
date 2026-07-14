@@ -221,6 +221,48 @@ function rollDisplayLines(res: RollResult): string[] {
   return lines;
 }
 
+/** Number-words the model reaches for when it dodges digits ("eighteen hundred
+ *  credits"). Sorted longest-first so alternation prefers "seventeen" over the
+ *  "seven" prefix inside it. */
+const NUMBER_WORDS = [
+  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+  "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+  "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
+  "sixty", "seventy", "eighty", "ninety", "hundred", "thousand",
+].sort((a, b) => b.length - a.length);
+const _WORD = `(?:${NUMBER_WORDS.join("|")})`;
+const _WORD_PHRASE = `${_WORD}(?:[\\s-]+${_WORD})*`;
+/** credit / credits / creds / cred — the currency word in any common spelling. */
+const _CRED = "cred(?:it)?s?";
+/** Number-WORDS immediately trailed by a currency token: "twelve hundred creds". */
+const MONEY_WORDS_RE = new RegExp(`\\b${_WORD_PHRASE}\\s+(?:${_CRED}\\b|¢|c\\b)`, "gi");
+/** ¢ glued to digits, either side: "¢450", "1,800¢". */
+const MONEY_SIGN_RE = /¢\s*\d[\d,]*|\b\d[\d,]*\s*¢/g;
+/** Digits + a currency word: "1,800 credits", "185 creds", "185cred". */
+const MONEY_DIGITS_RE = new RegExp(`\\b\\d[\\d,]*\\s*${_CRED}\\b`, "gi");
+/** Digits + a bare trailing 'c': "1800c" (the boundary stops "100cc"/"deck 4c"). */
+const MONEY_SUFFIX_C_RE = /\b\d[\d,]*c\b/gi;
+
+/**
+ * Belt-and-suspenders safety net for the #1 economy error: the model stating a
+ * credit figure in prose (job pay, a buyer's bid, a bribe, a price). The ENGINE
+ * owns every number — a real figure only ever reaches the player on a 💰 system
+ * line — so any amount the NARRATION states is fabricated and gets scrubbed to a
+ * vague phrase. Catches BOTH digit forms ("1,800 credits", "¢450", "1800c") AND
+ * number-word forms ("eighteen hundred credits", "two thousand creds"). Only a
+ * number FOLLOWED BY a currency token is touched, so plain counts ("deck 4",
+ * "3 guards", "twenty crates") survive untouched. Applied to the model's
+ * narration ONLY — never to the engine's own 💰 lines.
+ */
+export function redactMoney(narration: string): string {
+  if (!narration) return narration;
+  return narration
+    .replace(MONEY_WORDS_RE, "a fair sum")
+    .replace(MONEY_SIGN_RE, "a fair sum")
+    .replace(MONEY_DIGITS_RE, "a fair sum")
+    .replace(MONEY_SUFFIX_C_RE, "a fair sum");
+}
+
 /** One compact line summarizing a roll for the model's context. */
 function engineContextLine(res: RollResult): string {
   const crit = res.criticalFailure
@@ -530,20 +572,36 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   }
 
   // ── Apply the plan's mechanical intents through the engine. ────────────────
+  // A successful negotiation THIS turn shades money to the upper half of the
+  // band (a failed one to the lower) — shared by both payouts and offers.
+  const negotiationMood: "high" | "low" | undefined =
+    lastRoll?.skill === "negotiation"
+      ? lastRoll.outcome === "success"
+        ? "high"
+        : "low"
+      : undefined;
   if (plan.payout && pc) {
     toolCalls.push("award_payout");
-    const mood =
-      lastRoll?.skill === "negotiation"
-        ? lastRoll.outcome === "success"
-          ? "high"
-          : "low"
-        : undefined;
     const res = runtime.execute("award_payout", {
       tier: plan.payout.tier,
       reason: plan.payout.reason,
-      mood,
+      mood: negotiationMood,
     }) as { amount?: number; tier?: string; error?: string };
     if (res.amount) emit([`💰 Payment: +¢${res.amount} (${plan.payout.tier})`]);
+  }
+  // OFFERS: bids/quotes the model presented (a job's pay, a rival buyer's counter).
+  // The model names a TIER; the engine rolls the bounded figure and shows it as a
+  // system line — the real number the player sees, never a re-call to the model.
+  if (plan.offers?.length) {
+    const offerLines: string[] = [];
+    for (const offer of plan.offers.slice(0, 3)) {
+      const amount = runtime.quoteOffer(offer.tier, negotiationMood);
+      if (amount != null) offerLines.push(`💰 ${offer.from?.trim() || "Offer"}: ~¢${amount}`);
+    }
+    if (offerLines.length) {
+      toolCalls.push("quote_offer");
+      emit(offerLines);
+    }
   }
   if (plan.useItem && pc) {
     toolCalls.push("use_item");
@@ -655,7 +713,12 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       // so a fight can't balloon regardless of what the model asks for.
       const rawGroups: SpawnSpec[] =
         cs.enemies?.length
-          ? cs.enemies.map((g) => ({ tier: g.tier, count: g.count ?? undefined, name: g.name ?? undefined }))
+          ? cs.enemies.map((g) => ({
+              tier: g.tier,
+              count: g.count ?? undefined,
+              name: g.name ?? undefined,
+              major: g.major ?? undefined, // named boss → engine gives 1.8× HP
+            }))
           : [{ tier: cs.tier, count: cs.count ?? undefined, name: cs.name ?? undefined }];
       const MAX_TOTAL = 5;
       const specs: SpawnSpec[] = [];
@@ -664,7 +727,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
         if (total >= MAX_TOTAL) break;
         const want = Math.max(1, Math.min(4, g.count ?? 1));
         const take = Math.min(want, MAX_TOTAL - total);
-        specs.push({ tier: g.tier, count: take, name: g.name });
+        specs.push({ tier: g.tier, count: take, name: g.name, major: g.major });
         total += take;
       }
       started = runtime.startCombat(specs, surprise);
@@ -674,7 +737,9 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   }
 
   // ── Final cleanup: belt-and-suspenders on the prose, clamp the choices. ────
-  narration = stripInlineMenu(narration.trim());
+  // redactMoney scrubs any credit figure the model states in prose — the engine
+  // owns every number (real figures only ever ride 💰 system lines).
+  narration = redactMoney(stripInlineMenu(narration.trim()));
   if (lastStop === "max_tokens") narration = trimToLastSentence(narration);
 
   // NPC backstop: register a figure the model forgot to declare ONLY when the

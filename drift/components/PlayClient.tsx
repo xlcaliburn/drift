@@ -151,6 +151,23 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
       .catch(() => {});
   }, [showFeedback, feedbackState]);
 
+  /** Pull the latest campaign state/relations/scene from the server — used when
+   *  opening "More details" so the sheet never shows stale data (a background
+   *  enrichment, or a turn taken in another tab, may have advanced things). Only
+   *  touches the sheet-backing state; leaves the chat/choices/combat as-is. */
+  async function refreshState() {
+    try {
+      const r = await fetch(`/api/state?campaignId=${campaignId}`);
+      const d = await r.json();
+      if (!d.state) return;
+      setState(d.state);
+      if (d.npcRelations) setNpcRelations(d.npcRelations);
+      if (d.sceneCard) setSceneCard(d.sceneCard);
+    } catch {
+      /* keep the current view on a transient failure */
+    }
+  }
+
   async function send(action?: ChoiceOption, opts?: { retryText?: string }) {
     const text = (opts?.retryText ?? action?.label ?? input).trim();
     if (!text || busy || dead) return;
@@ -623,6 +640,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             combat={combat}
             npcRelations={npcRelations}
             sceneCard={sceneCard}
+            onRefresh={refreshState}
             mobileOpen={showSheet}
             onClose={() => setShowSheet(false)}
           />

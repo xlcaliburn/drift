@@ -14,9 +14,17 @@ export interface SpawnSpec {
   tier: CombatTier;
   count?: number;
   name?: string;
+  /** Named antagonist — the longer fight. Rolled HP is multiplied ×1.8 (a T2
+   *  major ≈ 25, a T3 major ≈ 43), so a boss outlasts a general enemy of its
+   *  tier. Set by the combatStart agent, never on rank-and-file mooks. */
+  major?: boolean;
 }
 
-/** Build persisted enemies from the tier tables. Count clamped 1–4; T2+ shielded. */
+/** Boss HP multiplier — a `major` enemy is ~1.8× the general tier HP. */
+const MAJOR_HP_MULT = 1.8;
+
+/** Build persisted enemies from the tier tables. Count clamped 1–4; T2+ shielded.
+ *  A `major` spec scales each spawned enemy's HP ×1.8 (rounded) → the boss fight. */
 export function spawnCombatEnemies(specs: SpawnSpec[], rng: RNG): CombatEnemy[] {
   const out: CombatEnemy[] = [];
   let n = 0;
@@ -33,7 +41,8 @@ export function spawnCombatEnemies(specs: SpawnSpec[], rng: RNG): CombatEnemy[] 
     if (!t) continue;
     const count = Math.max(1, Math.min(4, spec.count ?? 1));
     for (let i = 0; i < count; i++) {
-      const hp = rng.int(t.hpRange[0], t.hpRange[1]);
+      const rolledHp = rng.int(t.hpRange[0], t.hpRange[1]);
+      const hp = spec.major ? Math.round(rolledHp * MAJOR_HP_MULT) : rolledHp;
       const ac = t.acRange ? rng.int(t.acRange[0], t.acRange[1]) : t.ac ?? 14;
       out.push({
         id: `e-${++n}`,
@@ -58,6 +67,8 @@ export interface ShipSpawnSpec {
   count?: number;
   name?: string;
   tier?: CombatTier;
+  /** Named flagship — ×1.8 hull, the longer ship fight. Mirror of SpawnSpec.major. */
+  major?: boolean;
 }
 
 /** Rough gunnery-attack bonus for an enemy ship of a class. */
@@ -79,7 +90,8 @@ export function spawnCombatShips(specs: ShipSpawnSpec[], rng: RNG): CombatEnemy[
     if (!cls) continue;
     const count = Math.max(1, Math.min(4, spec.count ?? 1));
     for (let i = 0; i < count; i++) {
-      const hp = rng.int(cls.hpRange[0], cls.hpRange[1]);
+      const rolledHp = rng.int(cls.hpRange[0], cls.hpRange[1]);
+      const hp = spec.major ? Math.round(rolledHp * MAJOR_HP_MULT) : rolledHp;
       const ac = rng.int(cls.acRange[0], cls.acRange[1]);
       out.push({
         id: `e-${++n}`,

@@ -71,6 +71,7 @@ export default function Sidebar({
   combat = null,
   npcRelations = {},
   sceneCard = null,
+  onRefresh,
   mobileOpen = false,
   onClose,
 }: {
@@ -80,15 +81,22 @@ export default function Sidebar({
   npcRelations?: NpcRelations;
   /** Current scene's working memory — feeds the Scene box. */
   sceneCard?: SceneCard | null;
+  /** Re-pull fresh server state; fired when the details modal opens so it never
+   *  shows stale data. */
+  onRefresh?: () => void;
   /** Mobile slide-over drawer control (desktop rail ignores these). */
   mobileOpen?: boolean;
   onClose?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("status");
-  // Which details-modal tab is open (null = modal closed). "People →" and "More
-  // details" both open the same modal, just on different tabs.
+  // Which details-modal tab is open (null = modal closed).
   const [detailsTab, setDetailsTab] = useState<DetailsTab | null>(null);
   const pc = state.characters.find((c) => c.kind === "pc");
+  // Opening the modal always refetches so the sheet reflects the latest state.
+  const openDetails = (t: DetailsTab) => {
+    onRefresh?.();
+    setDetailsTab(t);
+  };
 
   const body = (
     <>
@@ -112,8 +120,9 @@ export default function Sidebar({
           <StatusTab
             state={state}
             combat={combat}
+            npcRelations={npcRelations}
             sceneCard={sceneCard}
-            onDetails={() => setDetailsTab("equipment")}
+            onDetails={() => openDetails("equipment")}
           />
         )}
         {tab === "traits" && <TraitsTab state={state} />}
@@ -233,11 +242,13 @@ function condition(injuries?: { name: string }[]): { text: string; className: st
 function StatusTab({
   state,
   combat,
+  npcRelations,
   sceneCard,
   onDetails,
 }: {
   state: CampaignState;
   combat: CombatState | null;
+  npcRelations: NpcRelations;
   sceneCard: SceneCard | null;
   onDetails: () => void;
 }) {
@@ -382,22 +393,74 @@ function StatusTab({
             ))}
           </div>
         )}
-        {sceneCard && sceneCard.presentNpcIds.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {sceneCard.presentNpcIds.map((id) => {
-              const npc = state.npcs.find((n) => n.id === id);
-              return npc ? (
-                <span
-                  key={id}
-                  className="rounded border border-edge bg-ink/40 px-1.5 py-0.5 text-[11px] text-neutral-300"
-                  title={npc.role ?? undefined}
-                >
-                  {npc.name}
-                </span>
-              ) : null;
-            })}
-          </div>
-        )}
+        {/* Who's in the scene right now — each folds in what you know of them
+            (relationship + standing), so someone you just spoke with shows live
+            with your read on them the instant the turn returns. */}
+        {(() => {
+          const present = sceneCard
+            ? sceneCard.presentNpcIds
+                .map((id) => state.npcs.find((n) => n.id === id))
+                .filter((n): n is CampaignState["npcs"][number] => !!n)
+            : [];
+          if (present.length === 0) return null;
+          const dispTone = (d: number) => (d > 0 ? "text-good" : d < 0 ? "text-bad" : "text-neutral-500");
+          return (
+            <div className="mt-1.5 space-y-1">
+              {present.map((npc) => {
+                const rel = npcRelations[npc.id];
+                return (
+                  <div
+                    key={npc.id}
+                    className="rounded border border-edge bg-ink/40 px-1.5 py-1"
+                    title={npc.role ?? undefined}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[13px] text-neutral-200">
+                        {npc.name}
+                        <span className="text-[11px] text-accent/70"> · immediate</span>
+                      </span>
+                      {rel && (
+                        <span className={"shrink-0 text-[11px] " + dispTone(rel.disposition)}>
+                          {dispositionLabel(rel.disposition)}
+                        </span>
+                      )}
+                    </div>
+                    {rel?.relationship && (
+                      <div className="text-[11px] text-neutral-500">{rel.relationship}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {/* Also nearby: known contacts on the same station who aren't in the scene
+            — a compact awareness line so they're not out of sight, out of mind. */}
+        {(() => {
+          const presentIds = new Set(sceneCard?.presentNpcIds ?? []);
+          const here = state.campaign.currentLocationId;
+          const nearby = state.npcs
+            .filter((n) => npcRelations[n.id] && n.locationId === here && !presentIds.has(n.id))
+            .slice(0, 5);
+          if (nearby.length === 0) return null;
+          return (
+            <div className="mt-1.5 border-t border-edge/60 pt-1.5 text-[11px] text-neutral-500">
+              <span className="text-neutral-600">Also nearby:</span>{" "}
+              {nearby.map((npc, i) => {
+                const rel = npcRelations[npc.id];
+                const tone = rel && rel.disposition > 0 ? "text-good" : rel && rel.disposition < 0 ? "text-bad" : "text-neutral-400";
+                return (
+                  <span key={npc.id}>
+                    {i > 0 && ", "}
+                    <span className="text-neutral-300">{npc.name}</span>
+                    {rel && <span className={tone}> ({dispositionLabel(rel.disposition)})</span>}
+                  </span>
+                );
+              })}
+            </div>
+          );
+        })()}
         {sceneCard && sceneCard.beats.length > 0 && (
           <div className="mt-1.5 border-t border-edge/60 pt-1.5">
             <div className="text-[10px] uppercase tracking-wide text-neutral-600">Established</div>
