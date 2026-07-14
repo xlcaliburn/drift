@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { runJsonTurn } from "@/llm/jsonTurn";
 import { runCombatTurn } from "@/llm/combatTurn";
 import { combatActions } from "@/shared/combat";
@@ -10,6 +10,75 @@ import { recordAiCall } from "@/lib/audit";
 import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { buildFallbackChoices } from "@/shared/recap";
 import { CheckSpec, CombatActionSpec, type ChoiceOption } from "@/shared/turnPlan";
+import { freshSceneCard, type SceneCard, type SceneMemory } from "@/shared/scene";
+import { summarizeScene } from "@/llm/summarizer";
+import type { ChatEntry } from "@/shared/chat";
+import { hasSupabase } from "@/lib/state";
+
+/**
+ * Background scene compression (CONTINUITY.md tier RECENT): summarize the closed
+ * scene's transcript slice → persist to the scenes table → surface in the live
+ * session's PREVIOUSLY list. Never blocks a turn; on summarizer failure a
+ * deterministic fallback keeps the scene from becoming a hole (F-3).
+ */
+async function compressClosedScene(
+  campaignId: string,
+  closedCard: SceneCard,
+  transcript: ChatEntry[],
+  title: string,
+  locationId: string | undefined,
+  knownEntityIds: string[],
+): Promise<void> {
+  const slice = transcript.slice(closedCard.startTranscriptIdx);
+  if (slice.length === 0) return;
+  const text = slice
+    .map((e) => `${e.role === "player" ? "PLAYER" : e.role.toUpperCase()}: ${e.text}`)
+    .join("\n")
+    .slice(0, 12000);
+  const beatsNote = closedCard.beats.length ? `\nEstablished during the scene: ${closedCard.beats.join(" · ")}` : "";
+
+  let summary = "";
+  let entityRefs: string[] = [];
+  try {
+    const res = await summarizeScene(text + beatsNote, knownEntityIds);
+    summary = res.summary.trim();
+    entityRefs = res.entityRefs;
+  } catch {
+    /* fall through to the deterministic fallback */
+  }
+  if (!summary) {
+    // F-3: never a hole — first action + last beat stand in for the summary.
+    const firstPlayer = slice.find((e) => e.role === "player")?.text ?? "";
+    const lastDm = [...slice].reverse().find((e) => e.role === "dm")?.text ?? "";
+    summary = `${firstPlayer.slice(0, 140)} … ${lastDm.slice(0, 200)}`.trim();
+    entityRefs = closedCard.presentNpcIds;
+  }
+
+  const scene: SceneMemory = {
+    seq: closedCard.seq,
+    title: title || `Scene ${closedCard.seq}`,
+    summary,
+    entityRefs: [...new Set([...entityRefs, ...closedCard.presentNpcIds])],
+    locationId,
+  };
+
+  if (hasSupabase()) {
+    try {
+      const { getServiceClient, saveScene } = await import("@/db/queries");
+      await saveScene(getServiceClient(), campaignId, scene);
+    } catch (e) {
+      console.error("[turn] failed to persist scene summary:", e instanceof Error ? e.message : e);
+    }
+  }
+  // Surface in the LIVE session (re-read: turns may have advanced meanwhile).
+  const live = await getSession(campaignId);
+  if (live) {
+    live.recentScenes = [...live.recentScenes.filter((s) => s.seq !== scene.seq), scene]
+      .sort((a, b) => a.seq - b.seq)
+      .slice(-20);
+    setSession(campaignId, live);
+  }
+}
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -114,6 +183,10 @@ export async function POST(req: NextRequest) {
                 playerText,
                 focusIds: session.focusIds,
                 preCheck,
+                // Scene memory (mutated in place by the runtime; session owns it).
+                sceneCard: session.sceneCard,
+                npcRelations: session.npcRelations,
+                recentScenes: session.recentScenes,
                 model: cinematic ? "claude-sonnet-5" : undefined,
               });
 
@@ -175,6 +248,13 @@ export async function POST(req: NextRequest) {
         const persistedState = pcDied
           ? { ...result.state, campaign: { ...result.state.campaign, status: "deceased" as const } }
           : result.state;
+        const newTranscript = [...session.transcript, ...transcriptAdds].slice(-400);
+        // Scene closed this turn → snapshot the card for the background summarizer
+        // and start a fresh one at the new transcript tail (CONTINUITY lifecycle).
+        const sceneClosed = result.sceneEnded && !pcDied;
+        const closedCard = sceneClosed
+          ? { ...session.sceneCard, presentNpcIds: [...session.sceneCard.presentNpcIds], beats: [...session.sceneCard.beats] }
+          : null;
         const updatedSession = {
           ...session,
           state: persistedState,
@@ -186,7 +266,7 @@ export async function POST(req: NextRequest) {
             { role: "assistant" as const, content: result.narration || "…" },
           ].slice(-20),
           // Full display transcript is kept so a browser refresh rehydrates the chat.
-          transcript: [...session.transcript, ...transcriptAdds].slice(-400),
+          transcript: newTranscript,
           log: [...session.log, ...result.events].slice(-500),
           // Carry the entities named this turn into next turn's retrieval focus.
           focusIds: result.focusIds,
@@ -194,12 +274,27 @@ export async function POST(req: NextRequest) {
           tickedThisScene: [...tickedSet],
           // Active fight (null when combat ended or never started).
           combat: resultCombat,
+          sceneCard: sceneClosed
+            ? freshSceneCard(session.sceneCard.seq + 1, newTranscript.length)
+            : session.sceneCard,
         };
         setSession(campaignId, updatedSession);
 
         // Persist durable state (HP, credits, rep, clocks, threads) AND the runtime
         // snapshot (transcript, history, dice log) so a refresh resumes this run.
         await persistSession(campaignId, updatedSession);
+
+        // Compress the closed scene in the background (never blocks the response).
+        if (closedCard) {
+          const knownIds = [
+            ...result.state.npcs.map((n) => n.id),
+            ...result.state.factions.map((f) => f.id),
+            ...result.state.locations.map((l) => l.id),
+          ];
+          const locId = result.state.campaign.currentLocationId;
+          const title = result.sceneTitle ?? `Scene ${closedCard.seq}`;
+          after(() => compressClosedScene(campaignId, closedCard, newTranscript, title, locId, knownIds));
+        }
 
         // Audit every call (dev included; dev logs with a null user id). Best-effort.
         await recordAiCall({
@@ -241,6 +336,7 @@ export async function POST(req: NextRequest) {
           combat: resultCombat,
           sceneEnded: result.sceneEnded,
           dead: pcDied,
+          npcRelations: updatedSession.npcRelations,
           tutorialGraduated: result.tutorialGraduated,
           model: result.model,
           usage: result.usage,

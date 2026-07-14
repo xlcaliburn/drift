@@ -7,6 +7,7 @@ import { deepseekChat, deepseekChatStream, isDeepSeekModel, resolveModel } from 
 import { sanitizeHistory, trimToLastSentence } from "./narrator";
 import { NarrationExtractor } from "./jsonStream";
 import { parseTurnPlan, repairTurnPlan, type TurnPlan, type CheckSpec, type ChoiceOption } from "@/shared/turnPlan";
+import { SCENE_TURN_CAP, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import type { CombatState } from "@/shared/combat";
 import type { SpawnSpec, ShipClass } from "@/engine/combatEngine";
 import { stripInlineMenu } from "@/shared/narration";
@@ -35,6 +36,11 @@ export interface JsonTurnInput {
   focusIds?: string[];
   /** Shared per-scene tick-cap set ("charId:skill"); mutated in place. */
   tickedSet?: Set<string>;
+  /** Scene working memory + NPC relations (CONTINUITY.md); mutated in place. */
+  sceneCard?: SceneCard;
+  npcRelations?: NpcRelations;
+  /** Recent scene summaries for the PREVIOUSLY block (oldest→newest). */
+  recentScenes?: SceneMemory[];
   model?: string;
   rng?: RNG;
   apiKey?: string;
@@ -54,6 +60,8 @@ export interface JsonTurnResult {
   events: EngineEvent[];
   worldEvents: TurnRuntime["worldEvents"];
   sceneEnded: boolean;
+  /** Title of the scene that closed this turn (model's, or the auto-close's). */
+  sceneTitle: string | null;
   focusIds: string[];
   tutorialGraduated: boolean;
   model: string;
@@ -141,7 +149,11 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
 
   const runtime = new TurnRuntime(input.state, input.rng ?? liveRng, {
     tickedThisScene: input.tickedSet,
+    sceneCard: input.sceneCard,
+    npcRelations: input.npcRelations,
   });
+  // This turn counts against the scene (the auto-close backstop reads it).
+  runtime.sceneCard.turnCount += 1;
   const pc = input.state.characters.find((c) => c.kind === "pc");
   // Accumulate every engine display line so the route can persist them to the
   // transcript (they're also streamed live via onEngine).
@@ -206,8 +218,15 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
 
   // ── Prompt assembly ─────────────────────────────────────────────────────────
   const system = buildJsonSystem(input.state);
-  const retrieved = retrieveEntities(input.state, input.playerText, input.focusIds);
-  const contextSlice = buildContextSlice(input.state, input.playerText, input.focusIds, retrieved, true);
+  // NPCs present in the CURRENT SCENE ride retrieval every turn — no re-naming
+  // needed for someone standing in the room (CONTINUITY tier NOW).
+  const focusWithPresent = [...new Set([...(input.focusIds ?? []), ...runtime.sceneCard.presentNpcIds])];
+  const retrieved = retrieveEntities(input.state, input.playerText, focusWithPresent);
+  const contextSlice = buildContextSlice(input.state, input.playerText, focusWithPresent, retrieved, true, {
+    sceneCard: runtime.sceneCard,
+    npcRelations: runtime.npcRelations,
+    recentScenes: input.recentScenes ?? [],
+  });
   const messages: Anthropic.MessageParam[] = [
     ...sanitizeHistory(input.history),
     {
@@ -364,14 +383,25 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     if (res.line) emit([res.line]);
   }
   // Persist any named NPCs the narrator introduced so the world remembers them
-  // (continuity — recognized when the player returns).
+  // (continuity — recognized when the player returns), mark them present in the
+  // scene, and apply relationship updates (disposition nudge / last-note / tie).
   if (plan.npcs?.length) {
     for (const npc of plan.npcs.slice(0, 4)) {
-      if (npc.name?.trim()) {
-        toolCalls.push("register_npc");
-        runtime.registerNpc(npc.name, npc.oneBreath ?? undefined);
-      }
+      if (!npc.name?.trim()) continue;
+      toolCalls.push("register_npc");
+      const { id } = runtime.registerNpc(npc.name, npc.oneBreath ?? undefined);
+      runtime.markPresent(id);
+      const rel = runtime.updateNpcRelation(id, {
+        disposition: npc.disposition ?? undefined,
+        note: npc.note ?? undefined,
+        relationship: npc.relationship ?? undefined,
+      });
+      if (rel.line) emit([rel.line]); // D-4: standing changes are visible, like ticks
     }
+  }
+  // Scene-card proposal: situation overwrites, beats append (engine-capped).
+  if (plan.scene) {
+    runtime.updateScene(plan.scene.situation ?? undefined, plan.scene.beats ?? undefined);
   }
   if (plan.worldEvent) {
     toolCalls.push("log_world_event");
@@ -388,6 +418,15 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   if (plan.sceneEnd && !plan.combatStart) {
     toolCalls.push("end_scene");
     runtime.execute("end_scene", plan.sceneEnd as Record<string, unknown>);
+  } else if (
+    !plan.combatStart &&
+    runtime.sceneCard.turnCount >= SCENE_TURN_CAP &&
+    runtime.sceneEndReport === null
+  ) {
+    // Auto-close backstop (CONTINUITY D-1): DeepSeek under-fires sceneEnd; without
+    // a boundary the summary tier never activates. Force one after the cap.
+    toolCalls.push("end_scene(auto)");
+    runtime.execute("end_scene", { title: "The scene moves on" });
   }
 
   // ── Combat begins: the engine spawns enemies and takes over next turn.
@@ -441,6 +480,8 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     events: runtime.events,
     worldEvents: runtime.worldEvents,
     sceneEnded: runtime.sceneEndReport !== null,
+    sceneTitle:
+      runtime.sceneEndReport === null ? null : plan.sceneEnd?.title?.trim() || "The scene moves on",
     focusIds: retrieved.namedNpcIds,
     tutorialGraduated: graduatedTutorialThisTurn(input.state, runtime.state),
     model: activeModel,

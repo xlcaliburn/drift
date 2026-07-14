@@ -5,6 +5,7 @@ import { finalizeCreation, quickCreationNotes } from "@/llm/creationFinalize";
 import { buildNewCampaignState } from "@/lib/newCampaign";
 import { getSession, setSession, persistSession, hasSupabase } from "@/lib/state";
 import { buildOpeningHistory } from "@/shared/recap";
+import { freshSceneCard } from "@/shared/scene";
 import { requireApprovedUser, isDevUser } from "@/lib/auth";
 import { getServiceClient, getOwnedCampaign } from "@/db/queries";
 import { recordAiCall } from "@/lib/audit";
@@ -77,6 +78,9 @@ export async function POST(req: NextRequest) {
     focusIds: [],
     tickedThisScene: [],
     combat: null,
+    sceneCard: freshSceneCard(),
+    npcRelations: {},
+    recentScenes: [],
   };
   setSession(campaignId, session0);
   await persistSession(campaignId, session0);
@@ -120,19 +124,26 @@ export async function POST(req: NextRequest) {
         }
       }
       // Seed people named in the backstory as related NPCs so the narrator can
-      // pull them into play — skip any name already in the world's cast.
+      // pull them into play — skip any name already in the world's cast. Their
+      // tie also seeds the relationship overlay (CONTINUITY.md tier CANON) so
+      // "your estranged brother" renders on their context line from day one.
       if (finalize.relations?.length) {
         const have = new Set(session.state.npcs.map((n) => n.name.toLowerCase()));
-        const add = finalize.relations
-          .filter((r) => r.name && !have.has(r.name.toLowerCase()))
-          .map((r, i) => ({
-            id: `npc-rel-${stamp}-${i}`,
-            universeId: session.state.universe.id,
-            name: r.name,
-            oneBreath: r.oneBreath || `${r.relation} of ${enriched.name}.`,
-            notes: `${enriched.name}'s ${r.relation}.`,
-          }));
-        if (add.length) session.state.npcs = [...session.state.npcs, ...add];
+        const fresh = finalize.relations.filter((r) => r.name && !have.has(r.name.toLowerCase()));
+        fresh.forEach((r, i) => {
+          const id = `npc-rel-${stamp}-${i}`;
+          session.state.npcs = [
+            ...session.state.npcs,
+            {
+              id,
+              universeId: session.state.universe.id,
+              name: r.name,
+              oneBreath: r.oneBreath || `${r.relation} of ${enriched.name}.`,
+              notes: `${enriched.name}'s ${r.relation}.`,
+            },
+          ];
+          session.npcRelations[id] = { relationship: r.relation || undefined, disposition: 0 };
+        });
       }
 
       setSession(campaignId, session);

@@ -40,6 +40,8 @@ export interface CombatTurnResult {
   events: EngineEvent[];
   worldEvents: TurnRuntime["worldEvents"];
   sceneEnded: boolean;
+  /** Combat turns never close a narrative scene themselves. */
+  sceneTitle: string | null;
   focusIds: string[];
   tutorialGraduated: boolean;
   model: string;
@@ -132,6 +134,7 @@ export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnR
     events: runtime.events,
     worldEvents: runtime.worldEvents,
     sceneEnded: false,
+    sceneTitle: null,
     focusIds: [],
     tutorialGraduated: graduatedTutorialThisTurn(input.state, runtime.state),
     model: activeModel,

@@ -25,6 +25,17 @@ import {
 import { fleeDC, threatLevel } from "@/shared/combat";
 import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
 import { catalogItem, itemCount } from "@/shared/items";
+import {
+  freshSceneCard,
+  dispositionLabel,
+  MAX_BEATS,
+  MAX_BEAT_CHARS,
+  MAX_SITUATION_CHARS,
+  DISPOSITION_MIN,
+  DISPOSITION_MAX,
+  type SceneCard,
+  type NpcRelations,
+} from "@/shared/scene";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
 
@@ -61,11 +72,24 @@ export class TurnRuntime {
    *  narrator remembering end_scene); this set enforces the 1/skill/scene cap
    *  across turns and is persisted by the session, reset at scene end. */
   tickedThisScene: Set<string>;
+  /** Current scene's working memory (CONTINUITY.md) — mutated in place; the
+   *  session object is the owner, the route resets it on scene close. */
+  sceneCard: SceneCard;
+  /** Player↔NPC standing overlay — mutated in place, session-owned. */
+  npcRelations: NpcRelations;
+  /** NPCs already disposition-nudged this turn (engine cap: ±1/NPC/turn). */
+  private nudgedThisTurn = new Set<string>();
 
-  constructor(state: CampaignState, rng: RNG = liveRng, opts?: { tickedThisScene?: Set<string> }) {
+  constructor(
+    state: CampaignState,
+    rng: RNG = liveRng,
+    opts?: { tickedThisScene?: Set<string>; sceneCard?: SceneCard; npcRelations?: NpcRelations },
+  ) {
     this.state = state;
     this.rng = rng;
     this.tickedThisScene = opts?.tickedThisScene ?? new Set();
+    this.sceneCard = opts?.sceneCard ?? freshSceneCard();
+    this.npcRelations = opts?.npcRelations ?? {};
   }
 
   private char(id: string): Character | undefined {
@@ -609,6 +633,58 @@ export class TurnRuntime {
     };
     this.state = { ...this.state, npcs: [...this.state.npcs, npc] };
     return { added: true, id };
+  }
+
+  /** Mark an NPC as present in the current scene — they ride retrieval every
+   *  turn of the scene without needing to be re-named (CONTINUITY tier NOW). */
+  markPresent(npcId: string) {
+    if (!this.sceneCard.presentNpcIds.includes(npcId)) this.sceneCard.presentNpcIds.push(npcId);
+  }
+
+  /** Apply the model's scene-card proposal: `situation` overwrites (1-liner),
+   *  `beats` append. Engine caps both (F-2/F-4) — the card cannot grow unbounded. */
+  updateScene(situation?: string, beats?: string[]) {
+    if (situation?.trim()) this.sceneCard.situation = situation.trim().slice(0, MAX_SITUATION_CHARS);
+    for (const b of beats ?? []) {
+      const beat = b.trim().slice(0, MAX_BEAT_CHARS);
+      if (!beat) continue;
+      if (this.sceneCard.beats.some((x) => x.toLowerCase() === beat.toLowerCase())) continue;
+      if (this.sceneCard.beats.length >= MAX_BEATS) this.sceneCard.beats.shift(); // oldest out
+      this.sceneCard.beats.push(beat);
+    }
+  }
+
+  /**
+   * Update the player's standing with an NPC (CONTINUITY tier CANON). The model
+   * proposes; the engine owns the math: delta clamped to ±1, one nudge per NPC
+   * per turn, range −3..+3. `relationship` is set-once (first write wins — the
+   * creation-seeded tie can't be overwritten by a later whim); `note` overwrites
+   * (rolling last-interaction memory). Returns a display line when the standing
+   * actually moved (D-4: visible, like ticks).
+   */
+  updateNpcRelation(
+    npcId: string,
+    upd: { disposition?: number; note?: string; relationship?: string },
+  ): { line?: string } {
+    const rel = this.npcRelations[npcId] ?? { disposition: 0 };
+    let line: string | undefined;
+    if (upd.disposition && !this.nudgedThisTurn.has(npcId)) {
+      this.nudgedThisTurn.add(npcId);
+      const delta = Math.max(-1, Math.min(1, Math.round(upd.disposition)));
+      const to = Math.max(DISPOSITION_MIN, Math.min(DISPOSITION_MAX, rel.disposition + delta));
+      if (to !== rel.disposition) {
+        const name = this.state.npcs.find((n) => n.id === npcId)?.name ?? npcId;
+        line = `👤 ${name}: ${dispositionLabel(rel.disposition)} → ${dispositionLabel(to)}`;
+        rel.disposition = to;
+      }
+    }
+    if (upd.relationship?.trim() && !rel.relationship) rel.relationship = upd.relationship.trim();
+    if (upd.note?.trim()) {
+      rel.lastNote = upd.note.trim().slice(0, 160);
+      rel.lastSceneSeq = this.sceneCard.seq;
+    }
+    this.npcRelations[npcId] = rel;
+    return { line };
   }
 
   // ── Multi-turn combat (COMBAT.md) ──────────────────────────────────────────

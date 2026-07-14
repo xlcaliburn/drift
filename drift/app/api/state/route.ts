@@ -31,5 +31,6 @@ export async function GET(req: NextRequest) {
     persistent: hasSupabase(),
     isAdmin: auth.user.role === "admin",
     combat: session.combat,
+    npcRelations: session.npcRelations,
   });
 }

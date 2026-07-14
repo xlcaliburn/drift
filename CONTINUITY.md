@@ -11,6 +11,10 @@ the unit of memory.*
   + summaries + scene retrieval.
 - **D-3** Verbatim history shrinks **10 → 6 exchanges** one playtest cycle after
   summaries land (not same-commit).
+- **D-4** Disposition changes are **visible** to the player as system lines
+  ("👤 Doyle: warm → trusted") — the social game is legible, like ticks.
+- **D-5** Sidebar gains a compact **Contacts** section (name · relationship ·
+  disposition) fed from the npc_relations overlay.
 
 ---
 
@@ -88,7 +92,42 @@ The dead pipeline comes alive:
 - The scene card's `beats` are folded into the summarizer input, so promises
   survive compression ("Doyle still owes the 200¢" ends up in the summary).
 
-### 2c. CANON — durable facts ledger (small, new)
+### 2c. CANON — NPC relationships (v1, replaces the facts ledger as the canon slice)
+
+The relationship layer: not just *that* Doyle exists, but what he is to you,
+how he currently feels about you, and what last happened between you. Lives in
+a **campaign-side overlay** — `campaign_runtime.npc_relations`, a map
+`npcId → relation` — because seed NPCs are universe-shared and must never be
+mutated per-player:
+
+```ts
+npcRelations: Record<string, {
+  relationship?: string;   // "estranged brother", "your handler", "creditor"
+  disposition: number;     // -3..+3, ENGINE-clamped (like faction rep)
+  lastNote?: string;       // one line: what last happened between you
+  lastSceneSeq?: number;   // when
+}>
+```
+
+- **Disposition is engine-owned math.** The model proposes a nudge (`+1 | -1`)
+  with the npc entry it already emits; the engine clamps to ±1 per NPC per
+  turn, range −3..+3. The model can never SET a value. Rendered as a label:
+  −3 hostile · −2 cold · −1 wary · 0 neutral · +1 warm · +2 trusted · +3 ally.
+- **`lastNote` overwrites** each time the model provides one — a rolling
+  one-line memory per NPC ("paid you 200¢ for the manifests"). Cheap insurance
+  for when the NPC's scenes have aged out of PREVIOUSLY and retrieval.
+- **Creation relations seed it**: the backstory pass already returns
+  `relation` per person — that becomes `relationship` (today it's stored in a
+  notes field that never renders).
+- **Context render** — the NPC line the narrator sees becomes:
+  `- Doyle (npc-gen-doyle): Gruff quartermaster… [trusted (+2) · your handler · last: paid you 200¢ for the manifests]`
+  Play them ACCORDINGLY is the prompt rule: a +2 greets you by name; a −2
+  wants you gone.
+- **TurnPlan change**: the existing `npcs` entries gain optional
+  `disposition: 1 | -1` and `note` — no new top-level field for the model to
+  forget.
+
+### 2d. CANON — durable facts ledger (v2, deferred per D-2)
 
 Standing facts that outlive scenes and fit neither NPC nor thread:
 "banned from the Meridian dock bar", "the Wren's transponder is spoofed",
@@ -134,11 +173,14 @@ scene starts …
 
 1. **Scene card + present-NPC tracking** (engine struct on SessionData/runtime,
    TurnPlan.scene, prompt block) — kills the "who's in the room" failures.
-2. **Wire the summarizer** (sceneEnd → background summarize → scenes table →
+2. **NPC relationships** (npc_relations overlay + disposition nudges + context
+   render) — kills the "doesn't recognize me" failures. Small; rides the same
+   TurnPlan field and runtime snapshot as slice 1.
+3. **Wire the summarizer** (sceneEnd → background summarize → scenes table →
    PREVIOUSLY block) — kills the history cliff.
-3. **Scene retrieval** (score summaries in retrieveEntities).
-4. **Facts ledger** — smallest, most deferrable.
-5. **Shrink history window** 10 → 6 once 1–2 are proven in play.
+4. **Scene retrieval** (score summaries in retrieveEntities).
+5. **Facts ledger** — v2 (D-2).
+6. **Shrink history window** 10 → 6 once 1–3 are proven in play (D-3).
 
 ## ⚠ Flags
 

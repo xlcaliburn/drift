@@ -17,6 +17,7 @@ import {
 import type { ChatEntry } from "@/shared/chat";
 import type { EngineEvent } from "@/engine";
 import type { CombatState } from "@/shared/combat";
+import type { SceneCard, NpcRelations, SceneMemory } from "@/shared/scene";
 
 /**
  * Row mapping: DB columns are snake_case, app types are camelCase. We convert
@@ -123,6 +124,10 @@ export interface CampaignRuntime {
   /** Campaign-scoped NPCs (narrator-introduced + creation relations) — kept here,
    *  NOT in the universe-shared npcs table, so a player's cast stays private. */
   npcs: Npc[];
+  /** Current scene's working memory (CONTINUITY.md tier NOW). */
+  sceneCard: SceneCard | null;
+  /** Player's standing per NPC id (CONTINUITY.md tier CANON). */
+  npcRelations: NpcRelations;
   updatedAt?: string;
 }
 
@@ -133,7 +138,7 @@ export async function loadCampaignRuntime(
 ): Promise<CampaignRuntime | null> {
   const { data, error } = await db
     .from("campaign_runtime")
-    .select("transcript,history,log,focus_ids,ticked_this_scene,combat,npcs,updated_at")
+    .select("transcript,history,log,focus_ids,ticked_this_scene,combat,npcs,scene_card,npc_relations,updated_at")
     .eq("campaign_id", campaignId)
     .maybeSingle();
   if (error || !data) return null;
@@ -145,6 +150,8 @@ export async function loadCampaignRuntime(
     tickedThisScene: (data.ticked_this_scene as string[]) ?? [],
     combat: (data.combat as CombatState | null) ?? null,
     npcs: (data.npcs as Npc[]) ?? [],
+    sceneCard: (data.scene_card as SceneCard | null) ?? null,
+    npcRelations: (data.npc_relations as NpcRelations) ?? {},
     updatedAt: data.updated_at ? String(data.updated_at) : undefined,
   };
 }
@@ -153,7 +160,10 @@ export async function loadCampaignRuntime(
 export async function saveCampaignRuntime(
   db: SupabaseClient,
   campaignId: string,
-  rt: Pick<CampaignRuntime, "transcript" | "history" | "log" | "focusIds" | "tickedThisScene" | "combat" | "npcs">,
+  rt: Pick<
+    CampaignRuntime,
+    "transcript" | "history" | "log" | "focusIds" | "tickedThisScene" | "combat" | "npcs" | "sceneCard" | "npcRelations"
+  >,
 ): Promise<void> {
   await db.from("campaign_runtime").upsert({
     campaign_id: campaignId,
@@ -164,8 +174,55 @@ export async function saveCampaignRuntime(
     ticked_this_scene: rt.tickedThisScene,
     combat: rt.combat,
     npcs: rt.npcs,
+    scene_card: rt.sceneCard,
+    npc_relations: rt.npcRelations,
     updated_at: new Date().toISOString(),
   });
+}
+
+// ── Scene summaries (CONTINUITY.md tier RECENT) ──────────────────────────────
+
+/** Persist one compressed scene record. */
+export async function saveScene(
+  db: SupabaseClient,
+  campaignId: string,
+  scene: SceneMemory,
+): Promise<void> {
+  await db.from("scenes").upsert({
+    id: `scene-${campaignId}-${scene.seq}`,
+    campaign_id: campaignId,
+    seq: scene.seq,
+    title: scene.title,
+    location_id: scene.locationId ?? null,
+    summary: scene.summary,
+    entity_refs: scene.entityRefs,
+    ended_at: new Date().toISOString(),
+  });
+}
+
+/** Load a campaign's most recent scene summaries, oldest→newest. */
+export async function loadRecentScenes(
+  db: SupabaseClient,
+  campaignId: string,
+  limit = 20,
+): Promise<SceneMemory[]> {
+  const { data, error } = await db
+    .from("scenes")
+    .select("seq,title,summary,entity_refs,location_id")
+    .eq("campaign_id", campaignId)
+    .order("seq", { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  return data
+    .map((r) => ({
+      seq: Number(r.seq),
+      title: String(r.title ?? ""),
+      summary: String(r.summary ?? ""),
+      entityRefs: (r.entity_refs as string[]) ?? [],
+      locationId: r.location_id ? String(r.location_id) : undefined,
+    }))
+    .filter((s) => s.summary.length > 0)
+    .reverse();
 }
 
 export interface CampaignSummary {

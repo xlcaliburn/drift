@@ -108,14 +108,28 @@ export const TurnPlan = z.object({
   ),
   /** Named NPCs introduced or used this turn — the engine persists new ones to the
    *  world's cast (at the current location) so they're REMEMBERED and recognized
-   *  when the player returns. Keeps continuity across scenes. */
+   *  when the player returns. `disposition` nudges their standing with the player
+   *  (±1, engine-clamped -3..+3); `note` overwrites their one-line last-interaction
+   *  memory; `relationship` labels who they are to the player (set once). */
   npcs: optionalNullable(
     z.array(
       z.object({
         name: z.string().min(1).max(60),
         oneBreath: optionalNullable(z.string()),
+        disposition: optionalNullable(z.coerce.number().int().min(-1).max(1)),
+        note: optionalNullable(z.string().max(160)),
+        relationship: optionalNullable(z.string().max(60)),
       }),
     ).max(4),
+  ),
+  /** Scene-card updates (CONTINUITY.md tier NOW): `situation` overwrites the
+   *  one-line "what is happening"; `beats` appends promises/threats/agreements
+   *  made this turn (engine caps both). */
+  scene: optionalNullable(
+    z.object({
+      situation: optionalNullable(z.string().max(300)),
+      beats: optionalNullable(z.array(z.string().min(1).max(200)).max(3)),
+    }),
   ),
   /** Scene wrap — engine runs the checklist (wages, fees, clocks). */
   sceneEnd: z

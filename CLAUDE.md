@@ -88,11 +88,23 @@ an opening shot (roll-to-hit → damage), then flows into multi-turn combat — 
 skills never resolve as a self-only `roll_check`. This is the player-triggered
 half of the I-2 backstop.
 
-**Next up (build order, docs are ready):** **items v1** (`ITEMS.md` — catalog +
-consumables + slots + loot + dock services/debt) → **crew v1** (`CREW.md` —
-recruitment + scaling upkeep). Then the shared-world runtime / `WORLD_SYSTEMS.md`
-artifact slice. Small deferred: optimistic-lock guard on `campaign_runtime`,
-the I-2 combat backstop (auto-start combat if the model under-fires `combatStart`).
+**Scene memory / continuity v1 done (`CONTINUITY.md`):** the scene is the unit of
+memory. Engine-owned **SceneCard** (seq/turnCount/presentNpcIds + model-proposed
+situation/beats, capped) rides every prompt as SCENE NOW; present NPCs are forced
+into retrieval all scene. **NPC relations** (`campaign_runtime.npc_relations`,
+migration 012) — relationship (set-once) + disposition (engine-clamped −3..+3,
+model nudges ±1/NPC/turn, visible "👤 Doyle: warm → trusted" lines) + rolling
+lastNote — render on NPC context lines and in the sidebar Contacts section.
+**Scene summaries**: sceneEnd (or the auto-close backstop at 12 turns) triggers a
+background `summarizeScene` → `scenes` table → PREVIOUSLY block (last 3 + up to 2
+entity-matched older scenes). Deferred: facts ledger (v2), history 10→6 shrink
+(D-3, one playtest cycle after summaries prove out).
+
+**Next up (build order, docs are ready):** items v1 slices B–E (`ITEMS.md` —
+slots + loot + ammo spend + shops; slice A consumables SHIPPED) → **crew v1**
+(`CREW.md`). Then the shared-world runtime / `WORLD_SYSTEMS.md` artifact slice.
+Small deferred: optimistic-lock guard on `campaign_runtime`, the I-2 combat
+backstop (auto-start combat if the model under-fires `combatStart`).
 
 ## Locked decisions (don't re-litigate)
 
@@ -144,6 +156,7 @@ the I-2 combat backstop (auto-start combat if the model under-fires `combatStart
 ## Docs map
 
 - `ARCHITECTURE.md` — why it's built this way (token economics, engine/narrator split)
+- `CONTINUITY.md` — scene-memory design (scene card / summaries / NPC relations)
 - `COMBAT.md` / `CREW.md` / `ITEMS.md` — build-ready designs: multi-turn combat
   (both scales, escape-by-disparity, tool-loop retirement), crew recruitment +
   scaling upkeep, item catalog + consumables + inventory slots. Build order:

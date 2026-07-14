@@ -4,6 +4,7 @@ import type { CampaignState, Scene, Npc } from "@/shared/schemas";
 import type { EngineEvent } from "@/engine";
 import type { ChatEntry } from "@/shared/chat";
 import type { CombatState } from "@/shared/combat";
+import { freshSceneCard, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 
 /** Campaign-scoped NPCs (narrator-introduced or creation relations) carry these id
  *  prefixes; universe-seed NPCs do not. Used to split the two for persistence. */
@@ -39,6 +40,12 @@ export interface SessionData {
   tickedThisScene: string[];
   /** Active multi-turn combat, or null when not fighting. */
   combat: CombatState | null;
+  /** Current scene's working memory (CONTINUITY.md tier NOW). */
+  sceneCard: SceneCard;
+  /** Player's standing per NPC id (CONTINUITY.md tier CANON). */
+  npcRelations: NpcRelations;
+  /** Recent scene summaries, oldest→newest (CONTINUITY.md tier RECENT). */
+  recentScenes: SceneMemory[];
 }
 
 const store = new Map<string, SessionData>();
@@ -58,11 +65,12 @@ export async function getSession(campaignId: string): Promise<SessionData | null
 
   if (hasSupabase()) {
     try {
-      const { getServiceClient, loadCampaignState, loadCampaignRuntime } = await import("@/db/queries");
+      const { getServiceClient, loadCampaignState, loadCampaignRuntime, loadRecentScenes } = await import("@/db/queries");
       const db = getServiceClient();
-      const [state, runtime] = await Promise.all([
+      const [state, runtime, recentScenes] = await Promise.all([
         loadCampaignState(db, campaignId),
         loadCampaignRuntime(db, campaignId),
+        loadRecentScenes(db, campaignId),
       ]);
       // Restore the durable runtime snapshot (transcript, history, dice log) so a
       // cold load resumes the latest run. Only fall back to a freshly-seeded
@@ -82,6 +90,12 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               focusIds: runtime.focusIds,
               tickedThisScene: runtime.tickedThisScene,
               combat: runtime.combat,
+              // Legacy runtimes (pre-012) have no card — start one at the current
+              // transcript tail so the first summarized scene isn't the whole log.
+              sceneCard:
+                runtime.sceneCard ?? freshSceneCard(recentScenes.length + 1, runtime.transcript.length),
+              npcRelations: runtime.npcRelations ?? {},
+              recentScenes,
             }
           : {
               state,
@@ -92,6 +106,9 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               focusIds: [],
               tickedThisScene: [],
               combat: null,
+              sceneCard: freshSceneCard(),
+              npcRelations: {},
+              recentScenes,
             };
       store.set(campaignId, session);
       return session;
@@ -132,6 +149,8 @@ export async function persistSession(campaignId: string, session: SessionData): 
       combat: session.combat,
       // Only the campaign's OWN NPCs — never the universe-shared seed cast.
       npcs: session.state.npcs.filter((n) => isCampaignNpc(n.id)),
+      sceneCard: session.sceneCard,
+      npcRelations: session.npcRelations,
     });
   } catch (e) {
     console.error(

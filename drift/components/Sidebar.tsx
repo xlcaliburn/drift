@@ -6,6 +6,7 @@ import { tickMax } from "@/engine/progression";
 import { shipIsOwned } from "@/shared/recap";
 import { backgrounds } from "@/content/creation";
 import type { CombatState } from "@/shared/combat";
+import { dispositionLabel, type NpcRelations } from "@/shared/scene";
 import skillsMeta from "@/content/skills.json";
 
 const ATTR_ORDER = ["might", "reflex", "vitality", "intellect", "perception", "presence"] as const;
@@ -66,11 +67,14 @@ type Tab = "status" | "traits" | "map" | "clocks";
 export default function Sidebar({
   state,
   combat = null,
+  npcRelations = {},
   mobileOpen = false,
   onClose,
 }: {
   state: CampaignState;
   combat?: CombatState | null;
+  /** Player↔NPC standing overlay — feeds the Contacts section. */
+  npcRelations?: NpcRelations;
   /** Mobile slide-over drawer control (desktop rail ignores these). */
   mobileOpen?: boolean;
   onClose?: () => void;
@@ -97,7 +101,9 @@ export default function Sidebar({
       </div>
 
       <div className="scrollbar-thin flex-1 overflow-y-auto p-3 text-[13px]">
-        {tab === "status" && <StatusTab state={state} combat={combat} onDetails={() => setShowDetails(true)} />}
+        {tab === "status" && (
+          <StatusTab state={state} combat={combat} npcRelations={npcRelations} onDetails={() => setShowDetails(true)} />
+        )}
         {tab === "traits" && <TraitsTab state={state} />}
         {tab === "map" && <MapTab state={state} />}
         {tab === "clocks" && <ClocksTab state={state} />}
@@ -206,14 +212,24 @@ function condition(injuries?: { name: string }[]): { text: string; className: st
 function StatusTab({
   state,
   combat,
+  npcRelations,
   onDetails,
 }: {
   state: CampaignState;
   combat: CombatState | null;
+  npcRelations: NpcRelations;
   onDetails: () => void;
 }) {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
   const active = state.threads.filter((t) => t.status === "active");
+  // Contacts: every NPC the player has a standing with, strongest ties first.
+  const contacts = Object.entries(npcRelations)
+    .flatMap(([id, rel]) => {
+      const npc = state.npcs.find((n) => n.id === id);
+      return npc ? [{ rel, npc }] : [];
+    })
+    .sort((a, b) => Math.abs(b.rel.disposition) - Math.abs(a.rel.disposition))
+    .slice(0, 8);
   return (
     <div className="space-y-4">
       {combat?.active && (
@@ -330,6 +346,30 @@ function StatusTab({
           </div>
         ))}
       </div>
+
+      {contacts.length > 0 && (
+        <div className="rounded border border-edge p-2">
+          <div className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">Contacts</div>
+          <div className="space-y-1">
+            {contacts.map(({ npc, rel }) => (
+              <div key={npc.id} className="flex items-baseline justify-between gap-2" title={rel.lastNote ? `Last: ${rel.lastNote}` : npc.oneBreath}>
+                <span className="truncate text-[13px] text-neutral-200">
+                  {npc.name}
+                  {rel.relationship && <span className="text-neutral-500"> · {rel.relationship}</span>}
+                </span>
+                <span
+                  className={
+                    "shrink-0 text-[11px] " +
+                    (rel.disposition > 0 ? "text-good" : rel.disposition < 0 ? "text-bad" : "text-neutral-500")
+                  }
+                >
+                  {dispositionLabel(rel.disposition)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
