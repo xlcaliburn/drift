@@ -65,6 +65,15 @@ describe("scene card (tier NOW)", () => {
     expect(card.beats.length).toBe(MAX_BEATS); // oldest evicted, capped
     expect(card.beats).not.toContain("Doyle promised 200c");
   });
+
+  it("refreshSituation keeps Here & now live — derives situation from the narration", () => {
+    const card = freshSceneCard();
+    const rt = new TurnRuntime(baseState(), rng, { sceneCard: card });
+    // Stale line from an earlier beat; the model didn't set one this turn.
+    card.situation = "Aboard the Dust Eater, docking collar to the Magpie";
+    rt.refreshSituation("You lay the chip on the fixer's counter. The broker watches, arms crossed.");
+    expect(card.situation).toBe("You lay the chip on the fixer's counter."); // first sentence
+  });
 });
 
 describe("narrative gear changes", () => {

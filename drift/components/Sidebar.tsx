@@ -380,12 +380,21 @@ function StatusTab({
 
       <div className="rounded border border-edge p-2">
         <div className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">Here &amp; now</div>
-        {/* Whereabouts: the scene's free-text place (a ship, the black) when the
-            narrator set one, else the fixed station; the station shows as context. */}
-        <div className="text-neutral-200">{sceneCard?.place ?? loc?.name ?? "Unknown"}</div>
-        {sceneCard?.place && loc?.name && !sceneCard.place.includes(loc.name) && (
-          <div className="text-[11px] text-neutral-600">near {loc.name}</div>
-        )}
+        {/* Whereabouts: the free-text place (a ship, the black) ONLY while it's fresh
+            (set/reaffirmed this scene) — a place from an earlier scene is stale, so
+            fall back to the accurate fixed station. */}
+        {(() => {
+          const freshPlace =
+            sceneCard?.place && sceneCard.placeSeq === sceneCard.seq ? sceneCard.place : undefined;
+          return (
+            <>
+              <div className="text-neutral-200">{freshPlace ?? loc?.name ?? "Unknown"}</div>
+              {freshPlace && loc?.name && !freshPlace.includes(loc.name) && (
+                <div className="text-[11px] text-neutral-600">near {loc.name}</div>
+              )}
+            </>
+          );
+        })()}
 
         {/* The live scene: what's happening, who's here, what's been established. */}
         {sceneCard?.situation && (

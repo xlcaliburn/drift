@@ -780,7 +780,10 @@ export class TurnRuntime {
    *  overwrite, `beats` append. Engine caps everything (F-2/F-4). */
   updateScene(situation?: string, beats?: string[], place?: string, dangers?: string[]) {
     if (situation?.trim()) this.sceneCard.situation = situation.trim().slice(0, MAX_SITUATION_CHARS);
-    if (place?.trim()) this.sceneCard.place = place.trim().slice(0, 120);
+    if (place?.trim()) {
+      this.sceneCard.place = place.trim().slice(0, 120);
+      this.sceneCard.placeSeq = this.sceneCard.seq; // stamp freshness for the sidebar
+    }
     // Overwrite semantics: [] explicitly CLEARS a dealt-with danger.
     if (dangers) this.sceneCard.dangers = dangers.map((d) => d.trim().slice(0, 80)).filter(Boolean).slice(0, 3);
     for (const b of beats ?? []) {
@@ -790,6 +793,17 @@ export class TurnRuntime {
       if (this.sceneCard.beats.length >= MAX_BEATS) this.sceneCard.beats.shift(); // oldest out
       this.sceneCard.beats.push(beat);
     }
+  }
+
+  /** Keep Here & now LIVE: when the model didn't set a `situation` this turn, derive
+   *  it from the turn's narration (first sentence, capped) so the box reflects the
+   *  current beat instead of showing a stale line from turns ago. */
+  refreshSituation(narration: string) {
+    const text = narration.trim();
+    if (!text) return;
+    const first = text.match(/^[\s\S]*?[.!?](?=\s|$)/)?.[0] ?? text;
+    const s = first.trim().replace(/\s+/g, " ").slice(0, MAX_SITUATION_CHARS);
+    if (s) this.sceneCard.situation = s;
   }
 
   /**

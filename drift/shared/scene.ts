@@ -23,6 +23,10 @@ export interface SceneCard {
    *  aboard the Dust Eater"), which the fixed location table can't express (on a
    *  ship, in transit, in space). Persists across scenes until the player moves. */
   place?: string;
+  /** Scene seq when `place` was last set/reaffirmed. The sidebar only shows `place`
+   *  as the headline when this equals the current seq — otherwise it's stale from an
+   *  earlier scene, so the accurate fixed location is shown instead. */
+  placeSeq?: number;
   /** Model-appended micro-facts (promises/threats/agreements) made this scene. */
   beats: string[];
   /** ONGOING environmental dangers active right now ("toxic coolant fog") —
@@ -90,6 +94,7 @@ export function carryScene(prev: SceneCard, startTranscriptIdx: number): SceneCa
     presentNpcIds: [],
     situation: "",
     place: prev.place,
+    placeSeq: prev.placeSeq,
     beats: [],
     // Dangers are scene-scoped: a new scene starts clear; the narrator re-states
     // any hazard that genuinely persists (overwrite semantics).

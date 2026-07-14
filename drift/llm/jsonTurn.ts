@@ -658,6 +658,9 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       const re = new RegExp(`\\b${nm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
       if (re.test(lower)) runtime.markPresent(n.id);
     }
+    // Keep Here & now live: the cheap model rarely sets scene.situation, so it goes
+    // stale. When it didn't set one THIS turn, derive it from the narration.
+    if (!plan.scene?.situation?.trim()) runtime.refreshSituation(narration);
   }
   const cap = inTutorial(runtime.state) ? TUTORIAL_CHOICE_COUNT : 4;
   // Checks were resolved up front (resolveChoiceChecks) — tagged or label-inferred
