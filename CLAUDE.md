@@ -63,9 +63,11 @@ rescue with a held stim, hostile-over-you pressure, tutorial-safe), **universe-s
 standing stays in `npc_relations`) + backstory NPCs at creation, the People /
 Factions sidebar tabs, **net-worth enemy scaling** (COMBAT.md §1 —
 `shared/netWorth.ts`, combatStart clamped to the player's threat band, spawn-count
-backstop, shields T3/boss-only), and **items v1 COMPLETE** (`ITEMS.md` — full
-weapon/armor catalog with legacy-gear mapping, inventory slots 8+might,
-engine-owned rotating markets with `purchase`/`sell` TurnPlan fields).
+backstop, shields T3/boss-only), and **items COMPLETE** (`ITEMS.md` — full
+weapon/armor catalog with legacy-gear mapping, inventory slots 8+might, engine-owned
+rotating markets (`purchase`/`sell`), deterministic out-of-combat item chips +
+name-resilient consumable resolution, full-pack drop-to-take swap chips, and dock
+hull repair + credit/debt payoff loop (ECONOMY E-3)).
 
 **What's LEFT to build** (rough order; each has a design doc):
 
