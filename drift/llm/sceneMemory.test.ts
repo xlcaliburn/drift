@@ -140,7 +140,7 @@ describe("narrative gear changes", () => {
     expect(rt.applyGearChange("a stripped access panel", "gain")).toContain("Gained");
   });
 
-  it("gain adds a flavor item (deduped); lose removes it — catalog items protected", () => {
+  it("gain adds a flavor item (deduped); lose removes it — catalog stacks decrement", () => {
     const s = baseState();
     s.characters[0].gear = [{ name: "Stim", itemId: "stim", qty: 2 }] as typeof s.characters[0]["gear"];
     const rt = new TurnRuntime(s, rng);
@@ -150,9 +150,12 @@ describe("narrative gear changes", () => {
     expect(rt.state.characters[0].gear.some((g) => g.name === "vacuum-rated facemask")).toBe(true);
     expect(rt.applyGearChange("vacuum-rated facemask", "lose")).toContain("Lost"); // losses are always allowed
     expect(rt.state.characters[0].gear.some((g) => g.name === "vacuum-rated facemask")).toBe(false);
-    // Catalog-owned gear can't be removed narratively (spent via useItem only).
-    expect(rt.applyGearChange("Stim", "lose")).toBeNull();
-    expect(rt.state.characters[0].gear.some((g) => g.name === "Stim")).toBe(true);
+    // Catalog-owned gear: a narrative loss (drop / confiscation — ITEMS.md slice B)
+    // decrements the stack by ONE; the entry goes when the last one does.
+    expect(rt.applyGearChange("Stim", "lose")).toContain("Lost");
+    expect(rt.state.characters[0].gear.find((g) => g.itemId === "stim")?.qty).toBe(1);
+    expect(rt.applyGearChange("Stim", "lose")).toContain("Lost");
+    expect(rt.state.characters[0].gear.some((g) => g.itemId === "stim")).toBe(false);
   });
 });
 

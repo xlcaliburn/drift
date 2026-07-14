@@ -52,7 +52,7 @@ function maxDamage(notation: string): number {
  *  catalog id) is valued by what it is — a weapon by its damage die, armor by its
  *  AC bonus, else a small nominal for kit. Calibrated so a starting loadout
  *  (a gun or two + light armor) plus ~120 credits lands under the T2 cutoff. */
-function gearValue(g: Gear): number {
+export function gearValue(g: Gear): number {
   const qty = g.qty ?? 1;
   if (g.itemId) return (catalogItem(g.itemId)?.price ?? 0) * qty;
   if (g.acBonus) return g.acBonus * 80 * qty; // +2 vest → 160

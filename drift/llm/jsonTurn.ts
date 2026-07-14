@@ -679,6 +679,22 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     // VISIBLE — otherwise the narration claims a heal that never happened.
     else if (res.error) emit([`⚠ Can't use item: ${res.error}`]);
   }
+  // Shop transactions (ITEMS.md slice E) — the engine owns the whole exchange:
+  // shelf check, rep-adjusted price, credits, pack space. Failures are visible
+  // for the same reason as useItem: a narrated deal that didn't happen must not
+  // pass silently.
+  if (plan.purchase && pc) {
+    toolCalls.push("buy_item");
+    const res = runtime.buyItem(plan.purchase.itemId, plan.purchase.qty ?? 1);
+    if (res.line) emit([res.line]);
+    else if (res.error) emit([`⚠ No sale: ${res.error}`]);
+  }
+  if (plan.sell && pc) {
+    toolCalls.push("sell_item");
+    const res = runtime.sellItem(plan.sell.name);
+    if (res.line) emit([res.line]);
+    else if (res.error) emit([`⚠ No sale: ${res.error}`]);
+  }
   // Persist any named NPCs the narrator introduced so the world remembers them
   // (continuity — recognized when the player returns), mark them present in the
   // scene, and apply relationship updates (disposition nudge / last-note / tie).

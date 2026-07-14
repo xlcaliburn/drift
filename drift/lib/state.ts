@@ -7,6 +7,7 @@ import type { CombatState } from "@/shared/combat";
 import { freshSceneCard, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import { mergeNpcs } from "@/shared/npcMerge";
 import { isShareableNpcName } from "@/shared/npcExtract";
+import { mapLegacyGear } from "@/shared/items";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Dossier } from "@/shared/multiplayer";
 
@@ -78,6 +79,10 @@ export async function getSession(campaignId: string): Promise<SessionData | null
       // Fold the campaign's private NPCs (persisted on the runtime) back into the
       // universe-seed cast so narrator-introduced NPCs survive a cold reload.
       if (runtime?.npcs?.length) state.npcs = mergeNpcs(state.npcs, runtime.npcs);
+      // One-shot legacy-gear mapping (ITEMS.md IT-1): attach catalog ids to
+      // freeform gear so price/slot data exist for netWorth, slots, and shops.
+      // Idempotent — mapped gear passes through untouched; persists on next save.
+      state.characters = state.characters.map((c) => mapLegacyGear(c));
       const session: SessionData =
         runtime && runtime.history.length
           ? {

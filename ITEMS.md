@@ -1,9 +1,36 @@
 # ITEMS.md — Item Audit, Consumables & Inventory Design
 
 *Consumables (catalog + combat use) and loot drops are **shipped**. Remaining:
-inventory slots (B), ammo spend / reload economy (D), shops — buying + selling
-(E). This doc holds the design for those three plus the catalog context they
-build on.*
+weapon/armor catalog (W), inventory slots (B), ammo spend / reload economy (D),
+shops — buying + selling (E). This doc holds the design for those plus the
+catalog context they build on.*
+
+## Locked decisions (2026-07-14)
+
+- **No per-shot personal ammo.** The `rounds` field stays dormant; missiles are
+  the only tracked ammo (already debited on fire, gated when dry).
+- **Sell rate: flat 40%** of value (catalog price, else the netWorth gear
+  heuristic). No rep scaling on sales; rep scales BUY prices only (±20%).
+- **Stock rotates every 30 in-game days** — seeded per (location, 30-day chunk),
+  so two players at the same station in the same window see the same shelves.
+- **Top-end gear is market-gated.** Every catalog weapon/armor has a
+  `marketTier`; a market only shelves items at/below its own tier (blackmarket
+  T3 > commerce T2 > backwater T1). The best guns aren't for sale at a
+  backwater dock — this keeps the net-worth enemy-scaling ratchet honest
+  (COMBAT.md §1): you buy up, your net worth crosses a band, tougher enemies
+  unlock.
+
+## Slice W — weapon/armor/tool catalog (foundation for B/E)
+
+- Add weapons/armor/tools to `content/items.json`: id, price, `damage`/`acBonus`,
+  slot cost, `marketTier`. Prices calibrated so a fresh loadout + ¢120 stays
+  UNDER the ¢600 T2 net-worth cutoff.
+- **Legacy mapping (IT-1)** via an alias table: freeform creation-gear names
+  ("Heavy plate", "Riot gun", "Hunting rifle") attach an `itemId` on session
+  load; the display name is preserved, the id brings price/slot data. Unmatched
+  gear stays zero-effect flavor. netWorth then uses real prices.
+- AC from armor = the BEST single piece (no vest-stacking), recomputed by the
+  engine whenever armor is gained/lost/sold.
 
 ---
 
@@ -43,31 +70,38 @@ check — or a quest reward). Players can't author their own items.
 
 ## Remaining — B. Inventory space (activate the dormant `slots`/`maxSlots` fields)
 
-- `maxSlots = 6 + might` (recomputed like HP at creation; retrofit via a one-time
-  backfill for existing characters).
-- Slot costs: weapon 2 (sidearm 1), armor 2, tool 1, consumable 1 per stack.
-  **Consumables stack ×3 per slot** (3 stims = 1 slot).
-- Full inventory ⇒ acquisition offers become swap choices ("drop X to take Y?") —
-  engine-generated chips, never silent loss.
+- `maxSlots = 8 + might`, computed live by a helper (no DB backfill needed —
+  the stored fields are ignored). *(Deviation from the original 6+might: a fresh
+  loadout uses ~6 slots, so 6+might would start most characters full.)*
+- Slot costs come from the catalog (`slot` field); flavor gear: weapon 2
+  (light 1), armor 2, else 1. **Consumables stack ×3 per slot** (3 stims = 1 slot).
+- Full inventory ⇒ the gain is blocked with a visible line ("Inventory full —
+  X left behind; drop something first"), never silent loss. Engine-generated
+  swap chips are the polish pass, not v1.
 - The `stims` counter migrates into a normal catalog stack ("Stim ×2" in gear);
   the field stays for back-compat but the catalog is the source of truth.
 - UI: Status tab inventory becomes slot-aware — `Inventory 7/9` + stack badges.
 
 ## Remaining — D. Ammo spend / reload economy
 
-- Missiles (and any future ammo-bearing weapon) are consumed on use; the engine
-  debits ammo when a firing action resolves, never narratively.
-- Reload is a purchase, not free: **Missile reload +2** at a dock (price ~2×
-  `missileCost`), gated to dock/market access — no field reload.
-- Ties into shops (E): reload stock is part of a market's tier-appropriate subset.
+- Missiles only (locked: no per-shot personal ammo). Firing debit + dry gating
+  are SHIPPED; what's left is the purchase gate — **Missile reload +2** is
+  bought at a market (price ~2× `missileCost`), part of slice E's stock.
 
 ## Remaining — E. Shops / markets (the credit sink)
 
-- Stations with a `market` tag sell a tier-appropriate subset at catalog price
-  (±20% by local rep). Buying is a choice chip → engine debits credits, adds
-  item. This is the missing **credit sink** (credits currently have few sinks).
-- Selling: the inverse — offload looted/unwanted gear for credits (band below buy
-  price).
+- Market tier from location tags: `blackmarket` → T3 shelves, `commerce` → T2,
+  `hazard`/`hidden` → no market, anything else → T1 basics.
+- Stock = all consumables + a seeded, rotating (30-day chunk) pick of
+  weapons/armor/tools at/below the market's tier. Deterministic per
+  (location, chunk): shared canon shelves.
+- Buy at catalog price ±20% by local controlling-faction rep; the engine
+  validates stock/credits/slots, debits, adds gear. New TurnPlan fields
+  `purchase: {itemId, qty?}` / `sell: {name}` — the model narrates the counter,
+  the ENGINE prints every figure (same contract as offers/payouts).
+- A `MARKET HERE` context block lists the actual shelves so the AI can only
+  sell what exists.
+- Selling: flat 40% of value (catalog price, else the netWorth heuristic).
 - Pricing rule (from ECONOMY.md E-3): **dock repair (¢12/HP) is always the
   efficient option**; the hull patch kit (~¢14.5/HP) is the field-emergency
   premium for when you can't reach a dock. Docks also extend credit — repair can

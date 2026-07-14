@@ -136,6 +136,18 @@ export const TurnPlan = z.object({
   combatStart: optionalNullable(CombatStartSpec),
   /** The player uses a consumable out of combat — the engine applies the effect. */
   useItem: optionalNullable(z.object({ itemId: z.string().min(1) })),
+  /** The player BUYS from the local market (ITEMS.md slice E). The catalog id must
+   *  be on the MARKET HERE shelves; the ENGINE validates stock/credits/pack space,
+   *  debits, and prints the figure — the model only narrates the counter. */
+  purchase: optionalNullable(
+    z.object({
+      itemId: z.string().min(1),
+      qty: optionalNullable(z.coerce.number().int().min(1).max(5)),
+    }),
+  ),
+  /** The player SELLS carried gear (flat ~40% of value, engine-priced). `name`
+   *  is the gear entry as listed on the PC gear line. */
+  sell: optionalNullable(z.object({ name: z.string().min(1).max(60) })),
   /** Job/bounty/deal concluded → the ENGINE rolls the credits inside the tier's
    *  payout band (ECONOMY.md — the model never sets amounts). */
   payout: optionalNullable(

@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "note": "Item catalog (ITEMS.md). Every mechanical item has an effect the ENGINE executes — the narrator never applies an effect. Prices in credits; slot = inventory slot cost; combat = usable as a combat action. Effect kinds: heal | aoe | autoFlee | autoCheck | restoreShield | healShip | reloadMissiles.",
+  "version": 2,
+  "note": "Item catalog (ITEMS.md). Every mechanical item has an effect the ENGINE executes — the narrator never applies an effect. Prices in credits; slot = inventory slot cost; combat = usable as a combat action. Effect kinds: heal | aoe | autoFlee | autoCheck | restoreShield | healShip | reloadMissiles. marketTier gates which markets shelve the item (blackmarket T3 > commerce T2 > backwater T1); prices are calibrated so a fresh creation loadout + starting credits stays under the ~600 T2 net-worth cutoff (COMBAT.md).",
   "items": {
     "stim": {
       "name": "Stim", "type": "consumable", "scale": "personal", "slot": 1, "price": 30,
@@ -33,6 +33,81 @@
     "missileReload": {
       "name": "Missile reload", "type": "consumable", "scale": "ship", "slot": 1, "price": 102,
       "combat": false, "verb": "Load", "effect": { "kind": "reloadMissiles", "amount": 2 }
+    },
+
+    "holdout": {
+      "name": "Holdout pistol", "type": "weapon", "scale": "personal", "slot": 1, "price": 50,
+      "combat": false, "verb": "Carry", "damage": "1d6", "marketTier": "T1"
+    },
+    "sidearm": {
+      "name": "Sidearm", "type": "weapon", "scale": "personal", "slot": 1, "price": 90,
+      "combat": false, "verb": "Carry", "damage": "1d8", "marketTier": "T1"
+    },
+    "lightBlade": {
+      "name": "Combat knife", "type": "weapon", "scale": "personal", "slot": 1, "price": 35,
+      "combat": false, "verb": "Carry", "damage": "1d6", "marketTier": "T1"
+    },
+    "shockBaton": {
+      "name": "Shock baton", "type": "weapon", "scale": "personal", "slot": 1, "price": 70,
+      "combat": false, "verb": "Carry", "damage": "1d8", "marketTier": "T1"
+    },
+    "scattergun": {
+      "name": "Scattergun", "type": "weapon", "scale": "personal", "slot": 2, "price": 130,
+      "combat": false, "verb": "Carry", "damage": "2d4", "marketTier": "T1"
+    },
+    "combatRifle": {
+      "name": "Combat rifle", "type": "weapon", "scale": "personal", "slot": 2, "price": 200,
+      "combat": false, "verb": "Carry", "damage": "2d6", "marketTier": "T1"
+    },
+    "marksmanRifle": {
+      "name": "Marksman rifle", "type": "weapon", "scale": "personal", "slot": 2, "price": 240,
+      "combat": false, "verb": "Carry", "damage": "1d12", "marketTier": "T2"
+    },
+    "assaultRifle": {
+      "name": "Assault rifle", "type": "weapon", "scale": "personal", "slot": 2, "price": 380,
+      "combat": false, "verb": "Carry", "damage": "2d8", "marketTier": "T2"
+    },
+    "plasmaCarbine": {
+      "name": "Plasma carbine", "type": "weapon", "scale": "personal", "slot": 2, "price": 650,
+      "combat": false, "verb": "Carry", "damage": "2d10", "marketTier": "T3"
+    },
+    "railRifle": {
+      "name": "Rail rifle", "type": "weapon", "scale": "personal", "slot": 3, "price": 900,
+      "combat": false, "verb": "Carry", "damage": "3d6", "marketTier": "T3"
+    },
+
+    "paddedJacket": {
+      "name": "Padded jacket", "type": "armor", "scale": "personal", "slot": 1, "price": 70,
+      "combat": false, "verb": "Wear", "acBonus": 1, "marketTier": "T1"
+    },
+    "ballisticVest": {
+      "name": "Ballistic vest", "type": "armor", "scale": "personal", "slot": 2, "price": 160,
+      "combat": false, "verb": "Wear", "acBonus": 2, "marketTier": "T1"
+    },
+    "combatArmor": {
+      "name": "Combat armor", "type": "armor", "scale": "personal", "slot": 2, "price": 340,
+      "combat": false, "verb": "Wear", "acBonus": 3, "marketTier": "T2"
+    },
+    "poweredCarapace": {
+      "name": "Powered carapace", "type": "armor", "scale": "personal", "slot": 3, "price": 750,
+      "combat": false, "verb": "Wear", "acBonus": 4, "marketTier": "T3"
+    },
+
+    "scanner": {
+      "name": "Scanner", "type": "tool", "scale": "personal", "slot": 1, "price": 60,
+      "combat": false, "verb": "Carry", "marketTier": "T1"
+    },
+    "vacSuit": {
+      "name": "Vac suit", "type": "tool", "scale": "personal", "slot": 1, "price": 100,
+      "combat": false, "verb": "Wear", "marketTier": "T1"
+    },
+    "lockpicks": {
+      "name": "Lockpick set", "type": "tool", "scale": "personal", "slot": 1, "price": 80,
+      "combat": false, "verb": "Carry", "marketTier": "T2"
+    },
+    "grapnel": {
+      "name": "Grapnel line", "type": "tool", "scale": "personal", "slot": 1, "price": 45,
+      "combat": false, "verb": "Carry", "marketTier": "T1"
     }
   }
 }

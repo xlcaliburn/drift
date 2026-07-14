@@ -3,6 +3,7 @@ import type { CreationInput } from "@/shared/multiplayer";
 import type { NpcRelation } from "@/shared/scene";
 import { seededRng, type RNG } from "@/engine/rng";
 import { backgrounds, biasSkills, biasAttribute, attributeBaseline } from "@/content/creation";
+import { mapLegacyGear } from "@/shared/items";
 
 /**
  * Turn character-creation answers into a starting sheet — pure and
@@ -37,8 +38,13 @@ export function buildCharacterFromCreation(
   // one-shot. (Deliberate rebalance — hazard-damage numbers are unchanged; HP is
   // the lever, so a fight lasts a handful of rounds instead of ending in one volley.)
   const maxHp = Math.max(1, 18 + attributes.vitality);
-  const armorBonus = bg.gear.reduce((sum, g) => sum + (g.acBonus ?? 0), 0);
+  // Armor = the BEST single piece, not a sum — the same rule the engine applies
+  // when armor is bought/sold later (no vest-stacking). Loadouts carry one piece,
+  // so this matches the old sum for every background.
+  const armorBonus = Math.max(0, ...bg.gear.map((g) => g.acBonus ?? 0));
   const ac = 10 + attributes.reflex + armorBonus;
+  // Attach catalog ids to the loadout (price/slot data ride the id; names stay).
+  const gear = mapLegacyGear({ gear: bg.gear.map((g) => ({ ...g })) }).gear;
 
   return Character.parse({
     id: ids.id,
@@ -58,7 +64,7 @@ export function buildCharacterFromCreation(
     actionModifiers: {},
     backstory: bg.hook,
     drives: input.flavor.moralCode,
-    gear: bg.gear,
+    gear,
     injuries: [],
     parentFactionId: input.parentFactionId,
     loyaltyToParent: 4,

@@ -26,7 +26,9 @@ import {
 } from "@/engine/combatEngine";
 import { fleeDC, threatLevel } from "@/shared/combat";
 import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
-import { catalogItem, itemCount, allItems } from "@/shared/items";
+import { catalogItem, itemCount, allItems, slotsUsed, maxSlotsFor } from "@/shared/items";
+import { marketStock, repPriceFactor, localRep, SELL_RATE } from "@/engine/market";
+import { gearValue } from "@/shared/netWorth";
 import {
   freshSceneCard,
   dispositionLabel,
@@ -285,16 +287,33 @@ export class TurnRuntime {
       this.lootedThisTurn = true;
       const target = this.char(character.id);
       if (target) {
+        // Capacity-aware (ITEMS.md slice B): each find must fit or it's left in
+        // the wreck — the line says so. Credits always fit.
+        const cap = maxSlotsFor(target);
         let gear = [...(target.gear ?? [])];
-        for (const g of drop.gear) gear.push({ name: g.name, detail: g.detail });
+        let leftBehind = false;
+        for (const g of drop.gear) {
+          const next = [...gear, { name: g.name, detail: g.detail }];
+          if (slotsUsed({ ...target, gear: next }) > cap) {
+            leftBehind = true;
+            continue;
+          }
+          gear = next;
+        }
         for (const itemId of drop.consumables) {
           const cat = catalogItem(itemId);
           if (!cat) continue;
           const ex = gear.find((x) => x.itemId === itemId);
-          gear = ex
+          const next = ex
             ? gear.map((x) => (x === ex ? { ...x, qty: (x.qty ?? 1) + 1 } : x))
             : [...gear, { name: cat.name, itemId: cat.id, qty: 1 }];
+          if (slotsUsed({ ...target, gear: next }) > cap) {
+            leftBehind = true;
+            continue;
+          }
+          gear = next;
         }
+        if (leftBehind) drop.line += " · pack full — some of it stays in the wreck";
         this.state = {
           ...this.state,
           characters: this.state.characters.map((c) =>
@@ -754,6 +773,26 @@ export class TurnRuntime {
    * only remove non-catalog gear (catalog stacks are spent via useItem, and the
    * model may not delete mechanical items). Returns a display line, or null.
    */
+  /** Best armor bonus in a gear list — worn AC is the single best piece, never a
+   *  stack of vests (ITEMS.md slice W). */
+  private static bestArmor(gear: Character["gear"]): number {
+    return Math.max(0, ...gear.map((g) => g.acBonus ?? (g.itemId ? catalogItem(g.itemId)?.acBonus ?? 0 : 0)));
+  }
+
+  /** Write a character's gear; when the change touched armor, AC is recomputed
+   *  (10 + reflex + best piece) so a bought vest actually protects and a
+   *  confiscated one actually stops. */
+  private setGear(characterId: string, gear: Character["gear"], armorChanged: boolean) {
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((c) => {
+        if (c.id !== characterId) return c;
+        const ac = armorChanged ? 10 + (c.attributes?.reflex ?? 0) + TurnRuntime.bestArmor(gear) : c.ac;
+        return { ...c, gear, ac };
+      }),
+    };
+  }
+
   applyGearChange(name: string, action: "gain" | "lose", note?: string): string | null {
     const pc = this.pc();
     if (!pc) return null;
@@ -763,7 +802,7 @@ export class TurnRuntime {
     // over gear on a turn the engine recognises a legitimate source — a successful
     // scavenge/loot roll (lootedThisTurn) or a quest reward (questCompletedThisTurn).
     // Otherwise "I find a rocket launcher" grants nothing. Losses stay open (a
-    // confiscation is a valid consequence any time).
+    // confiscation — or dropping something to make room — is valid any time).
     if (action === "gain" && !this.lootedThisTurn && !this.questCompletedThisTurn) return null;
     // A gained item that IS a catalog item (a looted "medkit") must become the
     // MECHANICAL item — with itemId — or useItem's possession check will fail
@@ -777,33 +816,132 @@ export class TurnRuntime {
       cat ? g.itemId === cat.id : g.name.toLowerCase() === trimmed.toLowerCase(),
     );
     if (action === "gain") {
+      let gear: Character["gear"];
+      let label: string;
       if (cat) {
-        // Catalog item: stack it (a second medkit is +1, not a no-op).
-        const gear = existing
+        // Catalog item: stack it (a second medkit is +1, not a no-op). The entry
+        // carries the catalog's damage/AC so combat + the sheet see the mechanics.
+        gear = existing
           ? pc.gear.map((g) => (g === existing ? { ...g, qty: (g.qty ?? 1) + 1 } : g))
-          : [...pc.gear, { name: cat.name, itemId: cat.id, qty: 1 }];
-        this.state = {
-          ...this.state,
-          characters: this.state.characters.map((c) => (c.id === pc.id ? { ...c, gear } : c)),
-        };
+          : [
+              ...pc.gear,
+              {
+                name: cat.name,
+                itemId: cat.id,
+                qty: 1,
+                ...(cat.damage ? { damage: cat.damage } : {}),
+                ...(cat.acBonus ? { acBonus: cat.acBonus } : {}),
+              },
+            ];
         const n = (existing?.qty ?? 0) + 1;
-        return `🎒 Gained: ${cat.name}${n > 1 ? ` (×${n})` : ""}`;
+        label = `${cat.name}${n > 1 ? ` (×${n})` : ""}`;
+      } else {
+        if (existing) return null; // flavor item already carried — nothing to do
+        gear = [...pc.gear, { name: trimmed, ...(note?.trim() ? { detail: note.trim() } : {}) }];
+        label = trimmed;
       }
-      if (existing) return null; // flavor item already carried — nothing to do
-      const gear = [...pc.gear, { name: trimmed, ...(note?.trim() ? { detail: note.trim() } : {}) }];
-      this.state = {
-        ...this.state,
-        characters: this.state.characters.map((c) => (c.id === pc.id ? { ...c, gear } : c)),
-      };
-      return `🎒 Gained: ${trimmed}`;
+      // Inventory capacity (ITEMS.md slice B): a gain that doesn't fit is BLOCKED
+      // with a visible line — never a silent loss, never a silent over-stuff.
+      const cap = maxSlotsFor(pc);
+      if (slotsUsed({ ...pc, gear }) > cap) {
+        return `🎒 Pack full (${slotsUsed(pc)}/${cap} slots) — ${trimmed} left behind. Drop something to make room.`;
+      }
+      this.setGear(pc.id, gear, Boolean(cat?.acBonus));
+      return `🎒 Gained: ${label}`;
     }
-    if (!existing || existing.itemId) return null; // absent, or catalog-owned (engine-only)
-    const gear = pc.gear.filter((g) => g !== existing);
+    if (!existing) return null;
+    // Losing catalog gear decrements the stack (drop ONE stim, not the pouch);
+    // the entry goes when the last one does. Flavor gear is removed whole.
+    const gear =
+      existing.itemId && (existing.qty ?? 1) > 1
+        ? pc.gear.map((g) => (g === existing ? { ...g, qty: (g.qty ?? 1) - 1 } : g))
+        : pc.gear.filter((g) => g !== existing);
+    const hadArmor = Boolean(
+      existing.acBonus ?? (existing.itemId ? catalogItem(existing.itemId)?.acBonus : 0),
+    );
+    this.setGear(pc.id, gear, hadArmor);
+    return `🎒 Lost: ${existing.name}`;
+  }
+
+  // ── Shops (ITEMS.md slice E) — the ENGINE owns the whole transaction ────────
+
+  /** Buy from the local market. Validates the shelf, the price (catalog ±20% by
+   *  local-faction rep), credits, and pack space; prints the only figures the
+   *  player sees. Returns an error string for a VISIBLE ⚠ line — a narrated
+   *  purchase that didn't really happen must never pass silently. */
+  buyItem(itemId: string, qty = 1): { line?: string; error?: string } {
+    const pc = this.pc();
+    if (!pc) return { error: "no character" };
+    const n = Math.max(1, Math.min(5, Math.floor(qty)));
+    const loc = this.state.locations.find((l) => l.id === this.state.campaign.currentLocationId);
+    if (!loc) return { error: "no market here" };
+    const stock = marketStock(loc, (this.state.campaign.tendaysElapsed ?? 0) * 10);
+    const entry = stock.find((s) => s.item.id === itemId);
+    if (!entry) return { error: `${catalogItem(itemId)?.name ?? itemId} isn't on the shelves here` };
+    const rep = localRep(loc, this.state.factions, this.state.factionRep);
+    const price = Math.round(entry.price * repPriceFactor(rep)) * n;
+    if ((pc.credits ?? 0) < price) return { error: `can't afford it (¢${price}, holding ¢${pc.credits ?? 0})` };
+
+    const cat = entry.item;
+    const existing = pc.gear.find((g) => g.itemId === cat.id);
+    const gear = existing
+      ? pc.gear.map((g) => (g === existing ? { ...g, qty: (g.qty ?? 1) + n } : g))
+      : [
+          ...pc.gear,
+          {
+            name: cat.name,
+            itemId: cat.id,
+            qty: n,
+            ...(cat.damage ? { damage: cat.damage } : {}),
+            ...(cat.acBonus ? { acBonus: cat.acBonus } : {}),
+          },
+        ];
+    const cap = maxSlotsFor(pc);
+    if (slotsUsed({ ...pc, gear }) > cap) {
+      return { error: `pack full (${slotsUsed(pc)}/${cap} slots) — drop something first` };
+    }
+    this.setGear(pc.id, gear, Boolean(cat.acBonus));
+    const after = (pc.credits ?? 0) - price;
     this.state = {
       ...this.state,
-      characters: this.state.characters.map((c) => (c.id === pc.id ? { ...c, gear } : c)),
+      characters: this.state.characters.map((c) => (c.id === pc.id ? { ...c, credits: after } : c)),
     };
-    return `🎒 Lost: ${existing.name}`;
+    const line = `🛒 Bought ${cat.name}${n > 1 ? ` ×${n}` : ""} — ¢${price}. ¢${after} left.`;
+    this.events.push({ type: "note", breakdown: line });
+    return { line };
+  }
+
+  /** Sell carried gear at the flat 40% rate (catalog price, else the netWorth
+   *  heuristic). Decrements a stack by one; flavor gear goes whole. */
+  sellItem(name: string): { line?: string; error?: string } {
+    const pc = this.pc();
+    if (!pc) return { error: "no character" };
+    const norm = name.trim().toLowerCase().replace(/^(a|an|the)\s+/, "");
+    const existing =
+      pc.gear.find((g) => g.name.toLowerCase() === norm) ??
+      pc.gear.find((g) => g.itemId && g.itemId.toLowerCase() === norm) ??
+      pc.gear.find((g) => g.name.toLowerCase().includes(norm));
+    if (!existing) return { error: `not carrying "${name.trim()}"` };
+    const unitValue = existing.itemId
+      ? catalogItem(existing.itemId)?.price ?? 0
+      : gearValue({ ...existing, qty: 1 });
+    const paid = Math.max(1, Math.round(unitValue * SELL_RATE));
+    const gear =
+      existing.itemId && (existing.qty ?? 1) > 1
+        ? pc.gear.map((g) => (g === existing ? { ...g, qty: (g.qty ?? 1) - 1 } : g))
+        : pc.gear.filter((g) => g !== existing);
+    const hadArmor = Boolean(
+      existing.acBonus ?? (existing.itemId ? catalogItem(existing.itemId)?.acBonus : 0),
+    );
+    this.setGear(pc.id, gear, hadArmor);
+    const after = (this.pc()?.credits ?? 0) + paid;
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((c) => (c.id === pc.id ? { ...c, credits: after } : c)),
+    };
+    const line = `💰 Sold ${existing.name} — +¢${paid}. ¢${after} total.`;
+    this.events.push({ type: "note", breakdown: line });
+    return { line };
   }
 
   /** Mark an NPC as present in the current scene — they ride retrieval every

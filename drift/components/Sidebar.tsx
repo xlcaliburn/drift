@@ -8,7 +8,7 @@ import { backgrounds } from "@/content/creation";
 import type { CombatState } from "@/shared/combat";
 import { dispositionLabel, type NpcRelation, type NpcRelations, type SceneCard } from "@/shared/scene";
 import { generateQuirk } from "@/shared/npcFlavor";
-import { allItems, itemCount, describeEffect } from "@/shared/items";
+import { allItems, itemCount, describeEffect, slotsUsed, maxSlotsFor } from "@/shared/items";
 import skillsMeta from "@/content/skills.json";
 
 const ATTR_ORDER = ["might", "reflex", "vitality", "intellect", "perception", "presence"] as const;
@@ -319,7 +319,7 @@ function StatusTab({
             </div>
 
             {(weapons.length > 0 || inventory.length > 0 || c.stims > 0) && (
-              <SheetSection label="Equipment">
+              <SheetSection label={`Equipment · ${slotsUsed(c)}/${maxSlotsFor(c)} slots`}>
                 <div className="space-y-0.5">
                   {weapons.map((g, i) => {
                     const dry = g.rounds === 0;

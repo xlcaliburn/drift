@@ -38,6 +38,13 @@ export interface CatalogItem {
   /** Chip verb — "Use", "Throw", "Pop", "Divert". */
   verb: string;
   effect?: ItemEffect;
+  /** Weapons: damage dice ("2d6"). */
+  damage?: string;
+  /** Armor: AC bonus while carried (best single piece counts). */
+  acBonus?: number;
+  /** Lowest market tier that shelves this item (ITEMS.md slice E). Consumables
+   *  without one are T1 (sold everywhere a market exists). */
+  marketTier?: "T1" | "T2" | "T3";
 }
 
 const CATALOG: Record<string, CatalogItem> = Object.fromEntries(
@@ -84,7 +91,11 @@ export function usableConsumables(c: Character, scale: "personal" | "ship"): Usa
 /** One-line effect description for the narrator/UI. */
 export function describeEffect(i: CatalogItem): string {
   const e = i.effect;
-  if (!e) return "no mechanical effect";
+  if (!e) {
+    if (i.damage) return `${i.damage} damage`;
+    if (i.acBonus) return `+${i.acBonus} AC`;
+    return "no mechanical effect";
+  }
   switch (e.kind) {
     case "heal":
       return `heal ${e.dice}${e.clearsDowned ? ", can stabilize a downed ally" : ""}`;
@@ -111,4 +122,106 @@ export function itemReference(): string {
     .filter((i) => i.type === "consumable")
     .map((i) => `${i.id} — ${i.name}: ${describeEffect(i)}`)
     .join("\n");
+}
+
+// ── Legacy gear mapping (ITEMS.md IT-1 / slice W) ────────────────────────────
+
+/** Freeform creation/loot gear names → catalog ids. The DISPLAY name is kept;
+ *  the id brings price + slot cost (netWorth, shops, inventory). Grouped by what
+ *  the item mechanically IS, not what it's called — a "Riot gun" prices like the
+ *  2d6 rifle it fights as. */
+const LEGACY_ALIASES: Record<string, string> = {
+  // weapons
+  "holdout pistol": "holdout",
+  "dart pistol": "holdout",
+  "combat rifle": "combatRifle",
+  "riot gun": "combatRifle",
+  "hunting rifle": "combatRifle",
+  "marksman carbine": "combatRifle",
+  "combat knife": "lightBlade",
+  "cutting tool": "lightBlade",
+  "cutting torch": "lightBlade",
+  "heavy wrench": "lightBlade",
+  // armor
+  "heavy plate": "ballisticVest",
+  "armored coat": "ballisticVest",
+  "fine jacket": "paddedJacket",
+  "scout armor": "paddedJacket",
+  "patched coveralls": "paddedJacket",
+  "fine clothes": "paddedJacket",
+  "hardened vac suit": "paddedJacket",
+  // tools
+  "sealed vac suit": "vacSuit",
+  "salvage scanner": "scanner",
+  "med scanner": "scanner",
+  "lockpick set": "lockpicks",
+  "grapnel line": "grapnel",
+  // consumables under freeform names
+  "stimpack": "stim",
+  "stim pack": "stim",
+  "med kit": "medkit",
+};
+
+/** Resolve a freeform gear name to a catalog id: exact catalog name/id match
+ *  first, then the alias table. Undefined when it's genuinely flavor gear. */
+export function legacyItemId(name: string): string | undefined {
+  const norm = name.trim().toLowerCase().replace(/^(a|an|the)\s+/, "");
+  const direct = allItems().find((it) => it.name.toLowerCase() === norm || it.id.toLowerCase() === norm);
+  return direct?.id ?? LEGACY_ALIASES[norm];
+}
+
+type GearEntry = Character["gear"][number];
+
+/** Attach catalog ids to a character's freeform gear (one-shot, idempotent —
+ *  run on session load and at creation). Existing ids are never overwritten;
+ *  names/damage/AC stay exactly as written, only the id is added. */
+export function mapLegacyGear<T extends { gear: GearEntry[] }>(c: T): T {
+  let changed = false;
+  const gear = c.gear.map((g) => {
+    if (g.itemId) return g;
+    const id = legacyItemId(g.name);
+    if (!id) return g;
+    changed = true;
+    return { ...g, itemId: id };
+  });
+  return changed ? { ...c, gear } : c;
+}
+
+// ── Inventory slots (ITEMS.md slice B) ───────────────────────────────────────
+
+/** How many consumables share one slot. */
+const STACK_PER_SLOT = 3;
+
+/** Slot cost of one gear entry. Catalog items use their listed cost (consumables
+ *  stack ×3 per slot); flavor gear is judged by what it is — a two-handed weapon
+ *  2, a light one 1, armor 2, anything else 1. */
+export function gearSlotCost(g: GearEntry): number {
+  const qty = g.qty ?? 1;
+  const cat = g.itemId ? catalogItem(g.itemId) : undefined;
+  if (cat) {
+    if (cat.type === "consumable") return Math.ceil(qty / STACK_PER_SLOT);
+    return cat.slot * qty;
+  }
+  if (g.damage) {
+    // Dice count is a decent one-hand/two-hand proxy: 2d6 rifle = 2, 1d8 pistol = 1.
+    const dice = /^(\d+)\s*d/i.exec(g.damage);
+    return (dice && Number(dice[1]) >= 2 ? 2 : 1) * qty;
+  }
+  if (g.acBonus) return 2 * qty;
+  return qty;
+}
+
+/** Slots a character's carried gear occupies (legacy `stims` counter included,
+ *  stacked like the catalog consumable it is). */
+export function slotsUsed(c: Character): number {
+  const gear = (c.gear ?? []).reduce((n, g) => n + gearSlotCost(g), 0);
+  const legacyStims = c.stims ? Math.ceil(c.stims / STACK_PER_SLOT) : 0;
+  return gear + legacyStims;
+}
+
+/** Carrying capacity — computed live (the stored slots/maxSlots fields are
+ *  ignored; no backfill needed). 8 + might: a fresh loadout uses ~6, leaving
+ *  room to pick things up. */
+export function maxSlotsFor(c: Character): number {
+  return 8 + Math.max(0, c.attributes?.might ?? 0);
 }
