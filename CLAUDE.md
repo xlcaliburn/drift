@@ -144,3 +144,40 @@ Don't add prose rules for things the engine can enforce.
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
 - `STATUS.md` — remaining-work snapshot + how to run/verify
+
+## Multi-window coordination
+
+Multiple Claude windows may work this repo + the shared Supabase DB at once. These
+rules keep them from clobbering each other. They are not optional.
+
+- **Single writer at a time.** Only ONE window commits/pushes or writes to the DB
+  (migrations, `apply_migration`, data changes) at a given moment. Other windows
+  stay read-only (analysis, reads, `list_*`/`execute_sql` SELECTs). Parallel reads
+  are always fine; concurrent writes are not.
+- **Sync immediately before you commit, and again right before you push:**
+  `git fetch && git pull --rebase origin/main`. A parallel window may have moved
+  `main` since you last looked.
+- **Never trust in-memory repo/DB state across a gap.** After any pause, or if
+  another window may have acted, re-read and reconcile from ground truth (git +
+  `list_migrations` + `execute_sql`) before changing anything. Your recollection
+  of HEAD, file contents, or applied migrations may be stale.
+- **Migrations — reconcile before you number, create, or apply.** Compare the repo
+  files in `drift/db/migrations/` against the LIVE applied-migration log (Supabase
+  MCP `list_migrations` on drift / `mgsogqnrpvoblqxkfgge`) first. Pick the number
+  with the helper (below) — never hand-pick from memory. Keep the sequential
+  zero-padded `NN_name.sql` convention; do **not** switch to timestamp prefixes.
+- **Next-migration helper** (`drift/scripts/next-migration.mjs`, from `drift/`):
+  - `node scripts/next-migration.mjs` → prints the next number (e.g. `017`).
+  - `node scripts/next-migration.mjs shared_ledger` → also scaffolds
+    `db/migrations/017_shared_ledger.sql`.
+  It only sees repo files, so still reconcile against `list_migrations` before
+  applying (it prints that reminder).
+- **Pre-push hook (hard stop).** `.githooks/pre-push` fetches and BLOCKS the push
+  if your branch is behind `origin/main` (offline → warns and allows). Enable it
+  ONCE per clone/worktree (hooks aren't shared automatically):
+
+  ```bash
+  git config core.hooksPath .githooks
+  ```
+
+  If a push is blocked, run `git pull --rebase origin main` and retry.

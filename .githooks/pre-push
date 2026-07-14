@@ -1,0 +1,42 @@
+#!/bin/sh
+# pre-push — multi-window safety: block a push when the branch is behind origin/main.
+#
+# Another window may have pushed since you last synced; pushing on top of a stale
+# base is how work gets clobbered or history diverges. This hook refuses the push
+# until you reconcile. It is intentionally conservative: it blocks ONLY on a
+# confirmed-behind branch, and stays out of the way when it can't be sure.
+#
+# One-time setup per clone/worktree (hooks aren't shared automatically):
+#     git config core.hooksPath .githooks
+#
+# See CLAUDE.md → "Multi-window coordination".
+
+remote_main="origin/main"
+
+# Refresh origin/main. If the network is down, WARN and allow — never hard-fail
+# a push just because we're offline (you can't be behind a remote you can't reach).
+if ! git fetch origin main --quiet 2>/dev/null; then
+  echo "pre-push: ⚠ could not fetch origin (offline?) — skipping behind-check, allowing push." >&2
+  exit 0
+fi
+
+# If origin/main isn't known yet (fresh remote), there's nothing to be behind.
+if ! git rev-parse --verify --quiet "$remote_main" >/dev/null; then
+  exit 0
+fi
+
+# How many commits are on origin/main that we don't have? >0 means we're behind.
+behind=$(git rev-list --count "HEAD..$remote_main" 2>/dev/null || echo 0)
+if [ "$behind" -gt 0 ]; then
+  echo "" >&2
+  echo "  ✗ pre-push BLOCKED — your branch is $behind commit(s) behind $remote_main." >&2
+  echo "    Another window has pushed since you last synced. Reconcile first:" >&2
+  echo "" >&2
+  echo "        git pull --rebase origin main" >&2
+  echo "" >&2
+  echo "    then retry the push." >&2
+  echo "" >&2
+  exit 1
+fi
+
+exit 0
