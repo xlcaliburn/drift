@@ -16,7 +16,7 @@ import {
 } from "@/shared/turnPlan";
 import { SCENE_TURN_CAP, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import { checkFromVerb, verbFromLabel, verbRolls } from "@/shared/actions";
-import { extractNpcNames, knownEntityNames } from "@/shared/npcExtract";
+import { extractNpcNames, knownEntityNames, isPlausibleNpcName } from "@/shared/npcExtract";
 import type { CombatState } from "@/shared/combat";
 import type { SpawnSpec, ShipClass } from "@/engine/combatEngine";
 import { stripInlineMenu } from "@/shared/narration";
@@ -501,8 +501,22 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   // (continuity — recognized when the player returns), mark them present in the
   // scene, and apply relationship updates (disposition nudge / last-note / tie).
   if (plan.npcs?.length) {
+    // A cheap narrator dumps junk into npcs — sentence fragments ("End", "You're"),
+    // the ship's name, even the CHOICE VERBS ("Scavenge", "Search", "Tend"). Two
+    // gates keep the cast clean: (1) a stopword / non-person-entity guard, and
+    // (2) the name must actually appear in THIS turn's prose — a real figure is
+    // named in the story; a choice verb or hallucinated label is not.
+    const nonPersons = knownEntityNames([
+      ...(runtime.state.ship ? [runtime.state.ship.name] : []),
+      ...runtime.state.locations.map((l) => l.name),
+      ...runtime.state.factions.map((f) => f.name),
+    ]);
+    const narrationText = plan.narration ?? "";
     for (const npc of plan.npcs.slice(0, 4)) {
-      if (!npc.name?.trim()) continue;
+      const nm = npc.name?.trim();
+      if (!nm || !isPlausibleNpcName(nm, nonPersons)) continue;
+      const bare = nm.replace(/['’]s$/i, "");
+      if (!narrationText.includes(nm) && !narrationText.includes(bare)) continue;
       toolCalls.push("register_npc");
       const { id } = runtime.registerNpc(npc.name, npc.oneBreath ?? undefined);
       runtime.markPresent(id);
