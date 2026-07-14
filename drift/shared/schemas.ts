@@ -115,7 +115,9 @@ export const Character = z.object({
   ownFactionId: z.string().optional(),
   /** Creation steering answers, kept for story hooks + dossier voice. */
   bias: z.enum(["commerce", "combat", "intrigue", "piloting", "diplomacy"]).optional(),
-  alignment: z.enum(["ruthless", "pragmatic", "principled"]).optional(),
+  alignment: z
+    .enum(["ruthless", "pragmatic", "principled", "loyal", "slick", "ghost", "loud", "merciful"])
+    .optional(),
   /** Player-selected sex (male/female). Optional — absent on legacy PCs. */
   sex: z.enum(["male", "female"]).optional(),
   background: z.string().optional(),

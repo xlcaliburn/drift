@@ -188,6 +188,11 @@ export const alignments: OptionDef[] = [
   { id: "ruthless", label: "Ruthless", description: "Whatever it takes. Rivals learn to fear you; allies keep one eye open." },
   { id: "pragmatic", label: "Pragmatic", description: "The job comes first. You bend, but you don't break your word." },
   { id: "principled", label: "Principled", description: "A code you won't cross. It costs you, and it earns rare trust." },
+  { id: "loyal", label: "Loyal", description: "Crew is family. You'd burn a fortune before you'd sell out your own." },
+  { id: "slick", label: "Slick", description: "Words before weapons, angles before either. Everyone's a mark; nobody's an enemy — yet." },
+  { id: "ghost", label: "Ghost", description: "Stay small, stay quiet, leave no name behind. The lanes never see you coming." },
+  { id: "loud", label: "Loud", description: "Reputation is currency. Every job is a story, and you're the headline." },
+  { id: "merciful", label: "Merciful", description: "You'll fight, but you never finish the fallen. Kindness in a hard place — some read it as weakness." },
 ];
 
 export const ambitions: OptionDef[] = [

@@ -101,7 +101,7 @@ export const CreationInput = z.object({
   name: z.string().min(1),
   parentFactionId: z.string(),
   bias: z.enum(["commerce", "combat", "intrigue", "piloting", "diplomacy"]),
-  alignment: z.enum(["ruthless", "pragmatic", "principled"]),
+  alignment: z.enum(["ruthless", "pragmatic", "principled", "loyal", "slick", "ghost", "loud", "merciful"]),
   /** Player-selected sex — required. */
   sex: z.enum(["male", "female"]),
   background: z.string(),
