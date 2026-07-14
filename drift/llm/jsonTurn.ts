@@ -16,6 +16,7 @@ import {
 } from "@/shared/turnPlan";
 import { SCENE_TURN_CAP, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import { checkFromVerb, verbFromLabel, verbRolls } from "@/shared/actions";
+import { extractNpcNames, knownEntityNames } from "@/shared/npcExtract";
 import type { CombatState } from "@/shared/combat";
 import type { SpawnSpec, ShipClass } from "@/engine/combatEngine";
 import { stripInlineMenu } from "@/shared/narration";
@@ -587,6 +588,25 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   // ── Final cleanup: belt-and-suspenders on the prose, clamp the choices. ────
   narration = stripInlineMenu(narration.trim());
   if (lastStop === "max_tokens") narration = trimToLastSentence(narration);
+
+  // NPC backstop: register named figures the narrator mentioned but forgot to
+  // declare (Eddie's un-tracked "wrecker woman") so the scene's cast is complete
+  // in Here & now. Filtered hard against everything already known.
+  if (!combat) {
+    const known = knownEntityNames([
+      ...runtime.state.npcs.map((n) => n.name),
+      ...runtime.state.locations.map((l) => l.name),
+      ...runtime.state.factions.map((f) => f.name),
+      ...runtime.state.characters.map((c) => c.name),
+      ...(runtime.state.ship ? [runtime.state.ship.name] : []),
+      runtime.state.universe.name ?? "",
+    ]);
+    for (const name of extractNpcNames(narration, known)) {
+      toolCalls.push("register_npc(auto)");
+      const { id } = runtime.registerNpc(name, `Mentioned in the scene.`);
+      runtime.markPresent(id);
+    }
+  }
   const cap = inTutorial(runtime.state) ? TUTORIAL_CHOICE_COUNT : 4;
   // Checks were resolved up front (resolveChoiceChecks) — tagged or label-inferred
   // verbs already carry their engine-built check into the client chips.
