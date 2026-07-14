@@ -551,8 +551,9 @@ function TraitsTab({ state }: { state: CampaignState }) {
 }
 
 /** Popup — extended info kept out of the always-on rail, split into tabs:
- *  Story (who they are), Equipment (weapons/armor detail), Items (consumables +
- *  tools with effects), Ship & threads. */
+ *  Equipment (weapons/armor detail), Items (consumables + tools), Ship, and Story
+ *  (who they are + the live thread log). Fixed size so the frame never jumps as
+ *  you switch tabs; the content area scrolls on its own. */
 function DetailsModal({
   state,
   character,
@@ -563,15 +564,14 @@ function DetailsModal({
   onClose: () => void;
 }) {
   const c = character;
-  const [tab, setTab] = useState<"story" | "equipment" | "items" | "ship">("story");
-  const activeThreads = state.threads.filter((t) => t.status === "active");
+  const [tab, setTab] = useState<"equipment" | "items" | "ship" | "story">("equipment");
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 p-4" onClick={onClose}>
       <div
-        className="scrollbar-thin max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-xl border border-edge bg-panel p-5 text-[13px]"
+        className="flex h-[80dvh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-edge bg-panel text-[13px]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between px-5 pt-4">
           <h3 className="text-lg font-semibold text-neutral-100">{c.name}</h3>
           <button onClick={onClose} className="text-neutral-400 hover:text-accent" aria-label="Close">
             ✕
@@ -581,10 +581,10 @@ function DetailsModal({
         <div className="mt-3 flex border-b border-edge text-xs">
           {(
             [
-              ["story", "Story"],
               ["equipment", "Equipment"],
               ["items", "Items"],
-              ["ship", "Ship & threads"],
+              ["ship", "Ship"],
+              ["story", "Story"],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -600,32 +600,60 @@ function DetailsModal({
           ))}
         </div>
 
-        {tab === "equipment" && <EquipmentDetail character={c} />}
-        {tab === "items" && <ItemsDetail character={c} />}
-        {tab === "ship" && (
-          <>
+        <div className="scrollbar-thin flex-1 overflow-y-auto p-5">
+          {tab === "equipment" && <EquipmentDetail character={c} />}
+          {tab === "items" && <ItemsDetail character={c} />}
+          {tab === "ship" && (
             <SheetSection label="Ship">
               <ShipTab state={state} />
             </SheetSection>
-            {activeThreads.length > 0 && (
-              <SheetSection label="Open threads">
-                <div className="space-y-1.5">
-                  {activeThreads.map((t) => (
-                    <div key={t.id}>
-                      <div className="text-neutral-200">{t.title}</div>
-                      {t.body && <p className="text-[12px] leading-snug text-neutral-500">{t.body}</p>}
-                    </div>
-                  ))}
-                </div>
-              </SheetSection>
-            )}
-          </>
-        )}
-        {tab === "story" && (
-          <StoryDetail character={c} />
-        )}
+          )}
+          {tab === "story" && (
+            <>
+              <StoryDetail character={c} />
+              <StoryThreads state={state} />
+            </>
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+/** The live thread log inside the Story tab — open quests (updated as scenes
+ *  change) and a struck-through record of what's been resolved, so the Story tab
+ *  visibly evolves as the campaign moves. */
+function StoryThreads({ state }: { state: CampaignState }) {
+  const active = state.threads.filter((t) => t.status === "active");
+  const resolved = state.threads.filter((t) => t.status === "resolved");
+  return (
+    <>
+      <SheetSection label="Open threads">
+        {active.length === 0 ? (
+          <p className="text-neutral-500">Nothing hanging over you right now.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {active.map((t) => (
+              <div key={t.id}>
+                <div className="text-neutral-200">{t.title}</div>
+                {t.body && <p className="text-[12px] leading-snug text-neutral-500">{t.body}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </SheetSection>
+      {resolved.length > 0 && (
+        <SheetSection label="Resolved">
+          <div className="space-y-1">
+            {resolved.map((t) => (
+              <div key={t.id} className="text-[12px] text-neutral-500 line-through decoration-neutral-700">
+                {t.title}
+              </div>
+            ))}
+          </div>
+        </SheetSection>
+      )}
+    </>
   );
 }
 
