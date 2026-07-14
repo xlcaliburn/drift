@@ -682,16 +682,23 @@ export class TurnRuntime {
    * refreshed to "here now" and gets a description if it lacked one. Returns
    * whether a new NPC was created.
    */
-  registerNpc(name: string, oneBreath?: string): { added: boolean; id: string } {
+  registerNpc(name: string, oneBreath?: string, role?: string): { added: boolean; id: string } {
     const trimmed = name.trim();
     const here = this.state.campaign.currentLocationId;
+    const cleanRole = role?.trim() || undefined;
     const existing = this.state.npcs.find((n) => n.name.toLowerCase() === trimmed.toLowerCase());
     if (existing) {
       this.state = {
         ...this.state,
         npcs: this.state.npcs.map((n) =>
           n.id === existing.id
-            ? { ...n, locationId: here ?? n.locationId, oneBreath: n.oneBreath || oneBreath || n.oneBreath }
+            ? {
+                ...n,
+                locationId: here ?? n.locationId,
+                oneBreath: n.oneBreath || oneBreath || n.oneBreath,
+                // Fill a role only if we didn't already know one (set-once).
+                role: n.role ?? cleanRole,
+              }
             : n,
         ),
       };
@@ -705,6 +712,9 @@ export class TurnRuntime {
       name: trimmed,
       oneBreath: (oneBreath ?? "").trim() || `Someone the player met${here ? " here" : ""}.`,
       ...(here ? { locationId: here } : {}),
+      ...(cleanRole ? { role: cleanRole } : {}),
+      // Provenance so a promoted NPC (persistSession) traces back to this campaign.
+      originCampaignId: this.state.campaign.id,
     };
     this.state = { ...this.state, npcs: [...this.state.npcs, npc] };
     return { added: true, id };

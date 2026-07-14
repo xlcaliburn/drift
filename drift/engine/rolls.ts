@@ -1,5 +1,5 @@
 import type { Character } from "@/shared/schemas";
-import { skillAttribute, economy } from "@/content";
+import { skillAttribute, skills, economy } from "@/content";
 import type { RNG } from "./rng";
 import type { EngineEvent } from "./events";
 import { skillProficiency } from "./progression";
@@ -49,12 +49,31 @@ export function passiveBonus(character: Character, skill: string): number {
   return 0;
 }
 
+/** Is this action key a real, level-able skill (has a skills.json entry)? */
+function isKnownSkill(skill: string): boolean {
+  return (skills.skills as Record<string, unknown>)[skill] !== undefined;
+}
+
 /**
  * The character's modifier for a skill/action.
  *
- * Precomputed Quick Reference Card values (actionModifiers) are authoritative
- * when present; otherwise derive from governing attribute mod + skill level. A
- * passive unique-skill bonus and any situational modifier stack on top.
+ * A real SKILL is ALWAYS live-derived: governing attribute mod + COMPRESSED
+ * skill proficiency (`skillProficiency(level)` = ceil(level/2) → +0…+5, NOT raw
+ * level) + unique-skill passive + situational. We deliberately IGNORE any
+ * `actionModifiers` ("Quick Reference Card") entry for a real skill — that value
+ * is a snapshot frozen at authoring/creation time, so it goes stale the instant
+ * the skill levels up via `awardTick`. That freeze was the cause of the
+ * "negotiation level 2 still rolls +0" bug: the QRC entry was captured at level
+ * 0 and never re-derived. (Creation only ever writes an empty `{}` anyway, so
+ * this changes nothing for app-created characters.)
+ *
+ * NON-skill action keys (`deathSave`, `shipSensors`, `initiative`, …) have no
+ * governing-attribute mapping in skills.json and never accrue skill levels, so
+ * they can't go stale. For those we honor the stored `actionModifiers` value —
+ * it's the only place that bonus lives (e.g. a fragile character's
+ * vitality-routed death save, or a ship's sensor gear) — falling back to plain
+ * derivation when absent. A passive bonus and situational modifier stack on top
+ * in both branches.
  */
 export function computeModifier(
   character: Character,
@@ -62,8 +81,11 @@ export function computeModifier(
   situationalMod = 0,
 ): number {
   const passive = passiveBonus(character, skill);
-  const override = character.actionModifiers?.[skill];
-  if (override !== undefined) return override + passive + situationalMod;
+
+  if (!isKnownSkill(skill)) {
+    const override = character.actionModifiers?.[skill];
+    if (override !== undefined) return override + passive + situationalMod;
+  }
 
   const attrKey = skillAttribute(skill) as keyof Character["attributes"];
   const attrMod = character.attributes[attrKey] ?? 0;

@@ -2,31 +2,80 @@ import { describe, it, expect } from "vitest";
 import { computeModifier, rollCheck } from "./rolls";
 import { scriptedRng } from "./rng";
 import { vess, denna, josen } from "@/engine/__fixtures__/vessCampaign";
+import type { Character } from "@/shared/schemas";
 
-describe("computeModifier — reproduces the Quick Reference Card", () => {
+// Real skills are ALWAYS live-derived — attribute mod + skillProficiency(level)
+// (the compressed +0…+5 curve, NOT raw level) + passive — so a QRC snapshot can
+// never freeze a leveled skill at a stale value. Values below are the LIVE
+// derivations for Vess (reflex 4 / presence -1 / perception -2, intellect 0):
+//   piloting  = reflex(4)   + prof(level 4 → +2) = 6   (was frozen at raw-level 8)
+//   negotiation = presence(-1) + prof(level 2 → +1) = 0 (was frozen at 1)
+//   navigation  = intellect(0) + prof(level 1 → +1) = 1 (was frozen at 3 w/ baked gear)
+// NON-skill action keys (initiative/deathSave/shipSensors) have no skills.json
+// entry and never level up, so they still honor the stored actionModifiers value.
+describe("computeModifier — live-derived skills, stored overrides for special actions", () => {
   const cases: [string, number][] = [
-    ["piloting", 8],
+    ["piloting", 6],
     ["gunnery", 5],
     ["smallArms", 5],
     ["melee", 0],
     ["stealth", 4],
     ["perception", -2],
     ["streetwise", 1],
-    ["negotiation", 1],
+    ["negotiation", 0],
     ["deception", -1],
     ["intimidation", -1],
     ["mechanics", 1],
     ["electronics", 1],
-    ["navigation", 3],
-    ["initiative", 4],
-    ["deathSave", 0],
-    ["shipSensors", 1],
+    ["navigation", 1],
+    ["initiative", 4], // non-skill: stored override preserved
+    ["deathSave", 0], // non-skill: stored override preserved
+    ["shipSensors", 1], // non-skill: stored override preserved
   ];
   for (const [skill, expected] of cases) {
     it(`Vess ${skill} = ${expected >= 0 ? "+" : ""}${expected}`, () => {
       expect(computeModifier(vess, skill)).toBe(expected);
     });
   }
+});
+
+describe("computeModifier — stale actionModifiers must not freeze a leveled skill (regression)", () => {
+  // The reported bug: negotiation was captured as +0 in a QRC snapshot at
+  // creation (level 0, presence 0). The character has since reached level 2 and
+  // has positive presence — the live modifier must reflect that, not the stale 0.
+  const leveled: Character = {
+    ...denna,
+    attributes: { ...denna.attributes, presence: 3 },
+    skills: [{ name: "negotiation", level: 2, ticks: 0 }],
+    actionModifiers: { negotiation: 0 }, // stale snapshot, frozen at level 0
+  };
+
+  it("ignores the stale override and live-derives: presence(3) + prof(level 2 → +1) = 4", () => {
+    expect(computeModifier(leveled, "negotiation")).toBe(4);
+  });
+
+  it("unique-skill passive still stacks on the live-derived skill modifier", () => {
+    const withPassive: Character = {
+      ...leveled,
+      uniqueSkill: {
+        name: "Silver Tongue",
+        description: "always persuasive",
+        kind: "passive",
+        passiveTargetType: "skill",
+        passiveTarget: "negotiation",
+        passiveAmount: 2,
+        usesPerScene: 1,
+      },
+    };
+    // presence(3) + prof(2 → +1) + passive(2) = 6 — still NOT the stale 0
+    expect(computeModifier(withPassive, "negotiation")).toBe(6);
+  });
+
+  it("non-skill action keys (deathSave) still honor their stored modifier", () => {
+    // deathSave has no skills.json entry and can't go stale on level-up, so the
+    // vitality-routed override for fragile crew is preserved.
+    expect(computeModifier(josen, "deathSave")).toBe(-4);
+  });
 });
 
 describe("computeModifier — derivation fallback (no QRC override)", () => {
@@ -52,9 +101,10 @@ describe("rollCheck", () => {
     const rng = scriptedRng([14]);
     const r = rollCheck({ character: vess, skill: "piloting", dc: 15, stakes: true }, rng);
     expect(r.d20).toBe(14);
-    expect(r.total).toBe(22);
+    // piloting = reflex(4) + prof(level 4 → +2) = 6; 14 + 6 = 20
+    expect(r.total).toBe(20);
     expect(r.outcome).toBe("success");
-    expect(r.breakdown).toBe("piloting: d20(14) +8 = 22 vs DC 15 → success");
+    expect(r.breakdown).toBe("piloting: d20(14) +6 = 20 vs DC 15 → success");
   });
 
   it("natural 20 auto-succeeds even vs an impossible DC (critical)", () => {
@@ -69,13 +119,13 @@ describe("rollCheck", () => {
     const r = rollCheck({ character: vess, skill: "piloting", dc: 5 }, scriptedRng([1]));
     expect(r.criticalFailure).toBe(true);
     expect(r.critical).toBe(false);
-    expect(r.outcome).toBe("failure"); // 1 + 8 = 9 ≥ 5, but a nat 1 always fails
+    expect(r.outcome).toBe("failure"); // 1 + 6 = 7 ≥ 5, but a nat 1 always fails
     expect(r.breakdown).toContain("[FUMBLE]");
   });
 
   it("applies ship DC modifier (racing thrusters -2 to DC)", () => {
-    const rng = scriptedRng([5]);
-    // effective DC 15 - 2 = 13; total 5+8=13 -> success
+    const rng = scriptedRng([7]);
+    // effective DC 15 - 2 = 13; piloting mod 6, total 7+6=13 -> success
     const r = rollCheck({ character: vess, skill: "piloting", dc: 15, dcModifier: -2 }, rng);
     expect(r.dc).toBe(13);
     expect(r.outcome).toBe("success");

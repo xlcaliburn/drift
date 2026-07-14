@@ -6,7 +6,7 @@ import { tickMax } from "@/engine/progression";
 import { shipIsOwned } from "@/shared/recap";
 import { backgrounds } from "@/content/creation";
 import type { CombatState } from "@/shared/combat";
-import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
+import { dispositionLabel, type NpcRelation, type NpcRelations, type SceneCard } from "@/shared/scene";
 import { allItems, itemCount, describeEffect } from "@/shared/items";
 import skillsMeta from "@/content/skills.json";
 
@@ -561,7 +561,33 @@ function TraitsTab({ state }: { state: CampaignState }) {
   );
 }
 
-type DetailsTab = "equipment" | "items" | "ship" | "relationships" | "story";
+type DetailsTab = "equipment" | "items" | "ship" | "relationships" | "factions" | "story";
+
+/** Backend fields another surface may add to NPCs/relations before the shared
+ *  types catch up — read defensively so the dossier works with or without them. */
+type MaybeRole = { role?: string };
+type MaybeNameKnown = { nameKnown?: boolean };
+
+/** Title-case a free-text role ("dock foreman" → "Dock Foreman"). */
+const titleCase = (s: string) => s.replace(/\b\w/g, (m) => m.toUpperCase());
+
+/** True when an "NPC" is really a faction leaking into the cast — its name equals,
+ *  or is contained by, a faction name. Keeps the People roster to actual people. */
+function isFactionShapedNpc(npcName: string, factions: CampaignState["factions"]): boolean {
+  const n = npcName.trim().toLowerCase();
+  if (!n) return false;
+  return factions.some((f) => {
+    const fn = f.name.trim().toLowerCase();
+    return fn === n || fn.includes(n);
+  });
+}
+
+/** How to label a person: their role stands in for the name until it's known. */
+function personDisplay(npc: CampaignState["npcs"][number], rel: NpcRelation | undefined) {
+  const role = (npc as MaybeRole).role;
+  const nameHidden = (rel as MaybeNameKnown | undefined)?.nameKnown === false && !!role;
+  return { name: nameHidden ? titleCase(role!) : npc.name, role, nameHidden };
+}
 
 /** Popup — extended info kept out of the always-on rail, split into tabs:
  *  Equipment (weapons/armor detail), Items (consumables + tools), Ship,
@@ -605,6 +631,7 @@ function DetailsModal({
               ["items", "Items"],
               ["ship", "Ship"],
               ["relationships", "People"],
+              ["factions", "Factions"],
               ["story", "Story"],
             ] as const
           ).map(([id, label]) => (
@@ -634,6 +661,7 @@ function DetailsModal({
                 <ShipTab state={state} />
               </SheetSection>
             )}
+            {tab === "factions" && <FactionsDetail state={state} character={c} />}
             {tab === "story" && (
               <>
                 <StoryDetail character={c} />
@@ -684,6 +712,68 @@ function StoryThreads({ state }: { state: CampaignState }) {
   );
 }
 
+/** Factions tab — only the powers the player has actually crossed paths with:
+ *  their own (parent/founded) faction, anyone they hold a reputation with, and any
+ *  faction named in an active/resolved thread. Shows the standing as a signed,
+ *  colour-coded number so allegiances read at a glance. */
+function FactionsDetail({
+  state,
+  character,
+}: {
+  state: CampaignState;
+  character: CampaignState["characters"][number];
+}) {
+  const repById = new Map(state.factionRep.map((r) => [r.factionId, r]));
+
+  // Derive the "seen" set from three signals.
+  const seen = new Set<string>();
+  // 1. The PC's own allegiance(s) — the faction they started in / founded.
+  if (character.parentFactionId) seen.add(character.parentFactionId);
+  if (character.ownFactionId) seen.add(character.ownFactionId);
+  // 2. Any faction the player carries a standing with (own faction seeds a
+  //    starting `standing`; play moves `rep` off its neutral default).
+  for (const r of state.factionRep) {
+    if (r.standing !== undefined || r.rep !== 0) seen.add(r.factionId);
+  }
+  // 3. Any faction referenced by the player's threads.
+  const factionIds = new Set(state.factions.map((f) => f.id));
+  for (const t of state.threads) {
+    for (const ref of t.entityRefs) if (factionIds.has(ref)) seen.add(ref);
+  }
+
+  const factions = state.factions.filter((f) => seen.has(f.id));
+
+  return (
+    <SheetSection label="Factions you've encountered">
+      {factions.length === 0 ? (
+        <p className="text-neutral-500">You haven&apos;t crossed paths with any factions yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {factions.map((f) => {
+            const r = repById.get(f.id);
+            const rep = r?.rep ?? f.defaultRep ?? 0;
+            const tone = rep > 0 ? "text-good" : rep < 0 ? "text-bad" : "text-neutral-500";
+            return (
+              <div key={f.id} className="rounded border border-edge/60 bg-ink/40 p-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-semibold text-neutral-100">{f.name}</span>
+                  <span className={"shrink-0 tabular-nums text-[12px] " + tone}>
+                    {rep >= 0 ? `+${rep}` : rep}
+                    {r?.standing ? <span className="text-neutral-500"> · {r.standing}</span> : null}
+                  </span>
+                </div>
+                {f.description && (
+                  <p className="mt-0.5 text-[12px] leading-snug text-neutral-400">{f.description}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </SheetSection>
+  );
+}
+
 /** The cast the player has met — a clickable roster on the left, the selected
  *  person's dossier on the right (who they are, your standing, whereabouts, the
  *  last thing you knew). Shell-free so it drops into the details modal's People
@@ -711,6 +801,7 @@ function PeopleView({
   // now, or who shares the current location. Ranked present → known → the rest.
   const people = state.npcs
     .map((npc) => ({ npc, rel: npcRelations[npc.id], w: where(npc) }))
+    .filter(({ npc }) => !isFactionShapedNpc(npc.name, state.factions))
     .filter(({ npc, rel }) => rel || present.has(npc.id) || npc.locationId === here)
     .sort((a, b) => {
       const rank = (x: typeof a) => (present.has(x.npc.id) ? 2 : x.rel ? 1 : 0);
@@ -741,7 +832,7 @@ function PeopleView({
                 }
               >
                 <span className="truncate">
-                  {npc.name}
+                  {personDisplay(npc, rel).name}
                   <span className={"block text-[10px] " + w.tone}>{w.label}</span>
                 </span>
                 <span
@@ -761,8 +852,24 @@ function PeopleView({
       {/* Right: the selected person's dossier. */}
       <div className="scrollbar-thin flex-1 overflow-y-auto p-5">
         <div>
-          <h3 className="text-lg font-semibold text-neutral-100">{sel?.npc.name ?? "—"}</h3>
-          {sel?.rel?.relationship && <p className="text-[12px] text-accent/80">{sel.rel.relationship}</p>}
+          {(() => {
+            const disp = sel ? personDisplay(sel.npc, sel.rel) : null;
+            return (
+              <>
+                <h3 className="text-lg font-semibold text-neutral-100">{disp?.name ?? "—"}</h3>
+                {sel?.rel?.relationship && (
+                  <p className="text-[12px] text-accent/80">{sel.rel.relationship}</p>
+                )}
+                {/* Role line — muted; doubles as the "Name unknown" note once the
+                    role stands in for a name we don't have yet. */}
+                {disp?.nameHidden ? (
+                  <p className="text-[12px] text-neutral-500">Name unknown</p>
+                ) : disp?.role ? (
+                  <p className="text-[12px] text-neutral-500">{titleCase(disp.role)}</p>
+                ) : null}
+              </>
+            );
+          })()}
         </div>
 
         {sel && (

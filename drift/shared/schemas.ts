@@ -7,10 +7,10 @@ import { z } from "zod";
  * - Attributes are stored as MODIFIERS (Reflex 18 -> +4). Party members in the
  *   save file are already given as modifiers; PCs get their scores reduced to
  *   modifiers at import time so the engine treats everyone uniformly.
- * - `actionModifiers` holds the precomputed Quick Reference Card numbers. The
- *   save file says "use these, don't recalculate" — so when present, the engine
- *   treats them as authoritative and does NOT re-derive from attribute+level.
- *   Skills without a precomputed entry fall back to attribute mod + skill level.
+ * - `actionModifiers` backs NON-skill action keys only (deathSave, shipSensors,
+ *   initiative) — numbers with no derivation path. Real skill modifiers are
+ *   ALWAYS live-derived (attribute mod + compressed proficiency + passives) so
+ *   level-ups count; a stale precomputed skill entry is ignored (see rolls.ts).
  */
 
 export const AttributeKey = z.enum([
@@ -196,6 +196,12 @@ export const Npc = z.object({
   status: z.string().optional(),
   factionId: z.string().optional(),
   locationId: z.string().optional(),
+  /** Occupational handle, e.g. "data broker" — the UI shows this when a player
+   *  doesn't (yet) know the NPC's name. Universe-shared, set once at creation. */
+  role: z.string().optional(),
+  /** Campaign that first spawned this NPC (provenance for generated NPCs that
+   *  are promoted into the shared universe cast). Absent on the hand-seeded cast. */
+  originCampaignId: z.string().optional(),
   notes: z.string().optional(),
 });
 export type Npc = z.infer<typeof Npc>;

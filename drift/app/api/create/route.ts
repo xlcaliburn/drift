@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { CreationInput } from "@/shared/multiplayer";
-import { buildCharacterFromCreation } from "@/engine";
+import { buildCharacterFromCreation, buildBackstoryNpcs } from "@/engine";
 import { finalizeCreation, quickCreationNotes } from "@/llm/creationFinalize";
 import { buildNewCampaignState } from "@/lib/newCampaign";
 import { getSession, setSession, persistSession, hasSupabase } from "@/lib/state";
@@ -124,27 +124,25 @@ export async function POST(req: NextRequest) {
           pc.voiceNotes = enriched.voiceNotes;
         }
       }
-      // Seed people named in the backstory as related NPCs so the narrator can
-      // pull them into play — skip any name already in the world's cast. Their
-      // tie also seeds the relationship overlay (CONTINUITY.md tier CANON) so
-      // "your estranged brother" renders on their context line from day one.
-      if (finalize.relations?.length) {
-        const have = new Set(session.state.npcs.map((n) => n.name.toLowerCase()));
-        const fresh = finalize.relations.filter((r) => r.name && !have.has(r.name.toLowerCase()));
-        fresh.forEach((r, i) => {
-          const id = `npc-rel-${stamp}-${i}`;
-          session.state.npcs = [
-            ...session.state.npcs,
-            {
-              id,
-              universeId: session.state.universe.id,
-              name: r.name,
-              oneBreath: r.oneBreath || `${r.relation} of ${enriched.name}.`,
-              notes: `${enriched.name}'s ${r.relation}.`,
-            },
-          ];
-          session.npcRelations[id] = { relationship: r.relation || undefined, disposition: 0 };
-        });
+      // Seed people named in the backstory as real, universe-shared NPC entities
+      // so the narrator can pull them into play AND other campaigns in this world
+      // can meet them (they're promoted to the npcs table on persist). Each gets a
+      // role + a location; each tie pre-fills the relationship overlay (CONTINUITY.md
+      // tier CANON) with an inferred disposition ("old nemesis" → cold) so the tie
+      // renders on their context line from day one. Deterministic from the campaign
+      // seed. They are NOT marked present — they exist in the world, not the room.
+      const seeds = buildBackstoryNpcs({
+        relations: finalize.relations ?? [],
+        universeId: session.state.universe.id,
+        campaignId,
+        characterName: enriched.name,
+        ambition: enriched.ambition,
+        locationIds: session.state.locations.map((l) => l.id),
+        existingNames: session.state.npcs.map((n) => n.name),
+      });
+      for (const s of seeds) {
+        session.state.npcs = [...session.state.npcs, s.npc];
+        session.npcRelations[s.id] = s.relation;
       }
 
       setSession(campaignId, session);

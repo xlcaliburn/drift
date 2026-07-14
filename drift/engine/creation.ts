@@ -1,5 +1,7 @@
-import { Character, type Attributes, type Skill } from "@/shared/schemas";
+import { Character, type Attributes, type Skill, type Npc } from "@/shared/schemas";
 import type { CreationInput } from "@/shared/multiplayer";
+import type { NpcRelation } from "@/shared/scene";
+import { seededRng, type RNG } from "@/engine/rng";
 import { backgrounds, biasSkills, biasAttribute, attributeBaseline } from "@/content/creation";
 
 /**
@@ -72,4 +74,174 @@ function addSkillLevel(skills: Skill[], name: string, delta: number) {
   const existing = skills.find((s) => s.name === name);
   if (existing) existing.level += delta;
   else skills.push({ name, level: delta, ticks: 0 });
+}
+
+// ── Backstory NPCs (universe-shared, seeded at creation) ─────────────────────
+
+/** A person named in the PC's backstory, as returned by the creation story pass. */
+export interface BackstoryRelationInput {
+  name: string;
+  /** Their tie to the PC, e.g. "estranged brother", "the fixer who bankrolled them". */
+  relation: string;
+  /** One sentence on who they are now. */
+  oneBreath?: string;
+}
+
+/** A ready-to-persist backstory NPC: the universe-shared entity plus the PC's
+ *  private, pre-filled standing (keyed by the same id in npc_relations). */
+export interface BackstoryNpcSeed {
+  npc: Npc;
+  /** The npc id — also the key under which `relation` goes into npcRelations. */
+  id: string;
+  relation: NpcRelation;
+}
+
+/** FNV-1a-ish string hash → a stable 32-bit seed, so backstory NPCs are
+ *  deterministic from the campaign id (same campaign → same picks). */
+export function seedFromString(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/**
+ * Infer the PC's starting disposition toward a backstory relation from its label.
+ * Engine-owned so the tie's tone is consistent and testable: a nemesis starts
+ * cold (-2), a mentor/ally/family warm (+1), estrangement pulls a warm tie down.
+ */
+export function inferDisposition(relation: string): number {
+  const s = relation.toLowerCase();
+  const hostile =
+    /\b(nemesis|enem|rival|betray|traitor|hunt|kill|murder|wronged|double-?cross|for dead|vengeance|vendetta|hostile)\b/.test(
+      s,
+    );
+  if (hostile) return -2;
+  const estranged = /\b(estranged|abandoned|disowned|left)\b/.test(s);
+  const warm =
+    /\b(mentor|teacher|master|bankroll|saved|rescued|protector|ally|allies|friend|brother|sister|sibling|mother|father|parent|family|lover|partner|loved|comrade|crewmate|handler)\b/.test(
+      s,
+    );
+  if (warm) return estranged ? -1 : 1;
+  if (estranged) return -1;
+  return 0;
+}
+
+/** Reduce a relation label to a short occupational handle for the NPC's `role`
+ *  ("the fixer who bankrolled them" → "fixer"; "estranged brother" → "estranged
+ *  brother"). Drops leading articles and any trailing "who/that…" clause. */
+export function deriveRole(relation: string): string {
+  let r = relation.trim().toLowerCase().replace(/^(the|a|an)\s+/, "");
+  r = r.split(/\b(?:who|whom|that|which)\b/)[0];
+  r = r.replace(/[.,;:]+\s*$/, "").replace(/\s+/g, " ").trim();
+  return r.slice(0, 40) || "contact";
+}
+
+/** Deterministic fallback relation when the story pass named no one — every PC
+ *  should still start with a face in the world. Keyed to their ambition (revenge
+ *  → a nemesis; otherwise a mentor who vouched for them). Names come from a small
+ *  pool picked by the campaign seed, skipping any already in the cast. */
+const FALLBACK_NAMES = [
+  "Kessa Vane",
+  "Doran Ait",
+  "Sillow Marr",
+  "Nadre Coil",
+  "Bexley Torn",
+  "Ivo Sarn",
+  "Renn Halloway",
+  "Marta Quell",
+];
+
+function fallbackRelation(
+  ambition: string | undefined,
+  rng: RNG,
+  taken: Set<string>,
+): BackstoryRelationInput | null {
+  const name =
+    FALLBACK_NAMES.filter((n) => !taken.has(n.toLowerCase()))[
+      rng.int(0, Math.max(0, FALLBACK_NAMES.length - 1))
+    ] ?? FALLBACK_NAMES.find((n) => !taken.has(n.toLowerCase()));
+  if (!name) return null;
+  if (ambition === "revenge") {
+    return {
+      name,
+      relation: "old nemesis",
+      oneBreath: "The one who wronged you, still out there in the lanes.",
+    };
+  }
+  return {
+    name,
+    relation: "the mentor who vouched for you",
+    oneBreath: "Took a chance on you once; you owe them more than you'll admit.",
+  };
+}
+
+/**
+ * Turn the backstory's named people into 1–2 real, universe-shared NPC entities
+ * plus the PC's pre-filled private standing — pure and deterministic from the
+ * campaign seed. Each NPC gets a role (occupational handle) and a location picked
+ * from the universe's locations; each relation gets a relationship label, an
+ * inferred disposition, a lastNote from the backstory, and nameKnown=true (the PC
+ * knows these people). They are NOT marked present in the opening scene — they
+ * exist in the world, not the opening room.
+ */
+export function buildBackstoryNpcs(opts: {
+  relations: BackstoryRelationInput[];
+  universeId: string;
+  campaignId: string;
+  characterName: string;
+  ambition?: string;
+  /** Universe locations to plant NPCs in (only the id is used). */
+  locationIds: string[];
+  /** Names already in the cast — skip collisions. */
+  existingNames?: string[];
+  /** Explicit seed; defaults to a hash of the campaign id (deterministic). */
+  seed?: number;
+  max?: number;
+}): BackstoryNpcSeed[] {
+  const rng = seededRng(opts.seed ?? seedFromString(opts.campaignId));
+  const taken = new Set((opts.existingNames ?? []).map((n) => n.toLowerCase()));
+  const max = opts.max ?? 2;
+
+  // Prefer the story-pass relations; fall back to one ambition-keyed tie if none.
+  let pool = opts.relations.filter((r) => r.name?.trim() && !taken.has(r.name.trim().toLowerCase()));
+  if (pool.length === 0) {
+    const fb = fallbackRelation(opts.ambition, rng, taken);
+    if (fb) pool = [fb];
+  }
+
+  const out: BackstoryNpcSeed[] = [];
+  for (const r of pool.slice(0, max)) {
+    const name = r.name.trim();
+    const key = name.toLowerCase();
+    if (taken.has(key)) continue;
+    taken.add(key);
+    const i = out.length;
+    const id = `npc-rel-${opts.campaignId}-${i}`;
+    const role = deriveRole(r.relation);
+    const locationId = opts.locationIds.length
+      ? opts.locationIds[rng.int(0, opts.locationIds.length - 1)]
+      : undefined;
+    const oneBreath = (r.oneBreath ?? "").trim() || `${r.relation} of ${opts.characterName}.`;
+    const npc: Npc = {
+      id,
+      universeId: opts.universeId,
+      name,
+      oneBreath,
+      role,
+      originCampaignId: opts.campaignId,
+      notes: `${opts.characterName}'s ${r.relation}.`,
+      ...(locationId ? { locationId } : {}),
+    };
+    const relation: NpcRelation = {
+      relationship: r.relation.trim() || undefined,
+      disposition: inferDisposition(r.relation),
+      lastNote: oneBreath.slice(0, 160),
+      nameKnown: true,
+    };
+    out.push({ npc, id, relation });
+  }
+  return out;
 }

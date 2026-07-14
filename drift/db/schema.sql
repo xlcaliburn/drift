@@ -42,6 +42,10 @@ create table if not exists npcs (
   status        text,
   faction_id    text references factions(id) on delete set null,
   location_id   text references locations(id) on delete set null,
+  -- Occupational handle ("data broker") shown before a player learns the name;
+  -- provenance for NPCs promoted into the shared cast from play/creation (014).
+  role          text,
+  origin_campaign_id text,
   notes         text
 );
 

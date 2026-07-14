@@ -97,6 +97,18 @@ export async function loadCampaignState(
   };
 }
 
+/**
+ * Promote generated NPCs into the UNIVERSE-scoped npcs table so every campaign in
+ * the same world can meet them (shared narrative canon). Upsert-by-id, last-write
+ * wins — two campaigns generating concurrently can't corrupt each other, they just
+ * race on the same row. Per-player standing is NOT written here (it stays private
+ * on campaign_runtime.npc_relations). No-op on an empty list.
+ */
+export async function upsertNpcs(db: SupabaseClient, npcs: Npc[]): Promise<void> {
+  if (!npcs.length) return;
+  await db.from("npcs").upsert(npcs.map((n) => toRow(n)));
+}
+
 /** Persist the mutable slices of a CampaignState after a turn / scene end. */
 export async function saveCampaignState(db: SupabaseClient, state: CampaignState): Promise<void> {
   await db.from("campaigns").upsert(toRow(state.campaign));

@@ -1,23 +1,17 @@
 import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
-import type { CampaignState, Scene, Npc } from "@/shared/schemas";
+import type { CampaignState, Scene } from "@/shared/schemas";
 import type { EngineEvent } from "@/engine";
 import type { ChatEntry } from "@/shared/chat";
 import type { CombatState } from "@/shared/combat";
 import { freshSceneCard, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
+import { mergeNpcs } from "@/shared/npcMerge";
 import type { ChoiceOption } from "@/shared/turnPlan";
 
 /** Campaign-scoped NPCs (narrator-introduced or creation relations) carry these id
  *  prefixes; universe-seed NPCs do not. Used to split the two for persistence. */
 function isCampaignNpc(id: string): boolean {
   return id.startsWith("npc-gen-") || id.startsWith("npc-rel-");
-}
-
-/** Merge the universe-seed cast with a campaign's private NPCs (campaign wins). */
-function mergeNpcs(seed: Npc[], extra: Npc[]): Npc[] {
-  const byId = new Map(seed.map((n) => [n.id, n]));
-  for (const n of extra) byId.set(n.id, n);
-  return [...byId.values()];
 }
 
 /**
@@ -142,9 +136,26 @@ export function setSession(campaignId: string, data: SessionData): void {
 export async function persistSession(campaignId: string, session: SessionData): Promise<void> {
   if (!hasSupabase()) return;
   try {
-    const { getServiceClient, saveCampaignState, saveCampaignRuntime } = await import("@/db/queries");
+    const { getServiceClient, saveCampaignState, saveCampaignRuntime, upsertNpcs } = await import("@/db/queries");
     const db = getServiceClient();
     await saveCampaignState(db, session.state);
+    // NPCs this campaign generated (narrator-introduced + creation relations).
+    const campaignNpcs = session.state.npcs.filter((n) => isCampaignNpc(n.id));
+    // Promote them into the UNIVERSE-scoped npcs table so other campaigns in the
+    // same world can meet them (shared canon). Stamp provenance if unset. Failure
+    // to promote must not break the turn — the per-campaign runtime copy below is
+    // still the durable fallback (mergeNpcs prefers the table row when both exist).
+    try {
+      await upsertNpcs(
+        db,
+        campaignNpcs.map((n) => (n.originCampaignId ? n : { ...n, originCampaignId: campaignId })),
+      );
+    } catch (e) {
+      console.error(
+        `[state] failed to promote NPCs for campaign ${campaignId}:`,
+        e instanceof Error ? e.message : e,
+      );
+    }
     await saveCampaignRuntime(db, campaignId, {
       transcript: session.transcript,
       history: session.history,
@@ -152,8 +163,9 @@ export async function persistSession(campaignId: string, session: SessionData): 
       focusIds: session.focusIds,
       tickedThisScene: session.tickedThisScene,
       combat: session.combat,
-      // Only the campaign's OWN NPCs — never the universe-shared seed cast.
-      npcs: session.state.npcs.filter((n) => isCampaignNpc(n.id)),
+      // Keep writing the campaign's OWN NPCs to the runtime snapshot too, for
+      // back-compat: a campaign saved before 014's promotion still restores them.
+      npcs: campaignNpcs,
       sceneCard: session.sceneCard,
       npcRelations: session.npcRelations,
       lastChoices: session.lastChoices,

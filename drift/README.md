@@ -81,8 +81,9 @@ app/, components/   Next.js App Router UI + API routes
 
 - The LLM never does math; the engine never writes prose.
 - Every roll returns a full breakdown (`d20(14) +8 = 22 vs DC 15 → success`).
-- The Quick Reference Card modifiers are authoritative (`actionModifiers`); the
-  engine uses them verbatim rather than re-deriving.
+- Skill modifiers are always LIVE-derived (attribute mod + compressed proficiency
+  + passives) so level-ups always count. `actionModifiers` only backs NON-skill
+  action keys (deathSave, shipSensors, initiative) that have no derivation.
 - `log_world_event` fires in solo play so the shared-universe canon feed has
   history the day a friend joins. Faction *lore* crosses campaigns; *mechanics*
   never do.

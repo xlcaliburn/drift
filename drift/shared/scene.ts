@@ -49,6 +49,10 @@ export interface NpcRelation {
   lastNote?: string;
   /** Scene seq of the last interaction. */
   lastSceneSeq?: number;
+  /** Does THIS player know the NPC by name yet? Per-player (name-knowledge is not
+   *  shared even though the NPC entity is). Defaults to true for NPCs the player
+   *  met by name; when false the UI shows the NPC's `role` handle instead. */
+  nameKnown?: boolean;
 }
 
 export type NpcRelations = Record<string, NpcRelation>;

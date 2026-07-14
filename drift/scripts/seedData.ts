@@ -55,5 +55,8 @@ export const npcs: Npc[] = [
   { id: "npc-ledger", universeId: UNIVERSE_ID, name: "The Ledger", oneBreath: "Rook's symbol-marked courier-fixer, no real name — moves cargo and secrets for anyone, trusted by all sides and beholden to none.", factionId: "f-ledger", locationId: "loc-rook" },
   { id: "npc-undertow", universeId: UNIVERSE_ID, name: "Undertow contact", oneBreath: "The Undertow's bounty desk at Rook — respects a clean operator and pays for results.", factionId: "f-undertow", locationId: "loc-rook" },
   { id: "npc-kesh", universeId: UNIVERSE_ID, name: "Kesh", oneBreath: "Wreck-field researcher aligned with the Reclaimers; holds proof a colony ship's 'accident' was decades-old sabotage, and is undecided what to do with it.", factionId: "f-reclaimers" },
-  { id: "npc-sable", universeId: UNIVERSE_ID, name: "Sable Chain", oneBreath: "The rising rival syndicate — faceless muscle running scouts into Crown lanes.", factionId: "f-sable" },
+  // NOTE: no faction-as-NPC entries. "Sable Chain" used to be seeded here as npc-sable,
+  // which made a FACTION show up as a person in retrieval, prompts, and the People tab
+  // (deleted from the live DB too). Factions live in the factions table only; to give
+  // one a human face, add a real named/role NPC with factionId instead.
 ];

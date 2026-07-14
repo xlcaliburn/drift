@@ -646,7 +646,9 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     ]);
     for (const handle of extractRoleNpcs(narration, nonPersons)) {
       toolCalls.push("register_npc(role)");
-      runtime.registerNpc(handle, `${handle} the player is dealing with.`);
+      // The handle IS a role ("Data Broker") — store it as the NPC's role so the
+      // UI can show it until the player learns a proper name.
+      runtime.registerNpc(handle, `${handle} the player is dealing with.`, handle.toLowerCase());
     }
     // Presence: mark present ANY known NPC actually named in THIS narration — so
     // whoever the player is dealing with (new, or continuing after a scene reset)
