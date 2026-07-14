@@ -290,6 +290,27 @@ export function redactMoney(narration: string): string {
     .replace(MONEY_SUFFIX_C_RE, "a fair sum");
 }
 
+/**
+ * A blunt, outcome-specific coda appended to the "narrate this result" directive so
+ * the cheap model can't narrate a SUCCESS the engine just denied — the exact desync
+ * that let a MISSED stealth kill read as a clean assassination, then flip-flop a
+ * turn later when the "dead" guard shot back. Derived from the engine text (both the
+ * structured roll line and the raw combat line pass through here as prose).
+ */
+export function outcomeDirective(engineText: string): string {
+  const t = (engineText ?? "").toLowerCase();
+  if (/\bkilled\b|\bdied\b|—\s*dead\b|☠/.test(t))
+    return " The character's attempt FAILED and they were KILLED — this is their death. Do NOT narrate them succeeding or surviving; narrate the fatal outcome.";
+  if (/\bdowned\b/.test(t))
+    return " The character's attempt FAILED and they were DOWNED — dropped to 0 HP, out of the fight. Do NOT narrate them landing the blow or achieving their aim; show the attempt going wrong and them being hit and going down.";
+  const missed = /→\s*miss\b/.test(t) || /→\s*(fail|failure)\b/.test(t) || /critical failure/.test(t);
+  const hurt = /\btook?\s+\d+|\btakes?\s+\d+|\bdamage\b/.test(t);
+  if (missed && hurt) return " The character MISSED and was HURT in return. Do NOT narrate a success — show the miss and the counterblow.";
+  if (missed) return " The character's attempt did NOT succeed. Narrate the failure, never a success.";
+  if (hurt) return " The character was HURT this beat — show concretely how they got hit.";
+  return "";
+}
+
 /** One compact line summarizing a roll for the model's context. */
 function engineContextLine(res: RollResult): string {
   const crit = res.criticalFailure
@@ -422,7 +443,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       content:
         `${contextSlice}\n\n---\nPLAYER: ${input.playerText}` +
         (engineLines.length
-          ? `\n${engineLines.join("\n")}\nNarrate this result. If the engine dealt DAMAGE or a CRITICAL FAILURE, show concretely HOW it went wrong and how they got hurt. Do not request another roll.`
+          ? `\n${engineLines.join("\n")}\nNarrate this result EXACTLY as the engine resolved it — the dice are authoritative and already shown to the player.${outcomeDirective(engineLines.join(" "))} Do not request another roll.`
           : input.fromChoice && !input.preCheck
             ? `\n(This is a pre-offered option with NO skill check — resolve its outcome FULLY in this one beat. Do NOT request a "roll"; it won't fire.)`
             : ""),
@@ -553,6 +574,24 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   if (plan.roll && rollSkill && !input.preCheck && !input.fromChoice && pc && !combat && COMBAT_SKILLS.has(rollSkill)) {
     toolCalls.push("combat_start");
     combat = openFightFromSkill(rollSkill, plan.roll.dc);
+    // The narration above described the player's INTENT and was written BEFORE the
+    // engine resolved the opening exchange — which may have MISSED and hurt/downed
+    // them. Re-narrate from the real result so the prose can't claim a kill the dice
+    // denied (the reported "guard I'd killed came back and shot me" desync). Engine
+    // lines are already shown; the client commits this replacement on `done`.
+    const openingLine = engineLines[engineLines.length - 1];
+    if (openingLine) {
+      messages.push({ role: "assistant", content: JSON.stringify({ narration: plan.narration }) });
+      messages.push({
+        role: "user",
+        content: `${openingLine}\nThat is the ACTUAL outcome of the opening exchange — the dice are authoritative. Re-narrate THIS beat to match it, REPLACING your previous narration.${outcomeDirective(openingLine)} Do not request another roll.`,
+      });
+      const outcome = await plannedCall(false);
+      if (outcome.narration.trim()) {
+        narration = outcome.narration;
+        plan = { ...outcome, narration };
+      }
+    }
   } else if (plan.roll && rollSkill && !input.preCheck && !input.fromChoice && pc && !combat) {
     toolCalls.push("roll_check");
     const res = runtime.execute("roll_check", {
@@ -571,7 +610,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       messages.push({ role: "assistant", content: JSON.stringify({ narration: plan.narration }) });
       messages.push({
         role: "user",
-        content: `${engineContextLine(res)}\nNarrate the outcome and provide choices. If damage or a critical failure landed, show HOW it went wrong and how they got hurt. Do not request another roll.`,
+        content: `${engineContextLine(res)}\nNarrate the outcome EXACTLY as the engine resolved it — the dice are authoritative — and provide choices.${outcomeDirective(engineContextLine(res))} Do not request another roll.`,
       });
       const outcome = await plannedCall(true);
       narration = `${plan.narration}\n\n${outcome.narration}`.trim();
