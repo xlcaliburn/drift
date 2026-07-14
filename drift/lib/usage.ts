@@ -45,11 +45,22 @@ export async function getMonthUsage(userId: string): Promise<MonthUsage> {
   );
 }
 
-/** Hard-cap check. Blocks when either the token or the cost budget is spent. */
+/** Global kill-switch for the hard caps. Budgets are OFF by default (they're
+ *  "removed for everyone for now") — metering + recording continue regardless, so
+ *  usage is still tracked and visible in the admin panel; nothing is blocked. Set
+ *  ENFORCE_BUDGET_CAPS=1 (or true/yes) to turn hard enforcement back on. */
+function budgetCapsEnforced(): boolean {
+  const v = (process.env.ENFORCE_BUDGET_CAPS ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+/** Hard-cap check. Blocks when either the token or the cost budget is spent —
+ *  UNLESS caps are disabled (the current default; see budgetCapsEnforced). */
 export function checkBudget(
   user: AuthedUser,
   month: MonthUsage,
 ): { ok: true } | { ok: false; reason: string } {
+  if (!budgetCapsEnforced()) return { ok: true };
   if (month.totalTokens >= user.monthlyTokenBudget) {
     return { ok: false, reason: `token cap ${user.monthlyTokenBudget.toLocaleString()} reached` };
   }
