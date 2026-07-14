@@ -4,9 +4,11 @@ import type { EngineEvent } from "./events";
 /** Skill levels cap here — the top of the curve. */
 export const MAX_SKILL_LEVEL = 10;
 
-/** Ticks required to reach the next level: (currentLevel + 1) * 3. */
+/** Ticks required to reach the next level: (currentLevel + 1) * 6. XP earned per
+ *  qualifying roll is 2 on a success, 1 on a failure (engineBridge), so this is a
+ *  long grind by design — a level is ~3 clean successes at level 0, more each rung. */
 export function nextLevelCost(currentLevel: number): number {
-  return (currentLevel + 1) * 3;
+  return (currentLevel + 1) * 6;
 }
 
 /** Display max for the tick bar at the character's current level. */
@@ -34,17 +36,20 @@ export interface TickResult {
 }
 
 /**
- * Award one tick to a skill, respecting the max-1-tick-per-skill-per-scene cap.
- * `alreadyTicked` is the set of skill names already ticked this scene for this
- * character. Levels up when ticks reach (level+1)*3, carrying any overflow.
+ * Award XP to a skill, respecting the max-1-award-per-skill-per-scene cap.
+ * `amount` is the XP for this event — 2 on a success, 1 on a failure (the caller
+ * decides from the roll outcome). `alreadyTicked` is the set of skill names already
+ * awarded this scene for this character. Levels up when ticks reach the cost,
+ * carrying overflow (looped, so a big award can cross a boundary safely).
  *
  * Message format matches the save file's disambiguation rule:
- *   "Gunnery (lvl 1): 4→5/6"  or on level up  "Gunnery LEVEL UP → lvl 2 (0/9)"
+ *   "Gunnery (lvl 1): 4→6/12"  or on level up  "Gunnery LEVEL UP → lvl 2 (0/18)"
  */
 export function awardTick(
   character: Character,
   skillName: string,
   alreadyTicked: Set<string>,
+  amount = 1,
 ): TickResult {
   if (alreadyTicked.has(skillName)) {
     return {
@@ -69,14 +74,13 @@ export function awardTick(
   }
 
   const before = sk.ticks;
-  const atMax = sk.level >= MAX_SKILL_LEVEL;
-  sk.ticks += 1;
+  sk.ticks += Math.max(1, Math.round(amount));
   let leveledUp = false;
 
-  const cost = nextLevelCost(sk.level);
-  if (!atMax && sk.ticks >= cost) {
+  // Carry overflow across as many level boundaries as the award covers.
+  while (sk.level < MAX_SKILL_LEVEL && sk.ticks >= nextLevelCost(sk.level)) {
+    sk.ticks -= nextLevelCost(sk.level);
     sk.level += 1;
-    sk.ticks -= cost; // carry overflow
     leveledUp = true;
   }
   // At the cap the bar sits full; ticks never accrue past it.

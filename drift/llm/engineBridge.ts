@@ -231,7 +231,9 @@ export class TurnRuntime {
           .filter((k) => k.startsWith(`${character.id}:`))
           .map((k) => k.slice(character.id.length + 1)),
       );
-      const award = awardTick(character, skillName, perChar);
+      // XP scales with the roll: 2 on a success, 1 on a failure (you learn more
+      // from a win, but you still learn from trying).
+      const award = awardTick(character, skillName, perChar, res.outcome === "success" ? 2 : 1);
       if (award.ticked) {
         this.tickedThisScene.add(`${character.id}:${skillName}`);
         this.state = {

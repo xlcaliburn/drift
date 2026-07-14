@@ -36,7 +36,7 @@ describe("runSceneEnd — full DM checklist pipeline", () => {
   it("awards the gunnery tick (5 -> 6)", () => {
     const vess = report.state.characters.find((c) => c.id === "vess")!;
     expect(vess.skills.find((s) => s.name === "gunnery")!.ticks).toBe(6);
-    expect(report.checklist.ticksAwarded[0]).toBe("Gunnery (lvl 2): 5→6/9");
+    expect(report.checklist.ticksAwarded[0]).toBe("Gunnery (lvl 2): 5→6/18");
   });
 
   it("advances the Sable Chain clock (3 -> 4)", () => {

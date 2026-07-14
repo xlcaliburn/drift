@@ -52,7 +52,8 @@ describe("immediate tick award on qualifying rolls", () => {
     const res = roll(rt);
     expect(res.tick).toContain("Stealth");
     const pc = rt.state.characters[0];
-    expect(pc.skills.find((s) => s.name === "stealth")?.ticks).toBe(1);
+    // d20(10) + stealth mod (reflex 2 + prof 1) = 13 vs DC 13 → SUCCESS → 2 XP.
+    expect(pc.skills.find((s) => s.name === "stealth")?.ticks).toBe(2);
   });
 
   it("caps at one tick per skill per scene, across separate runtimes sharing the set", () => {
@@ -65,7 +66,7 @@ describe("immediate tick award on qualifying rolls", () => {
     const rt2 = new TurnRuntime(rt1.state, rollRng(10), { tickedThisScene: ticked });
     const r2 = roll(rt2);
     expect(r2.tick).toBeUndefined(); // capped
-    expect(rt2.state.characters[0].skills.find((s) => s.name === "stealth")?.ticks).toBe(1);
+    expect(rt2.state.characters[0].skills.find((s) => s.name === "stealth")?.ticks).toBe(2); // one success = 2 XP
   });
 
   it("does not tick below DC 13 or without stakes", () => {

@@ -4,29 +4,36 @@ import type { Character } from "@/shared/schemas";
 import { vess } from "@/engine/__fixtures__/vessCampaign";
 
 describe("tick / level-up math", () => {
-  it("next-level cost = (level+1) * 3", () => {
-    expect(nextLevelCost(1)).toBe(6);
-    expect(nextLevelCost(4)).toBe(15);
-    expect(tickMax(2)).toBe(9);
+  it("next-level cost = (level+1) * 6", () => {
+    expect(nextLevelCost(1)).toBe(12);
+    expect(nextLevelCost(4)).toBe(30);
+    expect(tickMax(2)).toBe(18);
   });
 
-  it("Gunnery lvl 2: 5→6/9 (no level up)", () => {
-    const res = awardTick(vess, "gunnery", new Set());
+  it("Gunnery lvl 2: 5→6/18 (a single failure XP, no level up)", () => {
+    const res = awardTick(vess, "gunnery", new Set(), 1);
     expect(res.ticked).toBe(true);
     expect(res.leveledUp).toBe(false);
-    expect(res.event.breakdown).toBe("Gunnery (lvl 2): 5→6/9");
+    expect(res.event.breakdown).toBe("Gunnery (lvl 2): 5→6/18");
     const sk = res.character.skills.find((s) => s.name === "gunnery")!;
     expect(sk.ticks).toBe(6);
     expect(sk.level).toBe(2);
   });
 
-  it("Mechanics lvl 1: 5→ level up to 2", () => {
-    const res = awardTick(vess, "mechanics", new Set());
+  it("awards `amount` XP — 1 on a fail, 2 on a success", () => {
+    const fresh = { ...vess, skills: [{ name: "stealth", level: 0, ticks: 0 }] } as Character;
+    expect(awardTick(fresh, "stealth", new Set(), 1).character.skills[0].ticks).toBe(1);
+    expect(awardTick(fresh, "stealth", new Set(), 2).character.skills[0].ticks).toBe(2);
+  });
+
+  it("a success (2 XP) crosses a level boundary, carrying the overflow", () => {
+    const near = { ...vess, skills: [{ name: "mechanics", level: 0, ticks: 5 }] } as Character;
+    const res = awardTick(near, "mechanics", new Set(), 2); // 5 + 2 = 7 ≥ cost(0)=6 → level up, carry 1
     expect(res.leveledUp).toBe(true);
-    expect(res.event.breakdown).toBe("Mechanics LEVEL UP → lvl 2 (0/9)");
+    expect(res.event.breakdown).toBe("Mechanics LEVEL UP → lvl 1 (1/12)");
     const sk = res.character.skills.find((s) => s.name === "mechanics")!;
-    expect(sk.level).toBe(2);
-    expect(sk.ticks).toBe(0);
+    expect(sk.level).toBe(1);
+    expect(sk.ticks).toBe(1);
   });
 
   it("caps at 1 tick per skill per scene", () => {
