@@ -49,6 +49,8 @@ export interface JsonTurnInput {
   /** Catalog id from a clicked "Use X" chip — the engine applies the consumable
    *  deterministically before narrating (a heal never depends on the model). */
   preUseItem?: string;
+  /** A clicked "Repair hull" dock chip — the engine repairs before narrating. */
+  preRepair?: boolean;
   /** The action was a CLICKED choice (not typed). Its check is already decided and
    *  shown on the chip, so a checkless clicked choice must NOT get a surprise
    *  model-proposed roll — the badge is the contract (typed free text still can). */
@@ -437,6 +439,17 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       emit([`⚠ Can't use item: ${res.error}`]);
     }
   }
+  // A clicked "Repair hull" dock chip — engine repairs deterministically (E-3).
+  if (input.preRepair && pc) {
+    toolCalls.push("repair_ship");
+    const res = runtime.repairShip();
+    if (res.line) {
+      engineLines.push(`ENGINE RESULT: ${res.line}`);
+      emit([res.line]);
+    } else if (res.error) {
+      emit([`⚠ ${res.error}`]);
+    }
+  }
 
   // ── Prompt assembly ─────────────────────────────────────────────────────────
   const system = buildJsonSystem(input.state);
@@ -718,6 +731,13 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     if (res.line) emit([res.line]);
     else if (res.error) emit([`⚠ No sale: ${res.error}`]);
   }
+  // Dock repair (ECONOMY E-3) — model-initiated ("patch me up at the dock").
+  if (plan.repair && pc) {
+    toolCalls.push("repair_ship");
+    const res = runtime.repairShip(plan.repair.hp ?? undefined);
+    if (res.line) emit([res.line]);
+    else if (res.error) emit([`⚠ ${res.error}`]);
+  }
   // Persist any named NPCs the narrator introduced so the world remembers them
   // (continuity — recognized when the player returns), mark them present in the
   // scene, and apply relationship updates (disposition nudge / last-note / tie).
@@ -857,6 +877,11 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     combat = started.combat.active ? started.combat : null; // a surprise volley could end it instantly
     if (started.lines.length) emit(started.lines);
   }
+
+  // Reconcile the Dock debt thread with the wallet after every money move this
+  // turn (repair, a purchase, scene-end wages, a payout) — a payout auto-clears
+  // debt, a fresh shortfall opens the payoff loop (ECONOMY E-3).
+  if (pc) runtime.syncDockDebt();
 
   // ── Final cleanup: belt-and-suspenders on the prose, clamp the choices. ────
   // redactMoney scrubs any credit figure the model states in prose — the engine

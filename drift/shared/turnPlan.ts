@@ -97,6 +97,9 @@ export const ChoiceOption = z.object({
    *  catalog id the engine applies DETERMINISTICALLY, so a heal never depends on
    *  the model remembering to fire useItem. */
   useItemId: optionalNullable(z.string()),
+  /** Set on an engine-generated "Repair hull" dock chip — the engine repairs
+   *  deterministically at ¢12/HP (ECONOMY E-3). */
+  repairHull: optionalNullable(z.boolean()),
 });
 export type ChoiceOption = z.infer<typeof ChoiceOption>;
 
@@ -162,6 +165,10 @@ export const TurnPlan = z.object({
   /** The player SELLS carried gear (flat ~40% of value, engine-priced). `name`
    *  is the gear entry as listed on the PC gear line. */
   sell: optionalNullable(z.object({ name: z.string().min(1).max(60) })),
+  /** The player has the ship's HULL repaired at a dock (ECONOMY E-3). `hp`
+   *  optional (full patch if omitted). The ENGINE charges ¢12/HP and prints the
+   *  figure; never refused for lack of funds — the balance goes negative (debt). */
+  repair: optionalNullable(z.object({ hp: optionalNullable(z.coerce.number().int().min(1).max(999)) })),
   /** Job/bounty/deal concluded → the ENGINE rolls the credits inside the tier's
    *  payout band (ECONOMY.md — the model never sets amounts). */
   payout: optionalNullable(

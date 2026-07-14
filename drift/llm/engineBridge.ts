@@ -27,7 +27,7 @@ import {
 import { fleeDC, threatLevel } from "@/shared/combat";
 import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
 import { catalogItem, itemCount, allItems, slotsUsed, maxSlotsFor, resolveGearItemId } from "@/shared/items";
-import { marketStock, repPriceFactor, localRep, SELL_RATE } from "@/engine/market";
+import { marketStock, repPriceFactor, localRep, SELL_RATE, marketTierFor } from "@/engine/market";
 import { gearValue } from "@/shared/netWorth";
 import {
   freshSceneCard,
@@ -958,6 +958,71 @@ export class TurnRuntime {
     const line = `💰 Sold ${existing.name} — +¢${paid}. ¢${after} total.`;
     this.events.push({ type: "note", breakdown: line });
     return { line };
+  }
+
+  /**
+   * Dock hull repair (ECONOMY E-3): patch the hull at ¢12/HP. NEVER refused for
+   * lack of funds — the balance goes NEGATIVE (the dock extends credit), and the
+   * Dock debt thread + payoff loop kicks in (syncDockDebt). Gated to a serviced
+   * dock (the tags a market needs). `hpWanted` caps a partial patch; omit for full.
+   */
+  repairShip(hpWanted?: number): { line?: string; error?: string } {
+    const s = this.state.ship;
+    if (!s) return { error: "no ship to repair" };
+    const loc = this.state.locations.find((l) => l.id === this.state.campaign.currentLocationId);
+    if (!marketTierFor(loc)) return { error: "no dock with services here" };
+    const deficit = s.maxHp - s.hp;
+    if (deficit <= 0) return { error: "the hull is already fully patched" };
+    const hp = hpWanted ? Math.max(1, Math.min(Math.floor(hpWanted), deficit)) : deficit;
+    const cost = hp * economy.constants.repairCostPerHp;
+    const pc = this.pc();
+    const before = pc?.credits ?? 0;
+    const after = before - cost;
+    this.state = {
+      ...this.state,
+      ship: { ...s, hp: s.hp + hp },
+      characters: this.state.characters.map((c) => (c.id === pc?.id ? { ...c, credits: after } : c)),
+    };
+    this.events.push({ type: "cost", breakdown: `Dock repair: +${hp} hull, -¢${cost}`, amount: -cost });
+    this.syncDockDebt();
+    const tail = after < 0 ? ` The dock runs a tab — you're ¢${-after} in the hole.` : ` ¢${after} left.`;
+    return { line: `🔧 Hull patched +${hp} (${s.hp}→${s.hp + hp}) — ¢${cost}.${tail}` };
+  }
+
+  /**
+   * Reconcile the "Dock debt" thread with the wallet (ECONOMY E-3). A negative
+   * balance ensures the thread (the narrator is steered to offer a T0/T1 payoff
+   * job); clearing the balance resolves it. Payouts auto-clear debt because it's
+   * one running balance. Idempotent via a stable id — call it after any money move.
+   */
+  syncDockDebt() {
+    const credits = this.pc()?.credits ?? 0;
+    const id = "th-dock-debt";
+    const existing = this.state.threads.find((t) => t.id === id);
+    if (credits < 0) {
+      const body = `You owe the dock ¢${-credits}. Any job's pay comes off the debt first — take a quick run to clear it.`;
+      if (!existing) {
+        this.state = {
+          ...this.state,
+          threads: [
+            ...this.state.threads,
+            { id, campaignId: this.state.campaign.id, title: "Dock debt", body, status: "active", entityRefs: [] },
+          ],
+        };
+      } else if (existing.status !== "active" || existing.body !== body) {
+        this.state = {
+          ...this.state,
+          threads: this.state.threads.map((t) => (t.id === id ? { ...t, body, status: "active" } : t)),
+        };
+      }
+    } else if (existing && existing.status === "active") {
+      this.state = {
+        ...this.state,
+        threads: this.state.threads.map((t) =>
+          t.id === id ? { ...t, status: "resolved", body: "Square with the dock — debt cleared." } : t,
+        ),
+      };
+    }
   }
 
   /** Mark an NPC as present in the current scene — they ride retrieval every

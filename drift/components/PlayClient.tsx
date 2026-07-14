@@ -206,6 +206,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
           combatAction: action?.combatAction,
           downedAction: action?.downedAction,
           useItemId: action?.useItemId,
+          repairHull: action?.repairHull,
           fromChoice: !!action,
         }),
       });
@@ -641,7 +642,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                         disabled={!hasApiKey}
                         className={
                           "flex items-center gap-2 rounded-full border px-4 py-2 text-left text-[15px] transition hover:border-accent hover:text-accent disabled:opacity-40 " +
-                          (c.useItemId
+                          (c.useItemId || c.repairHull
                             ? "border-good/40 bg-good/5 text-neutral-200"
                             : "border-edge bg-panel text-neutral-200")
                         }
@@ -653,10 +654,12 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                                 : "")
                             : c.useItemId
                               ? "Use this item — the engine applies it immediately."
-                              : undefined
+                              : c.repairHull
+                                ? "Repair the hull at the dock — the engine charges ¢12/HP (credit extended if short)."
+                                : undefined
                         }
                       >
-                        <span>{c.useItemId ? "🎒 " : ""}{c.label}</span>
+                        <span>{c.useItemId ? "🎒 " : c.repairHull ? "🔧 " : ""}{c.label}</span>
                         {c.check && (
                           <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium capitalize text-accent">
                             🎲 {c.check.skill ?? c.verb}

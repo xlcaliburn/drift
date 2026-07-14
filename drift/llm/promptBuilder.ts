@@ -9,7 +9,7 @@ import { relationSuffix, RECENT_SCENES_IN_PROMPT, type SceneCard, type NpcRelati
 import { generateQuirk } from "@/shared/npcFlavor";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { playerThreatTier } from "@/shared/netWorth";
-import { marketStock, repPriceFactor, localRep } from "@/engine/market";
+import { marketStock, repPriceFactor, localRep, repairQuote } from "@/engine/market";
 import { inTutorial, TUTORIAL_CHOICE_DIRECTIVE, TUTORIAL_JSON_DIRECTIVE } from "@/shared/tutorial";
 import type { Dossier } from "@/shared/multiplayer";
 
@@ -72,6 +72,7 @@ Respond with ONE json object and nothing else:
   "useItem": {"itemId": "medkit"},
   "purchase": {"itemId": "medkit", "qty": 1},
   "sell": {"name": "Combat rifle"},
+  "repair": {},
   "payout": {"tier": "T1", "reason": "courier run delivered"},
   "offers": [{"tier": "T2", "from": "the rival buyer"}],
   "worldEvent": {"headline": "..."},
@@ -90,6 +91,7 @@ RULES:
 5. "combatStart" = a fight with something that FIGHTS BACK — the ONLY way to damage an enemy; the engine runs the rounds, you narrate. If they can shoot back it's combatStart, not a check. tier T1 mook / T2 professional / T3 elite; surprise enemy|player|none. SPAWN WHAT YOU NARRATED: put every distinct foe/group in "enemies" — a named boss is ONE entry (count 1, name "Calvo"); a pack of identical goons is ONE entry (count N, shared name "heavy"). "Calvo and his two heavies" → enemies:[{tier,count:1,name:"Calvo",major:true},{tier,count:2,name:"heavy"}]. Mark a NAMED boss / major antagonist's group "major":true — they're the longer fight (the engine makes them tougher); a goon pack is never major. The counts MUST match the fiction; keep fights SMALL — 1-2 enemies for a standard fight, 3+ only for a real set-piece (total ≤5). A lone foe can use the legacy top-level tier/count/name. Ship battle → scale:"ship" + shipClass (scout|fighter|gunship|corvette), single group only. Never combatStart AND choices. The ship's weapons are EXACTLY what its line lists — never invent a missile or gun it doesn't carry. PACING: combatStart is a CLIMAX, not an opener. On a HUNT / BOUNTY / TRACKDOWN, the quest-giver hands off and then the player scouts, tracks, asks around, and PICKS AN APPROACH over 2-3 beats (each with choices) — NEVER fire combatStart on the same beat the job is given. A firefight the player walks into unprepared is a pacing failure; earn the fight.
 6. "useItem" = the player uses a consumable they HOLD, out of combat; the engine applies the effect and reports numbers. In-combat items are engine chips, not useItem. Ids: ${ITEM_REFERENCE}
    SHOPPING: the MARKET HERE line is the ONLY stock, at the ONLY prices — no market line, nothing's for sale. Player buys → "purchase":{"itemId","qty"}; sells carried gear → "sell":{"name"}. The ENGINE runs the till (validates credits/stock/pack space, prints the figures); you narrate the counter, the vendor, the haggle-FLAVOR — never the numbers, and never a deal the engine didn't confirm.
+   DOCK REPAIR: only when a DOCK REPAIR HERE line is present. Player asks to patch the hull → "repair":{} (full) or "repair":{"hp":N} (partial); the ENGINE charges ¢12/HP, prints it, and runs a tab if they're short. If a DOCK DEBT line shows, weave in the pressure to take a payoff job.
 7. MONEY IS ENGINE-OWNED — inventing or inflating a credit figure is the #1 economy error. NEVER state an amount in DIGITS OR WORDS anywhere: not a job's pay, a buyer's bid, a bribe, a price. Emit a TIER; the ENGINE rolls and PRINTS the figure. "payout" when a deal is STRUCK (job done, bounty paid, sale closed): T0 errand / T1 standard / T2 professional / T3 major score (rare) — never pay twice. "offers" when you PRESENT a bid/quote the player HASN'T taken (a job's posted pay, a rival buyer's counter, a haggling number on the table): [{tier, from}] — a BETTER rival offer is a HIGHER tier; "from" names who's bidding. Keep the prose qualitative ("a solid cut", "a better offer on the table", "she names a fat sum") — the engine shows the real number on its own line.
 8. "worldEvent" when a faction's standing shifts. "sceneEnd" when the scene truly wraps. ITEMS are ENGINE-owned: LOOT comes from a loot/scavenge action's roll — when an ENGINE RESULT reports a scavenged haul, narrate finding EXACTLY that (never add or upgrade the prize; the player doesn't get to name it). You may use "items" ONLY to record a genuinely legitimate transfer — a purchase the player paid for, a reward an NPC hands them, a confiscation ("lose") — never loot the player merely claimed. The engine drops a gain that has no legitimate source, so don't narrate one landing. The PC gear line shows what they already carry; don't re-gain it.
 9. "npcs" — CONTINUITY. List EVERY distinct figure now in the scene the player can see, speak to, or square off against — a boss, a contact, a new arrival, a bodyguard, a named foe — each with a one-line who-they-are. Give a short handle to anyone unnamed but present ("the wrecker woman" → name:"Wrecker woman" or invent "Kessa"). A GROUP is one entry ("Draven's enforcers"). The engine tracks who's present and they RECOGNIZE the player later — so a figure you narrate but omit here goes missing from the game. Only skip true background (a distant, faceless crowd). The one-line who-they-are ("oneBreath") is the NPC's TRUE identity for YOU the GM — it is canon the player has NOT necessarily learned. Same entry may update EVERY turn: "note" = what THE PLAYER now KNOWS about this figure from THEIR side — how they were introduced or what they've since found out ("the Ledger fixer vouched for Valerius as a trader"; later "learned he fronts for the Sable Chain"). Put ONLY player-known facts in "note", grow it as they learn more, and NEVER leak the NPC's hidden background the player hasn't earned. "relationship" = who they are to the player (first write sticks). But "disposition" +1/-1 ONLY lands on a turn a job/quest actually completes (a "payout") — the engine ignores standing nudges otherwise, so don't narrate someone's trust deepening over idle chat. Standing is earned by finishing work.
@@ -409,6 +411,17 @@ export function buildContextSlice(
         .join(" · ")}. Player buys → emit "purchase":{"itemId","qty"}; sells carried gear → "sell":{"name"} (≈40% of value). The ENGINE prints every figure and validates credits/stock/pack space — narrate the counter, not the math.`
     : `MARKET HERE: none — nothing is for sale at this location.`;
 
+  // Dock repair (ECONOMY E-3) + the debt payoff loop. The engine owns the figure
+  // and never refuses for lack of funds — it runs a tab.
+  const rq = repairQuote(state);
+  const inDebt = (pc?.credits ?? 0) < 0;
+  const dockLine = rq
+    ? `DOCK REPAIR HERE: the hull is damaged — a full patch runs ¢${rq.cost} (¢12/HP). Player asks to repair → emit "repair":{} (or "repair":{"hp":N} for a partial); the ENGINE charges and prints it, extending credit if they're short. Never state the figure yourself.`
+    : "";
+  const debtLine = inDebt
+    ? `DOCK DEBT: the player owes the dock (balance is negative). Steer them toward a quick T0/T1 payoff job — any payout comes off the debt first. Keep the pressure light but present.`
+    : "";
+
   // Consumables the PC actually holds — so the narrator only offers useItem for
   // items in hand (and knows what's available to spend between fights).
   const held = pc
@@ -519,6 +532,8 @@ export function buildContextSlice(
     `Ship: ${shipLine}`,
     threatLine,
     marketLine,
+    ...(dockLine ? [dockLine] : []),
+    ...(debtLine ? [debtLine] : []),
     ``,
     npcs.length
       ? `NPCs in play (proximity = how close; standing = their history; "plays:" = their canon personality — play it CONSISTENTLY; "hook:" = a backstory thread you can pull into a quest):\n${npcs
