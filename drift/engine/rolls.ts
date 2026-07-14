@@ -75,23 +75,60 @@ function isKnownSkill(skill: string): boolean {
  * derivation when absent. A passive bonus and situational modifier stack on top
  * in both branches.
  */
-export function computeModifier(
+/** One labeled contributor to a check's modifier (attribute, skill, signature,
+ *  situational, or a non-skill action's baked bonus) — for the audit breakdown. */
+export interface ModifierPart {
+  label: string;
+  value: number;
+}
+
+/**
+ * The itemized sources of a check's modifier — the same math computeModifier
+ * sums, but broken out so the player can SEE where a +2 (or a +0) comes from
+ * ("presence +1, skill +1"). Governing attribute + skill proficiency always
+ * appear (even at +0, so a flat roll is explained); signature/situational only
+ * when they contribute. A non-skill action key with a baked actionModifiers
+ * value shows that as its own line.
+ */
+export function modifierParts(
   character: Character,
   skill: string,
   situationalMod = 0,
-): number {
+): ModifierPart[] {
+  const parts: ModifierPart[] = [];
   const passive = passiveBonus(character, skill);
 
   if (!isKnownSkill(skill)) {
     const override = character.actionModifiers?.[skill];
-    if (override !== undefined) return override + passive + situationalMod;
+    if (override !== undefined) {
+      parts.push({ label: skill, value: override });
+      if (passive) parts.push({ label: "signature", value: passive });
+      if (situationalMod) parts.push({ label: "situational", value: situationalMod });
+      return parts;
+    }
   }
 
   const attrKey = skillAttribute(skill) as keyof Character["attributes"];
   const attrMod = character.attributes[attrKey] ?? 0;
   const sk = character.skills.find((s) => s.name === skill);
-  const level = sk?.level ?? 0;
-  return attrMod + skillProficiency(level) + passive + situationalMod;
+  parts.push({ label: String(attrKey), value: attrMod });
+  parts.push({ label: "skill", value: skillProficiency(sk?.level ?? 0) });
+  if (passive) parts.push({ label: "signature", value: passive });
+  if (situationalMod) parts.push({ label: "situational", value: situationalMod });
+  return parts;
+}
+
+/** Format the parts as a compact source annotation: "presence +1, skill +1". */
+export function formatModifierParts(parts: ModifierPart[]): string {
+  return parts.map((p) => `${p.label} ${p.value >= 0 ? "+" : ""}${p.value}`).join(", ");
+}
+
+export function computeModifier(
+  character: Character,
+  skill: string,
+  situationalMod = 0,
+): number {
+  return modifierParts(character, skill, situationalMod).reduce((sum, p) => sum + p.value, 0);
 }
 
 export function rollCheck(input: CheckInput, rng: RNG): CheckResult {
@@ -115,7 +152,12 @@ export function rollCheck(input: CheckInput, rng: RNG): CheckResult {
       : criticalFailure
         ? " [FUMBLE]"
         : "";
-  const breakdown = `${skill}: d20(${d20})${sig} ${sign} = ${total} vs DC ${dc} → ${outcome}`;
+  // Itemize where the modifier comes from ("presence +1, skill +1") so a +2 — or a
+  // flat +0 — is never a mystery. Omitted only when there's genuinely nothing to
+  // show (no parts).
+  const parts = modifierParts(character, skill, situationalMod);
+  const detail = parts.length ? ` (${formatModifierParts(parts)})` : "";
+  const breakdown = `${skill}: d20(${d20})${sig} ${sign}${detail} = ${total} vs DC ${dc} → ${outcome}`;
 
   return {
     d20,

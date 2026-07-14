@@ -101,10 +101,12 @@ export function usableConsumables(c: Character, scale: "personal" | "ship"): Usa
 }
 
 /**
- * Out-of-combat "Use X" chips (ITEMS.md — deterministic item use). Surfaced when
- * they'd actually do something, so the player never has to trust the narrator to
- * fire a heal: a personal heal only when hurt, a hull patch only when the ship is
- * damaged, a missile reload only when the rack is below capacity. The chip carries
+ * Out-of-combat "Use X" chips (ITEMS.md — deterministic item use). SHIP-DOWNTIME
+ * items only: a hull patch when the ship is damaged, a missile reload when the rack
+ * is below capacity. Personal HEALS (stim/medkit) are combat items — they surface
+ * as combat chips (combatActions), never here, so the bar isn't cluttered with a
+ * "Use stim" every idle turn. (Out of combat the player still heals by typing it —
+ * the engine's useItem is name-resilient — or at a dock.) The chip carries
  * `useItemId`; the ENGINE applies the effect (see route → jsonTurn preUseItem).
  */
 export function outOfCombatItemChips(
@@ -112,14 +114,12 @@ export function outOfCombatItemChips(
   ship?: { hp: number; maxHp: number; weapons: { type: string; ammo?: number; count?: number }[] } | null,
 ): { label: string; useItemId: string }[] {
   const chips: { label: string; useItemId: string }[] = [];
-  const hurt = c.hp < c.maxHp;
   for (const it of allItems()) {
     if (it.type !== "consumable") continue;
     const n = itemCount(c, it.id);
     if (n <= 0) continue;
     const chip = { label: `${it.verb} ${it.name} (×${n})`, useItemId: it.id };
-    if (it.scale === "personal" && it.effect?.kind === "heal" && hurt) chips.push(chip);
-    else if (it.effect?.kind === "healShip" && ship && ship.hp < ship.maxHp) chips.push(chip);
+    if (it.effect?.kind === "healShip" && ship && ship.hp < ship.maxHp) chips.push(chip);
     else if (it.effect?.kind === "reloadMissiles" && ship?.weapons.some((w) => w.type === "missile" && (w.ammo ?? 0) < (w.count ?? 0)))
       chips.push(chip);
   }

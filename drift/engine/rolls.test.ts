@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeModifier, rollCheck } from "./rolls";
+import { computeModifier, modifierParts, formatModifierParts, rollCheck } from "./rolls";
 import { scriptedRng } from "./rng";
 import { vess, denna, josen } from "@/engine/__fixtures__/vessCampaign";
 import type { Character } from "@/shared/schemas";
@@ -96,6 +96,32 @@ describe("Josen fragile death save", () => {
   });
 });
 
+describe("modifierParts — the itemized sources behind a +N (or +0)", () => {
+  it("explains a flat +0: presence -1 and skill +1 cancel out", () => {
+    // negotiation = presence(-1) + prof(level 2 → +1) = 0 — the reported +0 mystery.
+    const parts = modifierParts(vess, "negotiation");
+    expect(parts).toEqual([
+      { label: "presence", value: -1 },
+      { label: "skill", value: 1 },
+    ]);
+    expect(formatModifierParts(parts)).toBe("presence -1, skill +1");
+    expect(parts.reduce((n, p) => n + p.value, 0)).toBe(computeModifier(vess, "negotiation"));
+  });
+
+  it("always shows attribute + skill, and folds in a situational modifier", () => {
+    const parts = modifierParts(vess, "piloting", 2);
+    expect(parts).toEqual([
+      { label: "reflex", value: 4 },
+      { label: "skill", value: 2 },
+      { label: "situational", value: 2 },
+    ]);
+  });
+
+  it("a non-skill action key shows its baked bonus as its own line", () => {
+    expect(modifierParts(vess, "initiative")).toEqual([{ label: "initiative", value: 4 }]);
+  });
+});
+
 describe("rollCheck", () => {
   it("produces a full breakdown and success outcome", () => {
     const rng = scriptedRng([14]);
@@ -104,7 +130,7 @@ describe("rollCheck", () => {
     // piloting = reflex(4) + prof(level 4 → +2) = 6; 14 + 6 = 20
     expect(r.total).toBe(20);
     expect(r.outcome).toBe("success");
-    expect(r.breakdown).toBe("piloting: d20(14) +6 = 20 vs DC 15 → success");
+    expect(r.breakdown).toBe("piloting: d20(14) +6 (reflex +4, skill +2) = 20 vs DC 15 → success");
   });
 
   it("natural 20 auto-succeeds even vs an impossible DC (critical)", () => {

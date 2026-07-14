@@ -127,18 +127,9 @@ describe("resolveGearItemId — unmapped legacy gear still resolves (the medkit 
 });
 
 describe("outOfCombatItemChips — deterministic use, only when useful", () => {
-  it("offers a heal chip only when hurt", () => {
-    const hurt = char({ hp: 5, maxHp: 18, gear: [{ name: "Medkit", itemId: "medkit", qty: 1 }] });
-    const full = char({ hp: 18, maxHp: 18, gear: [{ name: "Medkit", itemId: "medkit", qty: 1 }] });
-    expect(outOfCombatItemChips(hurt).map((c) => c.useItemId)).toContain("medkit");
-    expect(outOfCombatItemChips(full)).toEqual([]);
-  });
-
-  it("works off an unmapped legacy medkit too (resolves by name)", () => {
-    const hurt = char({ hp: 5, maxHp: 18, gear: [{ name: "Medkit", qty: 1 }] });
-    const chips = outOfCombatItemChips(hurt);
-    expect(chips.map((c) => c.useItemId)).toContain("medkit");
-    expect(chips[0].label).toContain("×1");
+  it("NEVER offers personal heals out of combat — stim/medkit are combat chips", () => {
+    const hurt = char({ hp: 5, maxHp: 18, gear: [{ name: "Medkit", itemId: "medkit", qty: 1 }, { name: "Stim", itemId: "stim", qty: 2 }] });
+    expect(outOfCombatItemChips(hurt)).toEqual([]); // no "Use Stim/Medkit" clutter idling
   });
 
   it("offers hull patch only on a damaged ship, missile reload only below capacity", () => {
