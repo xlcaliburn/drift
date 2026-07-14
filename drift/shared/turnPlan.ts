@@ -39,6 +39,9 @@ export const CheckSpec = z.object({
   /** What a failure hits: "pc" (default, character HP) or "ship" (hull) —
    *  a flying/docking mishap damages the SHIP, not the pilot. Engine-clamped. */
   target: optionalNullable(z.enum(["pc", "ship"])),
+  /** The RISK tier the DC was derived from (safe/risky/reckless) — carried on a
+   *  resolved choice's check so the UI can show the gamble. Engine-set. */
+  risk: optionalNullable(z.enum(["safe", "risky", "reckless"])),
 });
 export type CheckSpec = z.infer<typeof CheckSpec>;
 
@@ -72,6 +75,11 @@ export const CombatActionSpec = z.object({
 export const ChoiceOption = z.object({
   label: z.string().min(1).max(160),
   verb: optionalNullable(z.enum(VERB_LIST)),
+  /** The gamble: safe ≈ 80% / risky ≈ 55% / reckless ≈ 30% — the ENGINE derives
+   *  the DC from THIS character's odds. Preferred over `difficulty`. */
+  risk: optionalNullable(z.enum(["safe", "risky", "reckless"])),
+  /** Legacy fixed-DC tag (easy/normal/hard). Kept for back-compat; maps to a risk
+   *  tier when `risk` is absent. */
   difficulty: optionalNullable(z.enum(["easy", "normal", "hard"])),
   check: optionalNullable(CheckSpec),
   combatAction: optionalNullable(CombatActionSpec),

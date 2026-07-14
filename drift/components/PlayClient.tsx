@@ -11,7 +11,16 @@ import type { ChoiceOption } from "@/shared/turnPlan";
 import { combatActions, type CombatState } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
 import type { NpcRelations, SceneCard } from "@/shared/scene";
+import { riskOdds, type RiskTier } from "@/shared/risk";
 import Sidebar from "./Sidebar";
+
+/** Tailwind classes for a choice's RISK pill (odds axis — distinct from the
+ *  ⚠ hazard/damage axis). safe=green, risky=accent, reckless=red. */
+const RISK_PILL: Record<RiskTier, string> = {
+  safe: "bg-good/15 text-good",
+  risky: "bg-accent/15 text-accent",
+  reckless: "bg-bad/15 text-bad",
+};
 
 /** Choices may arrive as plain strings (opening/fallback) or objects with an
  *  attached engine check (structured turns) — normalize to objects. */
@@ -526,6 +535,17 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                         {c.check && (
                           <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium capitalize text-accent">
                             🎲 {c.check.skill ?? c.verb}
+                          </span>
+                        )}
+                        {c.check?.risk && (
+                          <span
+                            className={
+                              "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium capitalize " +
+                              RISK_PILL[c.check.risk]
+                            }
+                            title={`Risk: ${c.check.risk} — about ${riskOdds(c.check.risk)}% to succeed`}
+                          >
+                            {c.check.risk}
                           </span>
                         )}
                         {c.check?.hazardLevel ? (

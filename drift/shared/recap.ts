@@ -96,12 +96,27 @@ export function buildOpeningChoices(state: CampaignState): string[] {
  * Tutorial-clamped like the real choices.
  */
 export function buildFallbackChoices(state: CampaignState): string[] {
-  // GENERIC, context-free actions only — never the starting-quest thread titles,
-  // which read as stale "opening" options when they resurface mid-game (e.g.
-  // "Verify Kesh's evidence"). This fires only when the model returned no choices
-  // at all, which is rare with structured turns.
-  const generic = ["Look around and take stock", "Press on", "Wait for an opening"];
-  return generic.slice(0, inTutorial(state) ? TUTORIAL_CHOICE_COUNT : 3);
+  // Fires only when the model returned no choices at all (rare with structured
+  // turns). Give the player a REAL next step, not vague filler: lead with a
+  // concrete "pursue your lead" tied to an active thread when one exists, then a
+  // short set of strong, universally-usable moves. Keep it to ONE lead so it
+  // doesn't read as a menu of stale opening quests.
+  const choices: string[] = [];
+
+  const lead = state.threads.find((t) => t.status === "active");
+  if (lead) {
+    const label = `Follow up on: ${lead.title}`;
+    choices.push(label.length > 90 ? label.slice(0, 87).trimEnd() + "…" : label);
+  }
+
+  choices.push(
+    "Look around and size up the situation",
+    "Take stock — check your gear and credits",
+    "Find work — see what's on offer",
+    "Head somewhere new",
+  );
+
+  return choices.slice(0, inTutorial(state) ? TUTORIAL_CHOICE_COUNT : 4);
 }
 
 /**

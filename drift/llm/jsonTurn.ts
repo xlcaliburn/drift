@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { CampaignState } from "@/shared/schemas";
-import { liveRng, type RNG, type EngineEvent } from "@/engine";
+import { liveRng, computeModifier, type RNG, type EngineEvent } from "@/engine";
 import { TurnRuntime } from "./engineBridge";
 import { buildJsonSystem, buildContextSlice, retrieveEntities } from "./promptBuilder";
 import { deepseekChat, deepseekChatStream, isDeepSeekModel, resolveModel } from "./deepseek";
@@ -16,6 +16,8 @@ import {
 } from "@/shared/turnPlan";
 import { SCENE_TURN_CAP, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import { checkFromVerb, verbFromLabel, verbRolls } from "@/shared/actions";
+import { dcForRisk, difficultyToRisk, type RiskTier } from "@/shared/risk";
+import type { Character } from "@/shared/schemas";
 import { extractNpcNames, extractRoleNpcs, knownEntityNames, isPlausibleNpcName } from "@/shared/npcExtract";
 import type { CombatState } from "@/shared/combat";
 import type { Dossier } from "@/shared/multiplayer";
@@ -128,18 +130,45 @@ function dcToTier(dc: number): "T1" | "T2" | "T3" {
  * else INFERRED from the label's leading words ("Search the lockers" → loot).
  * The engine owns skill selection either way; untagged non-attempt labels stay
  * plain. This also makes the check badge deterministic on the client.
+ *
+ * RISK-TIER prebalancing: for a NON-COMBAT verb the DC is derived from the risk
+ * the model chose (safe/risky/reckless) and THIS character's modifier, so the
+ * success chance is consistent (~80/55/30%) instead of a fixed easy/normal/hard
+ * DC that ignored the player's odds. A COMBAT verb keeps its verb-built DC (that
+ * maps to enemy tier for the fight reroute — never risk-rebalanced).
  */
-function resolveChoiceChecks(choices: TurnPlan["choices"]): TurnPlan["choices"] {
+function resolveChoiceChecks(choices: TurnPlan["choices"], pc?: Character): TurnPlan["choices"] {
   return choices.map((c) => {
-    if (c.check) return c;
+    if (c.check) return c; // model gave an explicit check — respect it as-is
     const verb = c.verb ?? verbFromLabel(c.label);
     if (!verb) return c;
     const built = checkFromVerb(verb, c.difficulty ?? undefined);
     if (!built) return { ...c, verb }; // free verb — stays check-free
+
+    // Combat verbs (attack/smallArms/gunnery) resolve through the fight engine —
+    // their DC encodes enemy toughness (dcToTier), so leave it untouched.
+    if (built.combat) {
+      return {
+        ...c,
+        verb,
+        check: { skill: built.skill, dc: built.dc, stakes: built.stakes, hazardLevel: built.hazardLevel },
+      };
+    }
+
+    // Non-combat: the engine sets the DC from the chosen risk and the PC's odds.
+    const risk: RiskTier = c.risk ?? difficultyToRisk(c.difficulty) ?? "risky";
+    const mod = pc ? computeModifier(pc, built.skill) : 0;
+    const dc = dcForRisk(risk, mod);
+    // A bolder gamble hurts more: bump a hazard verb's danger on a reckless push.
+    const hazardLevel =
+      built.hazardLevel != null && risk === "reckless"
+        ? Math.min(5, built.hazardLevel + 1)
+        : built.hazardLevel;
     return {
       ...c,
       verb,
-      check: { skill: built.skill, dc: built.dc, stakes: built.stakes, hazardLevel: built.hazardLevel },
+      risk,
+      check: { skill: built.skill, dc, stakes: built.stakes, hazardLevel, risk },
     };
   });
 }
@@ -415,7 +444,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   let plan = await plannedCall(true);
   // Resolve every choice's check up front — the model's verb tag, or a verb
   // INFERRED from the label ("Search the lockers" → loot) when it forgot to tag.
-  plan = { ...plan, choices: resolveChoiceChecks(plan.choices) };
+  plan = { ...plan, choices: resolveChoiceChecks(plan.choices, pc) };
 
   // ── Enforce at least one checked choice (the dice must always be on offer). ──
   // Runs AFTER verb/label resolution, so an inferred attempt already satisfies it
@@ -436,7 +465,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
         "None of your options carried a skill check — every turn must offer at least one. Re-send the SAME json turn, keeping your narration WORD FOR WORD, but tag the single most consequential/uncertain option with an ATTEMPT \"verb\" (or a \"check\" {skill, dc, stakes:true}).",
     });
     const retry = await plannedCall(false);
-    if (retry.choices.length) plan = { ...retry, choices: resolveChoiceChecks(retry.choices) };
+    if (retry.choices.length) plan = { ...retry, choices: resolveChoiceChecks(retry.choices, pc) };
   }
   let narration = plan.narration;
 
