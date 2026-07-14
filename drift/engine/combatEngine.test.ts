@@ -14,13 +14,19 @@ const enemy = (over: Partial<CombatEnemy> = {}): CombatEnemy => ({
 });
 
 describe("spawnCombatEnemies", () => {
-  it("builds enemies from the tier tables, clamped 1-4, T2 shielded", () => {
+  it("builds enemies from the tier tables, clamped 1-4; T2 mooks are UNSHIELDED", () => {
     const es = spawnCombatEnemies([{ tier: "T2", count: 9 }], maxRng);
     expect(es).toHaveLength(4); // clamped
     expect(es[0].tier).toBe("T2");
-    expect(es[0].shieldReady).toBe(true);
+    expect(es[0].shieldReady).toBe(false); // shields are T3/boss-only now
     expect(es[0].hp).toBe(14); // T2 uniform HP (fixed [14,14])
     expect(es[0].maxHp).toBe(14);
+  });
+
+  it("shields are a T3/major defense only", () => {
+    expect(spawnCombatEnemies([{ tier: "T3", count: 1 }], maxRng)[0].shieldReady).toBe(true);
+    expect(spawnCombatEnemies([{ tier: "T2", count: 1, major: true }], maxRng)[0].shieldReady).toBe(true);
+    expect(spawnCombatEnemies([{ tier: "T1", count: 1 }], maxRng)[0].shieldReady).toBe(false);
   });
 
   it("names a single enemy without a number suffix", () => {

@@ -19,6 +19,7 @@ import { checkFromVerb, verbFromLabel, verbRolls } from "@/shared/actions";
 import { dcForRisk, difficultyToRisk, type RiskTier } from "@/shared/risk";
 import type { Character } from "@/shared/schemas";
 import { extractDialogueNpcs, knownEntityNames, isPlausibleNpcName } from "@/shared/npcExtract";
+import { playerThreatTier, clampTier } from "@/shared/netWorth";
 import type { CombatState } from "@/shared/combat";
 import type { Dossier } from "@/shared/multiplayer";
 import type { SpawnSpec, ShipClass } from "@/engine/combatEngine";
@@ -123,6 +124,32 @@ export class TurnGenerationError extends Error {
 /** A bare gun-skill check carries only a rough DC; read it as enemy toughness. */
 function dcToTier(dc: number): "T1" | "T2" | "T3" {
   return dc >= 17 ? "T3" : dc >= 13 ? "T2" : "T1";
+}
+
+const FOE_NOUNS =
+  "wrecker|guard|enforcer|goon|thug|mook|raider|soldier|merc|mercenary|gunman|gunhand|pirate|hostile|" +
+  "attacker|assailant|cutter|heavy|heavies|bruiser|bandit|trooper|sentry|marauder|tough|brute|hitman|fighter|foe";
+const FOE_NUM: Record<string, number> = {
+  two: 2, three: 3, four: 4, five: 5, couple: 2, pair: 2, few: 3, several: 4, handful: 4,
+};
+const FOE_COUNT_RE = new RegExp(
+  `\\b(\\d+|two|three|four|five|couple|pair|few|several|handful)\\s+(?:\\w+\\s+){0,2}?(?:${FOE_NOUNS})s?\\b`,
+  "gi",
+);
+
+/** How many foes the narration says are attacking ("two wreckers", "a couple of
+ *  thugs", "3 guards"). The engine uses this to force the spawn to MATCH the fiction
+ *  when the model under-fills combatStart (narrates two, spawns one). Capped at 5,
+ *  0 when nothing is stated. */
+function narratedFoeCount(narration: string): number {
+  let max = 0;
+  let m: RegExpExecArray | null;
+  FOE_COUNT_RE.lastIndex = 0;
+  while ((m = FOE_COUNT_RE.exec(narration)) !== null) {
+    const n = /^\d+$/.test(m[1]) ? parseInt(m[1], 10) : FOE_NUM[m[1].toLowerCase()] ?? 0;
+    if (n > max) max = n;
+  }
+  return Math.min(max, 5);
 }
 
 /**
@@ -321,7 +348,9 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   // beat continues as normal multi-turn combat. This guarantees gun skills run
   // through real attack/AC/damage math instead of a self-only roll_check.
   function openFightFromSkill(skill: string, dc: number): CombatState | null {
-    const tier = dcToTier(dc);
+    // Net-worth ceiling: a gun-skill reroute never spawns tougher than the player's
+    // band (an under-equipped rookie faces T1, not a professional).
+    const tier = clampTier(dcToTier(dc), playerThreatTier(input.state));
     const useShip = skill === "gunnery" && !!input.state.ship;
     const started = useShip
       ? runtime.startShipCombat([{ shipClass: TIER_TO_CLASS[tier] as ShipClass, count: 1, tier }], "player")
@@ -711,15 +740,19 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       // Cap the TOTAL spawned at 5 (deterministic: clamp each group 1-4, then trim
       // group counts in order until the running total hits 5, dropping any overflow)
       // so a fight can't balloon regardless of what the model asks for.
+      // Net-worth ceiling: clamp each GENERAL group's tier to what the player's
+      // wealth/gear unlocks (a rookie faces T1, not T2). A `major` boss may exceed
+      // the band as a flagged set-piece, so it's left alone.
+      const ceiling = playerThreatTier(input.state);
       const rawGroups: SpawnSpec[] =
         cs.enemies?.length
           ? cs.enemies.map((g) => ({
-              tier: g.tier,
+              tier: g.major ? g.tier : clampTier(g.tier, ceiling),
               count: g.count ?? undefined,
               name: g.name ?? undefined,
               major: g.major ?? undefined, // named boss → engine gives 1.8× HP
             }))
-          : [{ tier: cs.tier, count: cs.count ?? undefined, name: cs.name ?? undefined }];
+          : [{ tier: clampTier(cs.tier, ceiling), count: cs.count ?? undefined, name: cs.name ?? undefined }];
       const MAX_TOTAL = 5;
       const specs: SpawnSpec[] = [];
       let total = 0;
@@ -730,6 +763,17 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
         specs.push({ tier: g.tier, count: take, name: g.name, major: g.major });
         total += take;
       }
+      // Count backstop: the model narrated N foes but under-filled the spawn ("two
+      // wreckers, one spawned"). Top up to match the narrated count (cap 5).
+      let need = Math.min(narratedFoeCount(plan.narration), MAX_TOTAL) - total;
+      for (const s of specs) {
+        if (need <= 0) break;
+        const room = 4 - (s.count ?? 1);
+        const add = Math.min(room, need);
+        s.count = (s.count ?? 1) + add;
+        need -= add;
+      }
+      if (need > 0 && specs.length) specs.push({ tier: specs[0].tier, count: need, name: specs[0].name });
       started = runtime.startCombat(specs, surprise);
     }
     combat = started.combat.active ? started.combat : null; // a surprise volley could end it instantly

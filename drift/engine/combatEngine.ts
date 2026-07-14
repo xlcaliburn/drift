@@ -53,7 +53,9 @@ export function spawnCombatEnemies(specs: SpawnSpec[], rng: RNG): CombatEnemy[] 
         ac,
         atk: t.atk,
         damage: t.damage,
-        shieldReady: spec.tier === "T2" || spec.tier === "T3",
+        // Shields are a T3/boss defense only — standardized off the T2 mook roll so
+        // early fights are consistent and don't get a surprise first-hit-negate.
+        shieldReady: spec.tier === "T3" || !!spec.major,
         multiAttack: !!t.multiAttack,
       });
     }

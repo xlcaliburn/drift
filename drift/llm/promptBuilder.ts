@@ -8,6 +8,7 @@ import { verbReference, freeVerbReference } from "@/shared/actions";
 import { relationSuffix, RECENT_SCENES_IN_PROMPT, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import { generateQuirk } from "@/shared/npcFlavor";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
+import { playerThreatTier } from "@/shared/netWorth";
 import { inTutorial, TUTORIAL_CHOICE_DIRECTIVE, TUTORIAL_JSON_DIRECTIVE } from "@/shared/tutorial";
 import type { Dossier } from "@/shared/multiplayer";
 
@@ -380,6 +381,18 @@ export function buildContextSlice(
   }
   const moralLine = pc?.moralCode ? `PC's line they won't cross: ${pc.moralCode}.` : "";
 
+  // Net-worth threat band (COMBAT.md §1). The engine HARD-CLAMPS every combatStart
+  // to this ceiling, so tell the narrator too — otherwise it narrates "elite Crown
+  // commandos" that then spawn as T1 mooks (fiction/mechanics mismatch). Keep the
+  // foes it describes at or below the ceiling until the player arms up.
+  const ceilingTier = playerThreatTier(state);
+  const bandDesc: Record<string, string> = {
+    T1: "T1 — scrappers, dock toughs, lone gunhands. This player is lightly equipped; do NOT narrate professional squads or elite units as fair fights yet.",
+    T2: "T2 — professionals, syndicate enforcers, trained crews. T3 elites still overmatch this player; use them only as clearly-superior threats (flee, not brawl).",
+    T3: "T3 — elite operators, warband cores. The player is well-armed enough for top-tier fights.",
+  };
+  const threatLine = `THREAT BAND (enemy ceiling — the engine clamps fights to this): ${bandDesc[ceilingTier]} A named BOSS may exceed the band as a set-piece; rank-and-file may not.`;
+
   // Consumables the PC actually holds — so the narrator only offers useItem for
   // items in hand (and knows what's available to spend between fights).
   const held = pc
@@ -491,6 +504,7 @@ export function buildContextSlice(
         ]
       : []),
     `Ship: ${shipLine}`,
+    threatLine,
     ``,
     npcs.length
       ? `NPCs in play (proximity = how close; standing = their history; "plays:" = their canon personality — play it CONSISTENTLY; "hook:" = a backstory thread you can pull into a quest):\n${npcs
