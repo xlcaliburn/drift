@@ -16,7 +16,7 @@ import {
 } from "@/shared/turnPlan";
 import { SCENE_TURN_CAP, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import { checkFromVerb, verbFromLabel, verbRolls } from "@/shared/actions";
-import { extractNpcNames, knownEntityNames, isPlausibleNpcName } from "@/shared/npcExtract";
+import { extractNpcNames, extractRoleNpcs, knownEntityNames, isPlausibleNpcName } from "@/shared/npcExtract";
 import type { CombatState } from "@/shared/combat";
 import type { SpawnSpec, ShipClass } from "@/engine/combatEngine";
 import { stripInlineMenu } from "@/shared/narration";
@@ -633,8 +633,30 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     ]);
     for (const name of extractNpcNames(narration, known)) {
       toolCalls.push("register_npc(auto)");
-      const { id } = runtime.registerNpc(name, `Mentioned in the scene.`);
-      runtime.markPresent(id);
+      runtime.registerNpc(name, `Mentioned in the scene.`);
+    }
+    // Role backstop: register unnamed occupational figures ("the fixer", "the data
+    // broker") so whoever the player is actually dealing with appears in the scene,
+    // even before they get a name. Filter only against NON-person entities (ship,
+    // locations, factions) so an existing role NPC still resolves + re-marks below.
+    const nonPersons = knownEntityNames([
+      ...runtime.state.locations.map((l) => l.name),
+      ...runtime.state.factions.map((f) => f.name),
+      ...(runtime.state.ship ? [runtime.state.ship.name] : []),
+    ]);
+    for (const handle of extractRoleNpcs(narration, nonPersons)) {
+      toolCalls.push("register_npc(role)");
+      runtime.registerNpc(handle, `${handle} the player is dealing with.`);
+    }
+    // Presence: mark present ANY known NPC actually named in THIS narration — so
+    // whoever the player is dealing with (new, or continuing after a scene reset)
+    // shows up in Here & now, not just the ones the model remembered to list.
+    const lower = narration.toLowerCase();
+    for (const n of runtime.state.npcs) {
+      const nm = n.name.toLowerCase();
+      if (nm.length < 3) continue;
+      const re = new RegExp(`\\b${nm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+      if (re.test(lower)) runtime.markPresent(n.id);
     }
   }
   const cap = inTutorial(runtime.state) ? TUTORIAL_CHOICE_COUNT : 4;

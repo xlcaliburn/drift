@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractNpcNames, knownEntityNames, isPlausibleNpcName } from "./npcExtract";
+import { extractNpcNames, extractRoleNpcs, knownEntityNames, isPlausibleNpcName } from "./npcExtract";
 
 describe("extractNpcNames — the missing-NPC backstop", () => {
   // Eddie's world: Draven already tracked; Rook/Meridian/Talos/the Nest are places.
@@ -60,5 +60,27 @@ describe("isPlausibleNpcName — the model-npcs junk filter", () => {
     expect(isPlausibleNpcName("Sable")).toBe(true);
     expect(isPlausibleNpcName("Wrecker Boss")).toBe(true);
     expect(isPlausibleNpcName("Draven’s")).toBe(true); // possessive stripped → "Draven"
+  });
+});
+
+describe("extractRoleNpcs — the unnamed-figure backstop", () => {
+  const known = knownEntityNames(["Rook Station", "Sable Chain"]); // non-person entities only
+
+  it("catches an occupational figure the narrator names by role", () => {
+    const n = "You lay the chip on the fixer's counter. The data broker leans back, watching.";
+    expect(extractRoleNpcs(n, known)).toEqual(["Fixer", "Data Broker"]);
+  });
+
+  it("prefers the longer role phrase (data broker over broker) and Title-cases it", () => {
+    expect(extractRoleNpcs("A grizzled guard blocks the hall.", known)).toEqual(["Grizzled Guard"]);
+  });
+
+  it("ignores non-person nouns and generic words", () => {
+    expect(extractRoleNpcs("The door slid open and the man said nothing.", known)).toEqual([]);
+  });
+
+  it("caps the count and dedupes", () => {
+    const n = "The fixer nods. The fixer smiles. A guard, a pilot, a medic all wait.";
+    expect(extractRoleNpcs(n, known)).toEqual(["Fixer", "Guard"]); // deduped + capped at 2
   });
 });

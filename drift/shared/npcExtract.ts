@@ -103,3 +103,52 @@ export function extractNpcNames(narration: string, known: Set<string>, max = 3):
   }
   return out;
 }
+
+/** Occupational person-roles a narrator names WITHOUT a proper noun ("the fixer",
+ *  "the data broker", "the guard"). These are unambiguously people, so "the <role>"
+ *  in the prose is a figure the player is dealing with — worth registering so they
+ *  show up in the scene even before they get a name. Deliberately excludes generic
+ *  words (man/woman/kid/figure) that over-match. */
+const PERSON_ROLES = [
+  "data broker", "broker", "fixer", "dealer", "smuggler", "merchant", "vendor", "trader", "quartermaster",
+  "courier", "runner", "bartender", "barkeep", "bouncer", "innkeeper", "shopkeeper",
+  "guard", "enforcer", "sentry", "mercenary", "gunman", "bodyguard", "soldier", "sniper",
+  "captain", "pilot", "navigator", "engineer", "mechanic", "medic", "doctor", "technician", "operator",
+  "officer", "inspector", "warden", "marshal", "detective", "constable",
+  "informant", "handler", "fence", "forger", "hacker", "slicer", "smith",
+  "foreman", "overseer", "administrator", "official", "envoy", "emissary", "diplomat",
+  "priest", "prophet", "oracle", "bounty hunter", "hunter", "assassin",
+];
+// Longest role first so "data broker" wins over "broker"; word-boundaried, case-insensitive.
+const ROLE_RE = new RegExp(
+  `\\b(?:the|a|an)\\s+((?:[a-z][a-z'’-]+\\s+)?(?:${[...PERSON_ROLES]
+    .sort((a, b) => b.length - a.length)
+    .join("|")}))\\b`,
+  "gi",
+);
+
+/** Title-case a role phrase into a display handle ("data broker" → "Data Broker"). */
+function titleCase(s: string): string {
+  return s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Extract role-named figures ("the fixer", "the data broker") the narrator refers
+ * to WITHOUT a proper noun, so the person the player is dealing with still shows up
+ * in the scene. Returns Title-cased handles not already known, capped by `max`.
+ */
+export function extractRoleNpcs(narration: string, known: Set<string>, max = 2): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  let m: RegExpExecArray | null;
+  ROLE_RE.lastIndex = 0;
+  while ((m = ROLE_RE.exec(narration)) !== null) {
+    const phrase = m[1].trim().replace(/\s+/g, " ");
+    const lc = phrase.toLowerCase();
+    if (seen.has(lc) || known.has(lc) || lc.split(" ").every((w) => known.has(w))) continue;
+    seen.add(lc);
+    out.push(titleCase(phrase));
+    if (out.length >= max) break;
+  }
+  return out;
+}

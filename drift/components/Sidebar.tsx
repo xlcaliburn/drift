@@ -84,8 +84,9 @@ export default function Sidebar({
   onClose?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("status");
-  const [showDetails, setShowDetails] = useState(false);
-  const [showPeople, setShowPeople] = useState(false);
+  // Which details-modal tab is open (null = modal closed). "People →" and "More
+  // details" both open the same modal, just on different tabs.
+  const [detailsTab, setDetailsTab] = useState<DetailsTab | null>(null);
   const pc = state.characters.find((c) => c.kind === "pc");
 
   const body = (
@@ -112,8 +113,8 @@ export default function Sidebar({
             combat={combat}
             npcRelations={npcRelations}
             sceneCard={sceneCard}
-            onDetails={() => setShowDetails(true)}
-            onPeople={() => setShowPeople(true)}
+            onDetails={() => setDetailsTab("equipment")}
+            onPeople={() => setDetailsTab("relationships")}
           />
         )}
         {tab === "traits" && <TraitsTab state={state} />}
@@ -121,13 +122,14 @@ export default function Sidebar({
         {tab === "clocks" && <ClocksTab state={state} />}
       </div>
 
-      {showDetails && pc && <DetailsModal state={state} character={pc} onClose={() => setShowDetails(false)} />}
-      {showPeople && (
-        <PeopleModal
+      {detailsTab && pc && (
+        <DetailsModal
           state={state}
+          character={pc}
           npcRelations={npcRelations}
           sceneCard={sceneCard}
-          onClose={() => setShowPeople(false)}
+          initialTab={detailsTab}
+          onClose={() => setDetailsTab(null)}
         />
       )}
     </>
@@ -550,21 +552,30 @@ function TraitsTab({ state }: { state: CampaignState }) {
   );
 }
 
+type DetailsTab = "equipment" | "items" | "ship" | "relationships" | "story";
+
 /** Popup — extended info kept out of the always-on rail, split into tabs:
- *  Equipment (weapons/armor detail), Items (consumables + tools), Ship, and Story
- *  (who they are + the live thread log). Fixed size so the frame never jumps as
- *  you switch tabs; the content area scrolls on its own. */
+ *  Equipment (weapons/armor detail), Items (consumables + tools), Ship,
+ *  Relationships (the people you know), and Story (who they are + the live thread
+ *  log). Fixed size so the frame never jumps as you switch tabs; the content area
+ *  scrolls on its own. */
 function DetailsModal({
   state,
   character,
+  npcRelations,
+  sceneCard,
+  initialTab = "equipment",
   onClose,
 }: {
   state: CampaignState;
   character: CampaignState["characters"][number];
+  npcRelations: NpcRelations;
+  sceneCard: SceneCard | null;
+  initialTab?: DetailsTab;
   onClose: () => void;
 }) {
   const c = character;
-  const [tab, setTab] = useState<"equipment" | "items" | "ship" | "story">("equipment");
+  const [tab, setTab] = useState<DetailsTab>(initialTab);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 p-4" onClick={onClose}>
       <div
@@ -584,6 +595,7 @@ function DetailsModal({
               ["equipment", "Equipment"],
               ["items", "Items"],
               ["ship", "Ship"],
+              ["relationships", "People"],
               ["story", "Story"],
             ] as const
           ).map(([id, label]) => (
@@ -600,21 +612,27 @@ function DetailsModal({
           ))}
         </div>
 
-        <div className="scrollbar-thin flex-1 overflow-y-auto p-5">
-          {tab === "equipment" && <EquipmentDetail character={c} />}
-          {tab === "items" && <ItemsDetail character={c} />}
-          {tab === "ship" && (
-            <SheetSection label="Ship">
-              <ShipTab state={state} />
-            </SheetSection>
-          )}
-          {tab === "story" && (
-            <>
-              <StoryDetail character={c} />
-              <StoryThreads state={state} />
-            </>
-          )}
-        </div>
+        {/* Relationships gets the full frame (its own two-column scroll); the rest
+            share a padded, scrolling column. */}
+        {tab === "relationships" ? (
+          <PeopleView state={state} npcRelations={npcRelations} sceneCard={sceneCard} />
+        ) : (
+          <div className="scrollbar-thin flex-1 overflow-y-auto p-5">
+            {tab === "equipment" && <EquipmentDetail character={c} />}
+            {tab === "items" && <ItemsDetail character={c} />}
+            {tab === "ship" && (
+              <SheetSection label="Ship">
+                <ShipTab state={state} />
+              </SheetSection>
+            )}
+            {tab === "story" && (
+              <>
+                <StoryDetail character={c} />
+                <StoryThreads state={state} />
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -657,19 +675,18 @@ function StoryThreads({ state }: { state: CampaignState }) {
   );
 }
 
-/** People popup — the cast the player has met. A clickable list on the left; the
- *  selected person's dossier on the right: who they are, your standing, and the
- *  last thing you knew about them (CONTINUITY tier CANON, surfaced for the player). */
-function PeopleModal({
+/** The cast the player has met — a clickable roster on the left, the selected
+ *  person's dossier on the right (who they are, your standing, whereabouts, the
+ *  last thing you knew). Shell-free so it drops into the details modal's People
+ *  tab; it fills the parent's remaining height. */
+function PeopleView({
   state,
   npcRelations,
   sceneCard,
-  onClose,
 }: {
   state: CampaignState;
   npcRelations: NpcRelations;
   sceneCard: SceneCard | null;
-  onClose: () => void;
 }) {
   const present = new Set(sceneCard?.presentNpcIds ?? []);
   const here = state.campaign.currentLocationId;
@@ -695,59 +712,51 @@ function PeopleModal({
   const sel = people.find((p) => p.npc.id === selId) ?? people[0] ?? null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 p-4" onClick={onClose}>
-      <div
-        className="flex max-h-[85dvh] w-full max-w-2xl overflow-hidden rounded-xl border border-edge bg-panel text-[13px]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Left: the roster. */}
-        <div className="scrollbar-thin w-2/5 shrink-0 overflow-y-auto border-r border-edge">
-          <div className="sticky top-0 flex items-center justify-between border-b border-edge bg-panel px-3 py-2">
-            <span className="text-[11px] uppercase tracking-wide text-neutral-500">People ({people.length})</span>
-            <button onClick={onClose} className="text-neutral-400 hover:text-accent md:hidden" aria-label="Close">✕</button>
-          </div>
-          {people.length === 0 ? (
-            <p className="p-3 text-neutral-500">You haven&apos;t met anyone worth tracking yet.</p>
-          ) : (
-            <div className="p-1.5">
-              {people.map(({ npc, rel, w }) => (
-                <button
-                  key={npc.id}
-                  onClick={() => setSelId(npc.id)}
+    <div className="flex min-h-0 flex-1">
+      {/* Left: the roster. */}
+      <div className="scrollbar-thin w-2/5 shrink-0 overflow-y-auto border-r border-edge">
+        <div className="sticky top-0 border-b border-edge bg-panel px-3 py-2">
+          <span className="text-[11px] uppercase tracking-wide text-neutral-500">People ({people.length})</span>
+        </div>
+        {people.length === 0 ? (
+          <p className="p-3 text-neutral-500">You haven&apos;t met anyone worth tracking yet.</p>
+        ) : (
+          <div className="p-1.5">
+            {people.map(({ npc, rel, w }) => (
+              <button
+                key={npc.id}
+                onClick={() => setSelId(npc.id)}
+                className={
+                  "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left transition " +
+                  (npc.id === sel?.npc.id ? "bg-accent/15 text-neutral-100" : "text-neutral-300 hover:bg-white/5")
+                }
+              >
+                <span className="truncate">
+                  {npc.name}
+                  <span className={"block text-[10px] " + w.tone}>{w.label}</span>
+                </span>
+                <span
                   className={
-                    "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left transition " +
-                    (npc.id === sel?.npc.id ? "bg-accent/15 text-neutral-100" : "text-neutral-300 hover:bg-white/5")
+                    "shrink-0 text-[11px] " +
+                    (!rel ? "text-neutral-600" : rel.disposition > 0 ? "text-good" : rel.disposition < 0 ? "text-bad" : "text-neutral-500")
                   }
                 >
-                  <span className="truncate">
-                    {npc.name}
-                    <span className={"block text-[10px] " + w.tone}>{w.label}</span>
-                  </span>
-                  <span
-                    className={
-                      "shrink-0 text-[11px] " +
-                      (!rel ? "text-neutral-600" : rel.disposition > 0 ? "text-good" : rel.disposition < 0 ? "text-bad" : "text-neutral-500")
-                    }
-                  >
-                    {rel ? dispositionLabel(rel.disposition) : "—"}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
+                  {rel ? dispositionLabel(rel.disposition) : "—"}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Right: the selected person's dossier. */}
+      <div className="scrollbar-thin flex-1 overflow-y-auto p-5">
+        <div>
+          <h3 className="text-lg font-semibold text-neutral-100">{sel?.npc.name ?? "—"}</h3>
+          {sel?.rel?.relationship && <p className="text-[12px] text-accent/80">{sel.rel.relationship}</p>}
         </div>
 
-        {/* Right: the selected person's dossier. */}
-        <div className="scrollbar-thin flex-1 overflow-y-auto p-5">
-          <div className="flex items-start justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-neutral-100">{sel?.npc.name ?? "—"}</h3>
-              {sel?.rel?.relationship && <p className="text-[12px] text-accent/80">{sel.rel.relationship}</p>}
-            </div>
-            <button onClick={onClose} className="hidden text-neutral-400 hover:text-accent md:block" aria-label="Close">✕</button>
-          </div>
-
-          {sel && (
+        {sel && (
             <div className="mt-4 space-y-4">
               <div>
                 <div className="text-[11px] uppercase tracking-wide text-neutral-500">Standing</div>
@@ -781,7 +790,6 @@ function PeopleModal({
           )}
         </div>
       </div>
-    </div>
   );
 }
 
