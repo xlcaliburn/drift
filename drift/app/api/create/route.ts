@@ -9,6 +9,7 @@ import { freshSceneCard } from "@/shared/scene";
 import { requireApprovedUser, isDevUser } from "@/lib/auth";
 import { getServiceClient, getOwnedCampaign } from "@/db/queries";
 import { recordAiCall } from "@/lib/audit";
+import { takePrewarm } from "@/lib/creationPrewarm";
 
 export const runtime = "nodejs";
 
@@ -89,12 +90,21 @@ export async function POST(req: NextRequest) {
   // Background flesh-out: personalized backstory/voice/opening + audit. Runs
   // after the response is sent; the player is already in the review screen.
   after(async () => {
+    // Reuse the background prewarm if the player warmed one on the questionnaire→
+    // signature step (keyed on story-driving fields, so a differing signature still
+    // matches). On any prewarm issue, fall back to a fresh finalize; only if THAT
+    // also fails do we abandon the flesh-out, as before.
+    const warmed = takePrewarm(user.id, parsed.data);
     let finalize;
     try {
-      finalize = await finalizeCreation(parsed.data, base);
-    } catch (e) {
-      console.error("[create] background finalize threw:", e instanceof Error ? e.message : e);
-      return;
+      finalize = warmed ? await warmed : await finalizeCreation(parsed.data, base);
+    } catch {
+      try {
+        finalize = await finalizeCreation(parsed.data, base);
+      } catch (e) {
+        console.error("[create] background finalize threw:", e instanceof Error ? e.message : e);
+        return;
+      }
     }
 
     // Re-read the live session: the player may have started playing already.

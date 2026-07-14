@@ -114,9 +114,26 @@ export const Character = z.object({
   /** Set once the character splits off and founds their own faction. */
   ownFactionId: z.string().optional(),
   /** Creation steering answers, kept for story hooks + dossier voice. */
-  bias: z.enum(["commerce", "combat", "intrigue", "piloting", "diplomacy"]).optional(),
+  bias: z
+    .enum(["commerce", "combat", "intrigue", "piloting", "diplomacy", "engineering", "survival", "brawn"])
+    .optional(),
   alignment: z
-    .enum(["ruthless", "pragmatic", "principled", "loyal", "slick", "ghost", "loud", "merciful"])
+    .enum([
+      "ruthless",
+      "pragmatic",
+      "principled",
+      "loyal",
+      "slick",
+      "ghost",
+      "loud",
+      "merciful",
+      "reckless",
+      "calculating",
+      "greedy",
+      "vengeful",
+      "cynical",
+      "zealous",
+    ])
     .optional(),
   /** Player-selected sex (male/female). Optional — absent on legacy PCs. */
   sex: z.enum(["male", "female"]).optional(),

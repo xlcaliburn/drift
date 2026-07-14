@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { worldIntro, seasonOneSpine, factionBriefs } from "@/content/briefs";
-import { backgrounds, alignments, ambitions } from "@/content/creation";
+import { backgrounds, alignments, ambitions, focuses } from "@/content/creation";
 import { openingFor } from "@/content/openings";
 import {
   suggestName,
@@ -20,6 +20,9 @@ const GALLERY_COUNT = 6;
 const CHIP_COUNT = 4;
 /** Backgrounds shown at once; the rest surface on reshuffle. */
 const BACKGROUND_COUNT = 8;
+/** Focus / Code options shown at once; the rest surface on reshuffle. */
+const FOCUS_COUNT = 6;
+const CODE_COUNT = 6;
 import type { CreationInput } from "@/shared/multiplayer";
 import type { Character, UniqueSkill, AttributeKey } from "@/shared/schemas";
 
@@ -40,14 +43,6 @@ interface CreateResult {
   enriching?: boolean;
 }
 
-const BIASES = [
-  { id: "commerce", label: "Commerce", description: "Deals, cargo, and coin. You win with leverage and a good margin." },
-  { id: "combat", label: "Combat", description: "Guns and gunnery. When talk fails, you're already moving." },
-  { id: "intrigue", label: "Intrigue", description: "Shadows, secrets, and systems. You'd rather never be seen." },
-  { id: "piloting", label: "Piloting", description: "The cockpit is where the world slows down. You fly like breathing." },
-  { id: "diplomacy", label: "Diplomacy", description: "Words as weapons. You move people, not just cargo." },
-] as const;
-
 const SKILL_OPTIONS = [
   "piloting", "gunnery", "smallArms", "melee", "stealth", "streetwise",
   "negotiation", "deception", "intimidation", "mechanics", "electronics",
@@ -55,6 +50,17 @@ const SKILL_OPTIONS = [
 ];
 const ATTR_OPTIONS = ["might", "reflex", "vitality", "intellect", "perception", "presence"];
 const ATTR_ORDER: AttributeKey[] = ["might", "reflex", "vitality", "intellect", "perception", "presence"];
+
+/** What each attribute governs — surfaced as a tooltip on the review sheet. */
+const ATTR_HINT: Record<AttributeKey, string> = {
+  might: "Raw physical force — melee, hauling, breaking through.",
+  reflex: "Speed and coordination — piloting, gunnery, small arms, dodging.",
+  vitality: "Toughness and endurance — your HP and resisting harm.",
+  intellect: "Reasoning and know-how — mechanics, electronics, navigation.",
+  perception: "Awareness — spotting trouble, tracking, sensors.",
+  presence: "Force of personality — negotiation, deception, intimidation.",
+};
+const capWord = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 type Kind = "passive" | "trigger";
 
@@ -73,6 +79,32 @@ function skillsEqual(a: UniqueSkill, b: UniqueSkill): boolean {
     return a.triggerScenario === b.triggerScenario && a.usesPerScene === b.usesPerScene;
   }
   return false;
+}
+
+/** 3-letter uppercase attribute tag for the compact modifier chips (e.g. "reflex" → "REF"). */
+const abbrAttr = (a: string) => a.slice(0, 3).toUpperCase();
+
+/** One-line mechanical summary of a signature — shared by the gallery cards and
+ *  the review Sheet so the two never drift. */
+function sigLine(sig: UniqueSkill): string {
+  return sig.kind === "passive"
+    ? `+${sig.passiveAmount} ${sig.passiveTarget}`
+    : `nat-20 · ${sig.triggerScenario}`;
+}
+
+/** A compact "· "-separated row of mechanical modifiers (positives in accent,
+ *  the weakness muted). Rides under a choice card that has a real engine effect. */
+function Mods({ items }: { items: { text: string; neg?: boolean }[] }) {
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-1 text-[11px] leading-tight">
+      {items.map((it, i) => (
+        <span key={i} className="flex items-center gap-1">
+          {i > 0 && <span className="text-neutral-600">·</span>}
+          <span className={it.neg ? "text-neutral-500" : "text-accent/80"}>{it.text}</span>
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export default function CreateWizard() {
@@ -151,11 +183,34 @@ export default function CreateWizard() {
     }
     return picks;
   }, [bgSeed, background]);
+  // Focus + Code mirror the background pattern: a random subset with a "↻ more"
+  // reshuffle, with the current pick pinned to the front so it never vanishes.
+  const [focusSeed, setFocusSeed] = useState(0);
+  const shownFocuses = useMemo(() => {
+    const picks = sample(focuses, FOCUS_COUNT, focusSeed);
+    if (bias && !picks.some((f) => f.id === bias)) {
+      const sel = focuses.find((f) => f.id === bias);
+      if (sel) return [sel, ...picks.slice(0, FOCUS_COUNT - 1)];
+    }
+    return picks;
+  }, [focusSeed, bias]);
+  const [codeSeed, setCodeSeed] = useState(0);
+  const shownAlignments = useMemo(() => {
+    const picks = sample(alignments, CODE_COUNT, codeSeed);
+    if (alignment && !picks.some((a) => a.id === alignment)) {
+      const sel = alignments.find((a) => a.id === alignment);
+      if (sel) return [sel, ...picks.slice(0, CODE_COUNT - 1)];
+    }
+    return picks;
+  }, [codeSeed, alignment]);
   // Optional flavor — blank fields are auto-generated at finalize.
   const [moralCode, setMoralCode] = useState("");
   const [loss, setLoss] = useState("");
   const [tie, setTie] = useState("");
   const [tell, setTell] = useState("");
+  // The optional flavor block is collapsed by default (most players skip it and
+  // let the finalize pass invent it); it opens on click.
+  const [flavorOpen, setFlavorOpen] = useState(false);
 
   // Start with a suggested canon name so the field is never blank. Client-only
   // (in an effect) to avoid an SSR hydration mismatch from the random pick.
@@ -264,12 +319,42 @@ export default function CreateWizard() {
     });
   }
 
+  /** Warm the slow AI story pass in the background the moment the player leaves the
+   *  questionnaire, so it's (mostly) done by the time they submit. Fire-and-forget;
+   *  keyed server-side on the story-driving fields (NOT the signature), so it's
+   *  reused even though the signature is picked on the very next step. */
+  function firePrewarm() {
+    if (!(name && factionId && bias && alignment && sex && background && ambition)) return;
+    fetch("/api/create/prewarm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        parentFactionId: factionId,
+        bias,
+        alignment,
+        sex,
+        background,
+        ambition,
+        flavor: {
+          moralCode: moralCode || undefined,
+          loss: loss || undefined,
+          tie: tie || undefined,
+          tell: tell || undefined,
+        },
+        uniqueSkill,
+      }),
+    }).catch(() => {
+      /* best-effort — a missed prewarm just means the story generates at submit */
+    });
+  }
+
   /** Roll a complete random character and jump straight to the review screen. */
   function quickCreate() {
     const pick = <T,>(a: readonly T[]): T => a[Math.floor(Math.random() * a.length)];
     const nm = suggestName(Math.random());
     const fac = pick(factionBriefs).factionId;
-    const bi = pick(BIASES).id;
+    const bi = pick(focuses).id;
     const al = pick(alignments).id;
     const sx = pick(["male", "female"] as const);
     const bg = pick(backgrounds).id;
@@ -427,19 +512,70 @@ export default function CreateWizard() {
               </button>
             </div>
             <Choices
-              options={shownBackgrounds.map((b) => ({ id: b.id, label: b.label, description: b.hook }))}
+              options={shownBackgrounds.map((b) => ({
+                id: b.id,
+                label: b.label,
+                description: b.hook,
+                meta: (
+                  <Mods
+                    items={[
+                      { text: `+1 ${b.signatureSkill}` },
+                      { text: `${abbrAttr(b.secondary)} +1` },
+                      { text: `${abbrAttr(b.weakness)} −1`, neg: true },
+                    ]}
+                  />
+                ),
+              }))}
               value={background}
               onPick={setBackground}
             />
           </div>
 
-          <Field label="Focus — what you're good at">
-            <Choices options={BIASES.map((b) => ({ id: b.id, label: b.label, description: b.description }))} value={bias} onPick={setBias} />
-          </Field>
+          <div className="mb-4">
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="block text-sm text-neutral-400">Focus — what you're good at</label>
+              <button
+                type="button"
+                onClick={() => setFocusSeed((s) => s + 1)}
+                className="shrink-0 text-xs text-neutral-400 hover:text-accent"
+                title="Show a different set of focuses"
+              >
+                ↻ more focuses
+              </button>
+            </div>
+            <Choices
+              options={shownFocuses.map((f) => ({
+                id: f.id,
+                label: f.label,
+                description: f.description,
+                meta: (
+                  <Mods
+                    items={[
+                      { text: `+3 ${abbrAttr(f.primary)}` },
+                      ...f.skills.map((s) => ({ text: `${s.name} +${s.level}` })),
+                    ]}
+                  />
+                ),
+              }))}
+              value={bias}
+              onPick={setBias}
+            />
+          </div>
 
-          <Field label="Code — how you carry yourself">
-            <Choices options={alignments} value={alignment} onPick={setAlignment} />
-          </Field>
+          <div className="mb-4">
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="block text-sm text-neutral-400">Code — how you carry yourself</label>
+              <button
+                type="button"
+                onClick={() => setCodeSeed((s) => s + 1)}
+                className="shrink-0 text-xs text-neutral-400 hover:text-accent"
+                title="Show a different set of codes"
+              >
+                ↻ more codes
+              </button>
+            </div>
+            <Choices options={shownAlignments} value={alignment} onPick={setAlignment} />
+          </div>
 
           <Field label="Sex">
             <Choices
@@ -457,19 +593,40 @@ export default function CreateWizard() {
           </Field>
 
           <div className="mt-6 border-t border-edge pt-5">
-            <div className="mb-1 text-sm font-semibold text-neutral-200">
-              Flavor &amp; depth <span className="font-normal text-neutral-500">— optional</span>
-            </div>
-            <p className="mb-4 text-xs text-neutral-500">
-              Leave any of these blank and the lanes will invent them, woven into your backstory.
-            </p>
-            <FlavorField label="The line you won't cross" value={moralCode} onChange={setMoralCode} placeholder="e.g. people aren't cargo" examples={exampleMoralCodes} />
-            <FlavorField label="A loss or scar" value={loss} onChange={setLoss} placeholder="what did it cost you?" examples={exampleLosses} />
-            <FlavorField label="A debt or tie" value={tie} onChange={setTie} placeholder="who do you owe — or who owes you?" examples={exampleTies} />
-            <FlavorField label="A tell" value={tell} onChange={setTell} placeholder="a habit that gives you away" examples={exampleTells} />
+            <button
+              type="button"
+              onClick={() => setFlavorOpen((v) => !v)}
+              className="flex w-full items-center gap-2 text-left"
+            >
+              <span className="text-[10px] text-neutral-500">{flavorOpen ? "▾" : "▸"}</span>
+              <span className="text-sm font-semibold text-neutral-200 transition hover:text-neutral-100">
+                Flavor &amp; depth <span className="font-normal text-neutral-500">— optional</span>
+              </span>
+            </button>
+            {flavorOpen && (
+              <div className="mt-4">
+                <p className="mb-4 text-xs text-neutral-500">
+                  Leave any of these blank and the lanes will invent them, woven into your backstory.
+                </p>
+                <FlavorField label="The line you won't cross" value={moralCode} onChange={setMoralCode} placeholder="e.g. people aren't cargo" examples={exampleMoralCodes} />
+                <FlavorField label="A loss or scar" value={loss} onChange={setLoss} placeholder="what did it cost you?" examples={exampleLosses} />
+                <FlavorField label="A debt or tie" value={tie} onChange={setTie} placeholder="who do you owe — or who owes you?" examples={exampleTies} />
+                <FlavorField label="A tell" value={tell} onChange={setTell} placeholder="a habit that gives you away" examples={exampleTells} />
+              </div>
+            )}
           </div>
 
-          <Nav back={() => setStep(1)} next={name && background && bias && alignment && sex && ambition ? () => setStep(3) : undefined} />
+          <Nav
+            back={() => setStep(1)}
+            next={
+              name && background && bias && alignment && sex && ambition
+                ? () => {
+                    firePrewarm(); // warm the story while they pick their signature
+                    setStep(3);
+                  }
+                : undefined
+            }
+          />
         </Section>
       )}
 
@@ -508,6 +665,7 @@ export default function CreateWizard() {
                     <span className="text-[10px] uppercase tracking-wide text-accent/70">{ex.skill.kind}</span>
                   </div>
                   <p className="mt-0.5 text-xs text-neutral-400">{ex.blurb}</p>
+                  <p className="mt-1 truncate text-xs text-accent/80">{sigLine(ex.skill)}</p>
                 </button>
               ))}
             </div>
@@ -601,8 +759,8 @@ export default function CreateWizard() {
             <Row k="Name" v={name} />
             <Row k="Faction" v={factionBriefs.find((f) => f.factionId === factionId)?.name ?? factionId} />
             <Row k="Background" v={backgrounds.find((b) => b.id === background)?.label ?? background} />
-            <Row k="Focus" v={bias} />
-            <Row k="Code" v={alignment} />
+            <Row k="Focus" v={focuses.find((f) => f.id === bias)?.label ?? bias} />
+            <Row k="Code" v={alignments.find((a) => a.id === alignment)?.label ?? alignment} />
             <Row k="Sex" v={sex} />
             <Row k="Ambition" v={ambition} />
             <Row k="Won't cross" v={moralCode || "— the lanes will invent it"} />
@@ -701,11 +859,7 @@ export default function CreateWizard() {
 /* ── character sheet display ───────────────────────────────────────────────── */
 function Sheet({ character, factionId }: { character: Character; factionId: string }) {
   const sig = character.uniqueSkill;
-  const sigLine = sig
-    ? sig.kind === "passive"
-      ? `+${sig.passiveAmount} ${sig.passiveTarget}`
-      : `nat-20 · ${sig.triggerScenario}`
-    : null;
+  const sigSummary = sig ? sigLine(sig) : null;
   return (
     <div className="space-y-4 rounded-lg border border-edge bg-panel/40 p-5">
       {/* vitals */}
@@ -721,8 +875,12 @@ function Sheet({ character, factionId }: { character: Character; factionId: stri
         <SheetLabel>Attributes</SheetLabel>
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
           {ATTR_ORDER.map((a) => (
-            <div key={a} className="rounded-md border border-edge/60 bg-ink/40 px-2 py-1.5 text-center">
-              <div className="text-[10px] uppercase text-neutral-500">{a.slice(0, 3)}</div>
+            <div
+              key={a}
+              title={ATTR_HINT[a]}
+              className="cursor-help rounded-md border border-edge/60 bg-ink/40 px-2 py-1.5 text-center"
+            >
+              <div className="text-[10px] text-neutral-500">{capWord(a)}</div>
               <div className="text-sm font-semibold text-neutral-100">{fmt(character.attributes[a])}</div>
             </div>
           ))}
@@ -749,7 +907,7 @@ function Sheet({ character, factionId }: { character: Character; factionId: stri
             <span className="font-semibold">{sig.name}</span>
             <span className="text-neutral-400"> — {sig.description}</span>
           </p>
-          <p className="mt-0.5 text-xs text-accent/80">{sigLine}</p>
+          <p className="mt-0.5 text-xs text-accent/80">{sigSummary}</p>
         </div>
       )}
 
@@ -905,7 +1063,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Choices({
   options, value, onPick,
 }: {
-  options: { id: string; label: string; description: string }[];
+  options: { id: string; label: string; description: string; meta?: React.ReactNode }[];
   value: string;
   onPick: (id: string) => void;
 }) {
@@ -921,7 +1079,8 @@ function Choices({
           }
         >
           <div className="font-semibold text-neutral-100">{o.label}</div>
-          <div className="mt-0.5 text-xs text-neutral-400">{o.description}</div>
+          {o.description && <div className="mt-0.5 text-xs text-neutral-400">{o.description}</div>}
+          {o.meta}
         </button>
       ))}
     </div>

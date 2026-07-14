@@ -6,51 +6,146 @@ import type { AttributeKey } from "@/shared/schemas";
  * points (+3) and comparable gear; answers change your shape, not your power.
  */
 
-export type Bias = "commerce" | "combat" | "intrigue" | "piloting" | "diplomacy";
+export type Bias =
+  | "commerce"
+  | "combat"
+  | "intrigue"
+  | "piloting"
+  | "diplomacy"
+  | "engineering"
+  | "survival"
+  | "brawn";
 
 /**
- * The attribute your FOCUS makes you strong in (+3). This is the player's main
- * build choice, so it drives the primary attribute — the background then adds a
- * secondary (+1) and a weakness (-1) for texture. Chosen to reinforce the focus's
- * signature skills: combat/piloting/intrigue lean reflex-adjacent, the social
- * focuses lean presence, and intrigue takes intellect (the operator/hacker).
+ * A FOCUS — the player's main build choice. It drives the primary attribute (+3)
+ * and grants a signature skill spread (4 levels). This is the SINGLE SOURCE OF
+ * TRUTH the wizard imports for display; the engine reads the `biasAttribute` /
+ * `biasSkills` records DERIVED from this list below, so display and mechanics can
+ * never drift. Primaries are chosen to reinforce each focus's skills: combat and
+ * piloting lean reflex, intrigue and engineering take intellect (operator/hacker
+ * / wrench), the social focuses lean presence, survival leans perception, and
+ * brawn leans might.
  */
-export const biasAttribute: Record<Bias, AttributeKey> = {
-  combat: "reflex", // shooting + reflexes win firefights
-  piloting: "reflex", // hands and instincts at the stick
-  intrigue: "intellect", // the hacker/operator
-  commerce: "presence", // deals are made face to face
-  diplomacy: "presence", // words as weapons
-};
+export interface FocusDef {
+  id: Bias;
+  label: string;
+  description: string;
+  primary: AttributeKey; // +3
+  skills: { name: string; level: number }[]; // 4 levels total
+}
 
-/** Skill levels granted by focus/bias (total 4 levels across each). */
-export const biasSkills: Record<Bias, { name: string; level: number }[]> = {
-  combat: [
-    { name: "smallArms", level: 2 },
-    { name: "gunnery", level: 1 },
-    { name: "melee", level: 1 },
-  ],
-  commerce: [
-    { name: "negotiation", level: 2 },
-    { name: "streetwise", level: 1 },
-    { name: "mechanics", level: 1 },
-  ],
-  intrigue: [
-    { name: "stealth", level: 2 },
-    { name: "deception", level: 1 },
-    { name: "electronics", level: 1 },
-  ],
-  piloting: [
-    { name: "piloting", level: 2 },
-    { name: "navigation", level: 1 },
-    { name: "zeroG", level: 1 },
-  ],
-  diplomacy: [
-    { name: "negotiation", level: 2 },
-    { name: "streetwise", level: 1 },
-    { name: "intimidation", level: 1 },
-  ],
-};
+export const focuses: FocusDef[] = [
+  {
+    id: "commerce",
+    label: "Commerce",
+    description: "Deals, cargo, and coin. You win with leverage and a good margin.",
+    primary: "presence", // deals are made face to face
+    skills: [
+      { name: "negotiation", level: 2 },
+      { name: "streetwise", level: 1 },
+      { name: "mechanics", level: 1 },
+    ],
+  },
+  {
+    id: "combat",
+    label: "Combat",
+    description: "Guns and gunnery. When talk fails, you're already moving.",
+    primary: "reflex", // shooting + reflexes win firefights
+    skills: [
+      { name: "smallArms", level: 2 },
+      { name: "gunnery", level: 1 },
+      { name: "melee", level: 1 },
+    ],
+  },
+  {
+    id: "intrigue",
+    label: "Intrigue",
+    description: "Shadows, secrets, and systems. You'd rather never be seen.",
+    primary: "intellect", // the hacker/operator
+    skills: [
+      { name: "stealth", level: 2 },
+      { name: "deception", level: 1 },
+      { name: "electronics", level: 1 },
+    ],
+  },
+  {
+    id: "piloting",
+    label: "Piloting",
+    description: "The cockpit is where the world slows down. You fly like breathing.",
+    primary: "reflex", // hands and instincts at the stick
+    skills: [
+      { name: "piloting", level: 2 },
+      { name: "navigation", level: 1 },
+      { name: "zeroG", level: 1 },
+    ],
+  },
+  {
+    id: "diplomacy",
+    label: "Diplomacy",
+    description: "Words as weapons. You move people, not just cargo.",
+    primary: "presence", // words as weapons
+    skills: [
+      { name: "negotiation", level: 2 },
+      { name: "streetwise", level: 1 },
+      { name: "intimidation", level: 1 },
+    ],
+  },
+  {
+    id: "engineering",
+    label: "Engineering",
+    description: "Reactors, breaches, and dead systems. You speak the ship's language, and it answers.",
+    primary: "intellect",
+    skills: [
+      { name: "mechanics", level: 2 },
+      { name: "electronics", level: 1 },
+      { name: "zeroG", level: 1 },
+    ],
+  },
+  {
+    id: "survival",
+    label: "Survival",
+    description: "Cold vac, empty lanes, no rescue coming. You read the danger early and outlast the rest.",
+    primary: "perception",
+    skills: [
+      { name: "survival", level: 2 },
+      { name: "perception", level: 1 },
+      { name: "athletics", level: 1 },
+    ],
+  },
+  {
+    id: "brawn",
+    label: "Brawn",
+    description: "Up close and physical. You settle things with your hands, and rooms go quiet when you stand.",
+    primary: "might",
+    skills: [
+      { name: "melee", level: 2 },
+      { name: "athletics", level: 1 },
+      { name: "intimidation", level: 1 },
+    ],
+  },
+];
+
+/**
+ * The attribute each FOCUS makes you strong in (+3) — DERIVED from `focuses` so
+ * it can never diverge from the wizard's display. The background then adds a
+ * secondary (+1) and a weakness (-1) for texture.
+ */
+export const biasAttribute: Record<Bias, AttributeKey> = focuses.reduce(
+  (acc, f) => {
+    acc[f.id] = f.primary;
+    return acc;
+  },
+  {} as Record<Bias, AttributeKey>,
+);
+
+/** Skill levels granted by focus/bias (4 levels each) — DERIVED from `focuses`. */
+export const biasSkills: Record<Bias, { name: string; level: number }[]> = focuses.reduce(
+  (acc, f) => {
+    acc[f.id] = f.skills;
+    return acc;
+  },
+  {} as Record<Bias, { name: string; level: number }[]>,
+);
 
 export interface BackgroundDef {
   id: string;
@@ -305,6 +400,12 @@ export const alignments: OptionDef[] = [
   { id: "ghost", label: "Ghost", description: "Stay small, stay quiet, leave no name behind. The lanes never see you coming." },
   { id: "loud", label: "Loud", description: "Reputation is currency. Every job is a story, and you're the headline." },
   { id: "merciful", label: "Merciful", description: "You'll fight, but you never finish the fallen. Kindness in a hard place — some read it as weakness." },
+  { id: "reckless", label: "Reckless", description: "Act first, reckon later — hesitation gets people killed. You'd rather burn bright than play it safe." },
+  { id: "calculating", label: "Calculating", description: "Every move is three moves deep. You don't gamble; you wait for the odds to bend your way." },
+  { id: "greedy", label: "Greedy", description: "There's no such thing as enough. The next score is always the one worth the risk." },
+  { id: "vengeful", label: "Vengeful", description: "You keep a ledger of every wrong, and you always collect. Cross you once and you'll spend years making it right." },
+  { id: "cynical", label: "Cynical", description: "Everyone's working an angle, and you've stopped pretending otherwise. Trust is a cost you rarely pay." },
+  { id: "zealous", label: "Zealous", description: "You believe in something bigger than the paycheck, and you'll bleed for it. Doubt is for people with nothing to fight for." },
 ];
 
 export const ambitions: OptionDef[] = [

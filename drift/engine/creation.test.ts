@@ -3,6 +3,7 @@ import { buildCharacterFromCreation } from "./creation";
 import { computeModifier, rollCheck, passiveBonus } from "./rolls";
 import { resolveShipAttack } from "./combat";
 import { scriptedRng } from "./rng";
+import { focuses, biasAttribute, biasSkills, type Bias } from "@/content/creation";
 import type { CreationInput } from "@/shared/multiplayer";
 
 const base: CreationInput = {
@@ -55,6 +56,64 @@ describe("buildCharacterFromCreation", () => {
     expect(c.parentFactionId).toBe("f-crown");
     expect(c.loyaltyToParent).toBe(4);
     expect(c.uniqueSkill?.name).toBe("Deadhand");
+  });
+});
+
+describe("focus (bias) — new focuses & derived records", () => {
+  // Use a background whose secondary/weakness don't touch the tested primary so
+  // the +3 stays clean: dock-rat leans reflex(+3 already baked out by focus)…
+  // pick corporate-insider (intellect +3 bg? no) — simplest: assert the focus
+  // primary gets at least +3 (background may nudge secondary/weakness elsewhere).
+  const buildWith = (bias: Bias) =>
+    buildCharacterFromCreation(
+      { ...base, bias, background: "long-hauler" }, // long-hauler: vitality+1, perception+1?  weakness presence
+      { id: "p", campaignId: "c" },
+    );
+
+  it("engineering → intellect primary + mechanics/electronics/zeroG", () => {
+    const c = buildWith("engineering");
+    // long-hauler bg: secondary perception +1, weakness presence -1 — neither is intellect
+    expect(c.attributes.intellect).toBe(3);
+    const skill = (n: string) => c.skills.find((s) => s.name === n)?.level ?? 0;
+    expect(skill("mechanics")).toBe(2);
+    expect(skill("electronics")).toBe(1);
+    expect(skill("zeroG")).toBe(1);
+  });
+
+  it("survival → perception primary + survival/perception/athletics", () => {
+    const c = buildWith("survival");
+    // long-hauler secondary is perception (+1), so primary+secondary stack to +4
+    expect(c.attributes.perception).toBe(4);
+    const skill = (n: string) => c.skills.find((s) => s.name === n)?.level ?? 0;
+    expect(skill("survival")).toBe(2);
+    expect(skill("perception")).toBe(1);
+    expect(skill("athletics")).toBe(1);
+  });
+
+  it("brawn → might primary + melee/athletics/intimidation", () => {
+    const c = buildWith("brawn");
+    expect(c.attributes.might).toBe(3);
+    const skill = (n: string) => c.skills.find((s) => s.name === n)?.level ?? 0;
+    expect(skill("melee")).toBe(2);
+    expect(skill("athletics")).toBe(1);
+    expect(skill("intimidation")).toBe(1);
+  });
+
+  it("has 8 focuses with unique ids", () => {
+    expect(focuses).toHaveLength(8);
+    expect(new Set(focuses.map((f) => f.id)).size).toBe(8);
+  });
+
+  it("biasAttribute/biasSkills are derived from focuses (never drift)", () => {
+    for (const f of focuses) {
+      expect(biasAttribute[f.id]).toBe(f.primary);
+      expect(biasSkills[f.id]).toEqual(f.skills);
+      // each focus grants exactly 4 skill levels
+      expect(f.skills.reduce((s, k) => s + k.level, 0)).toBe(4);
+    }
+    // records cover exactly the focus ids, no more
+    expect(Object.keys(biasAttribute).sort()).toEqual(focuses.map((f) => f.id).sort());
+    expect(Object.keys(biasSkills).sort()).toEqual(focuses.map((f) => f.id).sort());
   });
 });
 
