@@ -1,9 +1,12 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { hasSupabase } from "@/lib/state";
 import { getServiceClient, listCampaigns, type CampaignSummary } from "@/db/queries";
 import { getAuthedUser, type AuthedUser } from "@/lib/auth";
+import { factionBriefs } from "@/content/briefs";
 import UserMenu from "@/components/UserMenu";
+import LoadingLink from "@/components/LoadingLink";
+
+const factionName = (id?: string) => factionBriefs.find((f) => f.factionId === id)?.name;
 
 // The campaign list is read from the DB per request — never statically cached.
 export const dynamic = "force-dynamic";
@@ -42,15 +45,18 @@ export default async function Home() {
       </div>
 
       {canCreate && (
-        <Link
-          href="/create"
-          className="mt-8 block rounded-lg border border-accent/60 bg-accent/10 p-5 transition hover:bg-accent/20"
-        >
-          <div className="text-lg font-semibold text-accent">+ Create a character</div>
-          <p className="mt-1 text-sm text-neutral-400">
-            Join the shared universe — pick a faction, shape who you are, forge a signature skill.
-          </p>
-        </Link>
+        <div className="mt-8">
+          <LoadingLink
+            href="/create"
+            spinnerLabel="Opening creation…"
+            className="block rounded-lg border border-accent/60 bg-accent/10 p-5 transition hover:bg-accent/20"
+          >
+            <div className="text-lg font-semibold text-accent">+ Create a character</div>
+            <p className="mt-1 text-sm text-neutral-400">
+              Join the shared universe — pick a faction, shape who you are, forge a signature skill.
+            </p>
+          </LoadingLink>
+        </div>
       )}
 
       {campaigns.length > 0 && (
@@ -60,16 +66,32 @@ export default async function Home() {
           </h2>
           <div className="mt-3 space-y-2">
             {campaigns.map((c) => (
-              <Link
+              <LoadingLink
                 key={c.id}
                 href={`/play/${c.id}`}
+                spinnerLabel="Entering the lanes…"
                 className="block rounded-lg border border-edge bg-panel p-4 transition hover:border-accent"
               >
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="truncate text-lg font-semibold">{c.name}</span>
-                  <span className="shrink-0 text-xs text-neutral-500">{c.status}</span>
+                  <span
+                    className={
+                      "shrink-0 text-xs " + (c.status === "deceased" ? "text-bad" : "text-neutral-500")
+                    }
+                  >
+                    {c.status === "deceased" ? "☠ deceased" : c.status}
+                  </span>
                 </div>
-              </Link>
+                {(factionName(c.factionId) || c.universeName) && (
+                  <div className="mt-1 text-xs text-neutral-500">
+                    {factionName(c.factionId) && (
+                      <span className="text-accent/80">{factionName(c.factionId)}</span>
+                    )}
+                    {factionName(c.factionId) && c.universeName && " · "}
+                    {c.universeName}
+                  </div>
+                )}
+              </LoadingLink>
             ))}
           </div>
           {!canCreate && (

@@ -230,6 +230,10 @@ export interface CampaignSummary {
   name: string;
   status: string;
   createdAt?: string;
+  /** World (universe) this campaign lives in. */
+  universeName?: string;
+  /** The PC's starting faction id (name resolved from content briefs). */
+  factionId?: string;
 }
 
 /**
@@ -246,7 +250,8 @@ export async function listCampaigns(
 ): Promise<CampaignSummary[]> {
   let query = db
     .from("campaigns")
-    .select("id,name,status,created_at")
+    // Embeds ride the FKs: the world's name, and the PC's faction for the card.
+    .select("id,name,status,created_at,universes(name),characters(kind,parent_faction_id)")
     .order("created_at", { ascending: false })
     .limit(opts.limit ?? 50);
   query = opts.includeUnowned
@@ -254,12 +259,19 @@ export async function listCampaigns(
     : query.eq("player_id", playerId);
   const { data, error } = await query;
   if (error || !data) return [];
-  return data.map((r) => ({
-    id: String(r.id),
-    name: String(r.name),
-    status: String(r.status),
-    createdAt: r.created_at ? String(r.created_at) : undefined,
-  }));
+  return data.map((r) => {
+    const uni = r.universes as { name?: string } | { name?: string }[] | null;
+    const chars = (r.characters as { kind?: string; parent_faction_id?: string }[] | null) ?? [];
+    const pc = chars.find((c) => c.kind === "pc");
+    return {
+      id: String(r.id),
+      name: String(r.name),
+      status: String(r.status),
+      createdAt: r.created_at ? String(r.created_at) : undefined,
+      universeName: Array.isArray(uni) ? uni[0]?.name : uni?.name ?? undefined,
+      factionId: pc?.parent_faction_id ? String(pc.parent_faction_id) : undefined,
+    };
+  });
 }
 
 /**

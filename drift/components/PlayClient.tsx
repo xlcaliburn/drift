@@ -10,7 +10,7 @@ import { stripInlineMenu } from "@/shared/narration";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import { combatActions, type CombatState } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
-import type { NpcRelations } from "@/shared/scene";
+import type { NpcRelations, SceneCard } from "@/shared/scene";
 import Sidebar from "./Sidebar";
 
 /** Choices may arrive as plain strings (opening/fallback) or objects with an
@@ -39,6 +39,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
   const [choices, setChoices] = useState<ChoiceOption[]>([]);
   const [combat, setCombat] = useState<CombatState | null>(null);
   const [npcRelations, setNpcRelations] = useState<NpcRelations>({});
+  const [sceneCard, setSceneCard] = useState<SceneCard | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   // Terminal state — the PC has died; the story is over and input is locked.
@@ -73,6 +74,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
         setHasApiKey(d.hasApiKey);
         setIsAdmin(Boolean(d.isAdmin));
         if (d.npcRelations) setNpcRelations(d.npcRelations);
+        if (d.sceneCard) setSceneCard(d.sceneCard);
 
         // The opening recap + starter choices are derived from stored state — free.
         const recap: ChatEntry = { role: "recap", text: buildOpeningRecap(d.state) };
@@ -170,6 +172,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             sceneEnded?: boolean;
             dead?: boolean;
             npcRelations?: NpcRelations;
+            sceneCard?: SceneCard | null;
             tutorialGraduated?: boolean;
           };
           try {
@@ -190,6 +193,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             if (evt.state) setState(evt.state);
             setCombat(evt.combat ?? null);
             if (evt.npcRelations) setNpcRelations(evt.npcRelations);
+            if (evt.sceneCard) setSceneCard(evt.sceneCard);
             if (evt.dead) {
               // The character has died — end the story: lock input, drop choices,
               // and show a final beat instead of the scene-end line.
@@ -503,6 +507,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             state={state}
             combat={combat}
             npcRelations={npcRelations}
+            sceneCard={sceneCard}
             mobileOpen={showSheet}
             onClose={() => setShowSheet(false)}
           />

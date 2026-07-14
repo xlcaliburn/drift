@@ -32,5 +32,6 @@ export async function GET(req: NextRequest) {
     isAdmin: auth.user.role === "admin",
     combat: session.combat,
     npcRelations: session.npcRelations,
+    sceneCard: session.sceneCard,
   });
 }

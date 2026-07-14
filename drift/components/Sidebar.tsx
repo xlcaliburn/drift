@@ -6,7 +6,7 @@ import { tickMax } from "@/engine/progression";
 import { shipIsOwned } from "@/shared/recap";
 import { backgrounds } from "@/content/creation";
 import type { CombatState } from "@/shared/combat";
-import { dispositionLabel, type NpcRelations } from "@/shared/scene";
+import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
 import skillsMeta from "@/content/skills.json";
 
 const ATTR_ORDER = ["might", "reflex", "vitality", "intellect", "perception", "presence"] as const;
@@ -68,6 +68,7 @@ export default function Sidebar({
   state,
   combat = null,
   npcRelations = {},
+  sceneCard = null,
   mobileOpen = false,
   onClose,
 }: {
@@ -75,6 +76,8 @@ export default function Sidebar({
   combat?: CombatState | null;
   /** Player↔NPC standing overlay — feeds the Contacts section. */
   npcRelations?: NpcRelations;
+  /** Current scene's working memory — feeds the Scene box. */
+  sceneCard?: SceneCard | null;
   /** Mobile slide-over drawer control (desktop rail ignores these). */
   mobileOpen?: boolean;
   onClose?: () => void;
@@ -102,7 +105,13 @@ export default function Sidebar({
 
       <div className="scrollbar-thin flex-1 overflow-y-auto p-3 text-[13px]">
         {tab === "status" && (
-          <StatusTab state={state} combat={combat} npcRelations={npcRelations} onDetails={() => setShowDetails(true)} />
+          <StatusTab
+            state={state}
+            combat={combat}
+            npcRelations={npcRelations}
+            sceneCard={sceneCard}
+            onDetails={() => setShowDetails(true)}
+          />
         )}
         {tab === "traits" && <TraitsTab state={state} />}
         {tab === "map" && <MapTab state={state} />}
@@ -213,11 +222,13 @@ function StatusTab({
   state,
   combat,
   npcRelations,
+  sceneCard,
   onDetails,
 }: {
   state: CampaignState;
   combat: CombatState | null;
   npcRelations: NpcRelations;
+  sceneCard: SceneCard | null;
   onDetails: () => void;
 }) {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
@@ -338,13 +349,53 @@ function StatusTab({
       </div>
 
       <div className="rounded border border-edge p-2">
-        <div className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">Here &amp; now</div>
+        <div className="mb-1 flex items-baseline justify-between text-[11px] uppercase tracking-wide text-neutral-500">
+          <span>Here &amp; now</span>
+          {sceneCard && <span className="normal-case text-neutral-600">scene {sceneCard.seq}</span>}
+        </div>
         <div className="text-neutral-200">{loc?.name ?? "Unknown"}</div>
-        {active.slice(0, 4).map((t) => (
-          <div key={t.id} className="mt-0.5 text-[12px] text-neutral-400">
-            • {t.title}
+
+        {/* The live scene: what's happening, who's here, what's been established. */}
+        {sceneCard?.situation && (
+          <p className="mt-1 text-[12px] italic leading-snug text-neutral-300">{sceneCard.situation}</p>
+        )}
+        {sceneCard && sceneCard.presentNpcIds.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {sceneCard.presentNpcIds.map((id) => {
+              const npc = state.npcs.find((n) => n.id === id);
+              return npc ? (
+                <span
+                  key={id}
+                  className="rounded border border-edge bg-ink/40 px-1.5 py-0.5 text-[11px] text-neutral-300"
+                  title={npc.oneBreath}
+                >
+                  {npc.name}
+                </span>
+              ) : null;
+            })}
           </div>
-        ))}
+        )}
+        {sceneCard && sceneCard.beats.length > 0 && (
+          <div className="mt-1.5 border-t border-edge/60 pt-1.5">
+            <div className="text-[10px] uppercase tracking-wide text-neutral-600">Established</div>
+            {sceneCard.beats.map((b, i) => (
+              <div key={i} className="mt-0.5 text-[12px] text-neutral-400">
+                • {b}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {active.length > 0 && (
+          <div className="mt-1.5 border-t border-edge/60 pt-1.5">
+            <div className="text-[10px] uppercase tracking-wide text-neutral-600">Open threads</div>
+            {active.slice(0, 4).map((t) => (
+              <div key={t.id} className="mt-0.5 text-[12px] text-neutral-400">
+                • {t.title}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {contacts.length > 0 && (

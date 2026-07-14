@@ -337,6 +337,7 @@ export async function POST(req: NextRequest) {
           sceneEnded: result.sceneEnded,
           dead: pcDied,
           npcRelations: updatedSession.npcRelations,
+          sceneCard: updatedSession.sceneCard,
           tutorialGraduated: result.tutorialGraduated,
           model: result.model,
           usage: result.usage,
