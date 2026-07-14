@@ -34,6 +34,10 @@ export interface SceneCard {
   dangers?: string[];
   /** Transcript index where this scene began — the summarizer's slice start. */
   startTranscriptIdx: number;
+  /** A legit item that didn't fit the full pack (ITEMS.md slice B). Held here so
+   *  the next turn can offer swap chips ("drop X to take it") instead of losing it.
+   *  Cleared on swap / decline / a heal-the-pack move / scene end. */
+  pendingPickup?: { name: string; itemId?: string; note?: string };
 }
 
 export interface NpcRelation {

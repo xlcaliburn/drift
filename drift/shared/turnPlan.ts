@@ -100,6 +100,11 @@ export const ChoiceOption = z.object({
   /** Set on an engine-generated "Repair hull" dock chip — the engine repairs
    *  deterministically at ¢12/HP (ECONOMY E-3). */
   repairHull: optionalNullable(z.boolean()),
+  /** Set on a full-pack SWAP chip: the carried gear name to drop to take the
+   *  parked pending pickup (ITEMS.md slice B). */
+  swapDrop: optionalNullable(z.string()),
+  /** Set on the "leave it behind" chip that declines the pending pickup. */
+  swapDecline: optionalNullable(z.boolean()),
 });
 export type ChoiceOption = z.infer<typeof ChoiceOption>;
 

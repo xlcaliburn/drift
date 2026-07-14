@@ -856,11 +856,13 @@ export class TurnRuntime {
         gear = [...pc.gear, { name: trimmed, ...(note?.trim() ? { detail: note.trim() } : {}) }];
         label = trimmed;
       }
-      // Inventory capacity (ITEMS.md slice B): a gain that doesn't fit is BLOCKED
-      // with a visible line — never a silent loss, never a silent over-stuff.
+      // Inventory capacity (ITEMS.md slice B): a gain that doesn't fit is NOT lost
+      // silently — it's PARKED as a pending pickup so next turn can offer swap chips
+      // ("drop X to take it"). A stack that merely grows (existing) always fits.
       const cap = maxSlotsFor(pc);
-      if (slotsUsed({ ...pc, gear }) > cap) {
-        return `🎒 Pack full (${slotsUsed(pc)}/${cap} slots) — ${trimmed} left behind. Drop something to make room.`;
+      if (!existing && slotsUsed({ ...pc, gear }) > cap) {
+        this.sceneCard.pendingPickup = { name: cat?.name ?? trimmed, itemId: cat?.id, note: note?.trim() || undefined };
+        return `🎒 Pack full (${slotsUsed(pc)}/${cap} slots) — ${label} won't fit. Drop something to take it.`;
       }
       this.setGear(pc.id, gear, Boolean(cat?.acBonus));
       return `🎒 Gained: ${label}`;
@@ -877,6 +879,45 @@ export class TurnRuntime {
     );
     this.setGear(pc.id, gear, hadArmor);
     return `🎒 Lost: ${existing.name}`;
+  }
+
+  /**
+   * Resolve a full-pack SWAP (ITEMS.md slice B): drop the named carried item to
+   * make room, then take the parked pending pickup. Recomputes AC if either piece
+   * was armor. Returns the visible line (or an error if the drop/pending is gone).
+   */
+  resolveSwap(dropName: string): { line?: string; error?: string } {
+    const pc = this.pc();
+    const pending = this.sceneCard.pendingPickup;
+    if (!pc || !pending) return { error: "nothing to swap" };
+    const norm = dropName.trim().toLowerCase().replace(/^(a|an|the)\s+/, "");
+    const dropped = pc.gear.find((g) => g.name.toLowerCase() === norm) ?? pc.gear.find((g) => g.name.toLowerCase().includes(norm));
+    if (!dropped) return { error: `not carrying "${dropName.trim()}"` };
+
+    // Drop one (a stack decrements; flavor/last goes whole), then append the pending.
+    let gear =
+      dropped.itemId && (dropped.qty ?? 1) > 1
+        ? pc.gear.map((g) => (g === dropped ? { ...g, qty: (g.qty ?? 1) - 1 } : g))
+        : pc.gear.filter((g) => g !== dropped);
+    const cat = pending.itemId ? catalogItem(pending.itemId) : undefined;
+    gear = [
+      ...gear,
+      cat
+        ? { name: cat.name, itemId: cat.id, qty: 1, ...(cat.damage ? { damage: cat.damage } : {}), ...(cat.acBonus ? { acBonus: cat.acBonus } : {}) }
+        : { name: pending.name, ...(pending.note ? { detail: pending.note } : {}) },
+    ];
+    const armorTouched =
+      Boolean(dropped.acBonus ?? (dropped.itemId ? catalogItem(dropped.itemId)?.acBonus : 0)) || Boolean(cat?.acBonus);
+    this.setGear(pc.id, gear, armorTouched);
+    this.sceneCard.pendingPickup = undefined;
+    return { line: `🎒 Dropped ${dropped.name}, took ${pending.name}.` };
+  }
+
+  /** Walk away from a parked pending pickup — leave it behind for good. */
+  declineSwap(): { line?: string } {
+    const pending = this.sceneCard.pendingPickup;
+    this.sceneCard.pendingPickup = undefined;
+    return pending ? { line: `🎒 Left ${pending.name} behind.` } : {};
   }
 
   // ── Shops (ITEMS.md slice E) — the ENGINE owns the whole transaction ────────

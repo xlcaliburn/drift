@@ -117,6 +117,12 @@ export async function POST(req: NextRequest) {
   const useItemId = typeof body.useItemId === "string" && body.useItemId ? body.useItemId : undefined;
   // A clicked "Repair hull" dock chip (engine repairs deterministically).
   const preRepair = Boolean(body.repairHull);
+  // A clicked full-pack swap chip: the gear to drop, or "__decline__" to leave it.
+  const preSwap = Boolean(body.swapDecline)
+    ? "__decline__"
+    : typeof body.swapDrop === "string" && body.swapDrop
+      ? body.swapDrop
+      : undefined;
   // The action came from a CLICKED choice (not typed). A clicked choice's check is
   // already decided and shown on the chip, so the model can't add a surprise roll.
   const fromChoice: boolean = Boolean(body.fromChoice);
@@ -246,6 +252,7 @@ export async function POST(req: NextRequest) {
                 preCheck,
                 preUseItem: useItemId,
                 preRepair,
+                preSwap,
                 fromChoice,
                 // Scene memory (mutated in place by the runtime; session owns it).
                 sceneCard: session.sceneCard,
@@ -289,10 +296,19 @@ export async function POST(req: NextRequest) {
                   session.sceneCard.presentNpcIds.some((id) => (session.npcRelations[id]?.disposition ?? 0) >= 1),
                 )
               : [
-                  // Deterministic engine chips FIRST when they'd help — "Use X"
-                  // (hurt → heal, damaged hull → patch, dry racks → reload) and a
-                  // dock "Repair hull (¢X)" — so healing and repair are reliable
-                  // clicks, not pleas to the narrator.
+                  // Full-pack SWAP chips FIRST when an item is parked (didn't fit):
+                  // drop-to-take, or leave it — never a silent loss (ITEMS.md B).
+                  ...(() => {
+                    const pending = session.sceneCard.pendingPickup;
+                    if (!pending || !resultPc) return [] as ChoiceOption[];
+                    const drops: ChoiceOption[] = resultPc.gear
+                      .slice(0, 6)
+                      .map((g) => ({ label: `Drop ${g.name} → take ${pending.name}`, swapDrop: g.name }));
+                    return [...drops, { label: `Leave ${pending.name} behind`, swapDecline: true }];
+                  })(),
+                  // Deterministic engine chips when they'd help — "Use X" (hurt →
+                  // heal, damaged hull → patch, dry racks → reload) and a dock
+                  // "Repair hull (¢X)" — so healing and repair are reliable clicks.
                   ...(resultPc ? outOfCombatItemChips(resultPc, result.state.ship) : []),
                   ...(() => {
                     const rq = repairQuote(result.state);

@@ -51,6 +51,9 @@ export interface JsonTurnInput {
   preUseItem?: string;
   /** A clicked "Repair hull" dock chip — the engine repairs before narrating. */
   preRepair?: boolean;
+  /** A clicked full-pack SWAP chip: drop this carried item to take the pending
+   *  pickup. `"__decline__"` leaves the pending item behind (ITEMS.md slice B). */
+  preSwap?: string;
   /** The action was a CLICKED choice (not typed). Its check is already decided and
    *  shown on the chip, so a checkless clicked choice must NOT get a surprise
    *  model-proposed roll — the badge is the contract (typed free text still can). */
@@ -448,6 +451,18 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       emit([res.line]);
     } else if (res.error) {
       emit([`⚠ ${res.error}`]);
+    }
+  }
+  // A clicked full-pack SWAP chip — drop-to-take (or leave it), engine-owned.
+  if (input.preSwap && pc) {
+    toolCalls.push("swap_item");
+    const res = input.preSwap === "__decline__" ? runtime.declineSwap() : runtime.resolveSwap(input.preSwap);
+    const r = res as { line?: string; error?: string };
+    if (r.line) {
+      engineLines.push(`ENGINE RESULT: ${r.line}`);
+      emit([r.line]);
+    } else if (r.error) {
+      emit([`⚠ ${r.error}`]);
     }
   }
 

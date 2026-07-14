@@ -7,8 +7,12 @@ model firing useItem). Consumable resolution is name-resilient: an unmapped lega
 "Medkit"/"Stimpack" still counts, uses, and is spent (`resolveGearItemId` — one
 source of truth for count AND consume, so they can't disagree; fixed the
 heal-that-did-nothing bug). This doc is now the reference for how items work.
-Remaining polish: engine-generated swap chips on a full pack (v1 blocks with a
-visible line instead); dock repair credit/debt (ECONOMY E-3) is still unbuilt.*
+Full-pack SWAP chips SHIPPED: a legit gain that doesn't fit is PARKED as a
+`sceneCard.pendingPickup` and the next turn offers "Drop X → take it" / "Leave it"
+chips (engine-owned `resolveSwap`/`declineSwap`; an explicit swap may land slightly
+over-cap, which just blocks the next auto-pickup — the IT-2 grandfather rule).
+Dock repair + credit/debt (ECONOMY E-3) SHIPPED (see below). Items work is
+COMPLETE.*
 
 ## Locked decisions (2026-07-14)
 
