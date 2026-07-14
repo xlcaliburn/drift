@@ -322,6 +322,26 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   }
 
   let plan = await plannedCall(true);
+
+  // ── Enforce at least one checked choice (the dice must always be on offer). ──
+  // The prompt asks for it, but DeepSeek routinely forgets — so the ENGINE checks
+  // and bounces it back once: if a normal turn's choices carry no check, ask for
+  // the same narration with a check on the most consequential option. (Skipped for
+  // combat/scene-end turns, which drop choices, and when a check already happened
+  // — the clicked pre-check or a mid-turn roll on the player's typed action.)
+  const wantsCheck = (p: TurnPlan) =>
+    p.choices.length > 0 && !p.choices.some((c) => c.check) && !p.combatStart && !p.sceneEnd && !p.roll;
+  if (!input.preCheck && wantsCheck(plan)) {
+    toolCalls.push("enforce_check");
+    messages.push({ role: "assistant", content: JSON.stringify({ narration: plan.narration, choices: plan.choices }) });
+    messages.push({
+      role: "user",
+      content:
+        "None of your options carried a skill check — every turn must offer at least one. Re-send the SAME json turn, keeping your narration WORD FOR WORD, but attach a \"check\" {skill, dc, stakes:true} to the single most consequential/uncertain option (the 'push on / press your luck' one if present).",
+    });
+    const retry = await plannedCall(false);
+    if (retry.choices.length) plan = retry; // take the retry even if it still lacks one — no infinite loop
+  }
   let narration = plan.narration;
 
   // ── Mid-turn roll: the model says the CURRENT action needs a check. ────────

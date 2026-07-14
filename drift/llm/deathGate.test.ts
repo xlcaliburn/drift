@@ -75,6 +75,15 @@ describe("failure damage is gated + capped (D&D-style)", () => {
     expect(rt.state.characters[0].hp).toBe(3); // danger vs a trap can hurt even on a perception save — but capped
   });
 
+  it("scavenging is a real skill and never deals failure damage (looting can't hurt you)", () => {
+    const rt = new TurnRuntime(pcState(3), minRng);
+    const r = rt.execute("roll_check", { characterId: "pc-1", skill: "scavenging", dc: 99, failDamage: "100" }) as {
+      breakdown: string;
+    };
+    expect(r.breakdown).toContain("scavenging");
+    expect(rt.state.characters[0].hp).toBe(5); // a bad haul, not a wound
+  });
+
   it("target:ship routes failure damage to the HULL (capped), not the pilot", () => {
     const s = pcState(3);
     s.ship = { id: "ship-1", campaignId: "c", name: "Magpie", shipClass: "scout", hp: 18, maxHp: 18, ac: 12, evasiveAcBonus: 2, damageReduction: 0, weapons: [], hasShield: false, shieldReady: false, hasPointDefense: false, burstDriveReady: false, dcModifier: 0, buyoutRemaining: 0 } as unknown as CampaignState["ship"];

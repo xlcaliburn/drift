@@ -112,7 +112,7 @@ export const backgrounds: BackgroundDef[] = [
     primary: "intellect",
     secondary: "might",
     weakness: "presence",
-    signatureSkill: "mechanics",
+    signatureSkill: "scavenging",
     gear: [
       { name: "Cutting tool", damage: "1d6" },
       { name: "Sealed vac suit", detail: "vacuum-rated" },

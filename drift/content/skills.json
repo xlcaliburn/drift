@@ -17,8 +17,9 @@
     "mechanics": { "attribute": "intellect", "does": "repairing and jury-rigging machinery, engines, and hulls" },
     "electronics": { "attribute": "intellect", "does": "hacking, slicing, wiring, security systems, sensors, comms" },
     "navigation": { "attribute": "intellect", "does": "astrogation — plotting FTL JUMPS and lanes, reading star charts, not getting lost" },
-    "survival": { "attribute": "vitality", "hazard": true, "does": "enduring hostile environments, scavenging, field first-aid" },
-    "perception": { "attribute": "perception", "does": "noticing details — spotting ambushes, traps, tells, hidden things" }
+    "survival": { "attribute": "vitality", "hazard": true, "does": "enduring hostile environments, field first-aid, staying alive off the grid" },
+    "perception": { "attribute": "perception", "does": "noticing details — spotting ambushes, traps, tells, hidden things" },
+    "scavenging": { "attribute": "perception", "does": "salvaging and looting — stripping wrecks and bodies for value, spotting the good parts, appraising a haul. ALWAYS the skill for looting/scavenging." }
   },
   "defaultMaxHint": "Max ticks to next level = (level + 1) * 3",
   "attackModifierNote": "Ship gunnery and small arms roll d20 + reflex mod + skill level; gear (sensor suite, nav computer, thruster overhaul) adds situational modifiers tracked on the ship/character."
