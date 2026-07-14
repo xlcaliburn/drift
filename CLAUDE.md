@@ -58,13 +58,15 @@ raw level in `computeModifier`), verb-driven actions, items (consumables + engin
 generated loot), **scene-memory continuity v1** + NPC registration backstops,
 quest-gated relationships, the bleed-out limit, **universe-shared NPCs**
 (migration 014 — generated NPCs promote to the universe `npcs` table; per-player
-standing stays in `npc_relations`) + backstory NPCs at creation, and the People /
-Factions sidebar tabs.
+standing stays in `npc_relations`) + backstory NPCs at creation, the People /
+Factions sidebar tabs, **net-worth enemy scaling** (COMBAT.md §1 —
+`shared/netWorth.ts`, combatStart clamped to the player's threat band, spawn-count
+backstop, shields T3/boss-only), and **items v1 COMPLETE** (`ITEMS.md` — full
+weapon/armor catalog with legacy-gear mapping, inventory slots 8+might,
+engine-owned rotating markets with `purchase`/`sell` TurnPlan fields).
 
 **What's LEFT to build** (rough order; each has a design doc):
 
-- **Items v1 slices B / D / E** (`ITEMS.md`) — inventory slots, ammo spend, shops.
-  (Slice A consumables + slice C loot are shipped.)
 - **Crew v1** (`CREW.md`) — recruitment + scaling upkeep. Nothing built yet.
 - **Shared-world runtime** (`MULTIPLAYER.md`) — dossiers, relationship ledgers,
   cross-campaign reads, break-from-faction trigger, seasons + season-end reckoning.

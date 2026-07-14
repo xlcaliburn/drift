@@ -1,9 +1,10 @@
 # ITEMS.md — Item Audit, Consumables & Inventory Design
 
-*Consumables (catalog + combat use) and loot drops are **shipped**. Remaining:
-weapon/armor catalog (W), inventory slots (B), ammo spend / reload economy (D),
-shops — buying + selling (E). This doc holds the design for those plus the
-catalog context they build on.*
+*ALL SLICES SHIPPED (2026-07-14): consumables + loot, weapon/armor catalog (W),
+inventory slots (B), ammo/reload gating (D), shops (E). This doc is now the
+reference for how the item system works. Remaining polish: engine-generated
+swap chips on a full pack (v1 blocks with a visible line instead); dock repair
+credit/debt (ECONOMY E-3) is still unbuilt.*
 
 ## Locked decisions (2026-07-14)
 
