@@ -21,6 +21,9 @@ interface Rates {
 
 /** Longest-prefix-matched against the resolved model id. */
 const PRICING: Record<string, Rates> = {
+  "deepseek-v4-flash": { in: 0.14, out: 0.28, cacheRead: 0.0028, cacheWrite: 0.14 },
+  "deepseek-v4-pro": { in: 0.435, out: 0.87, cacheRead: 0.003625, cacheWrite: 0.435 },
+  // Legacy ids — deprecated by DeepSeek on 2026/07/24, kept for in-flight accounting.
   "deepseek-chat": { in: 0.27, out: 1.1, cacheRead: 0.07, cacheWrite: 0.27 },
   "deepseek-reasoner": { in: 0.55, out: 2.19, cacheRead: 0.14, cacheWrite: 0.55 },
   "claude-haiku-4-5": { in: 1, out: 5, cacheRead: 0.1, cacheWrite: 1.25 },

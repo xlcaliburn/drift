@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parseInlineMenu } from "./narration";
+import { VERB_LIST } from "./actions";
 
 /**
  * Structured narrator turn — the JSON contract for cheap models.
@@ -19,9 +20,12 @@ import { parseInlineMenu } from "./narration";
 const optionalNullable = <T extends z.ZodTypeAny>(schema: T) =>
   z.preprocess((v) => (v === null ? undefined : v), schema.optional());
 
-/** A skill check the engine resolves: d20 + computed modifier vs DC. */
+/** A skill check the engine resolves: d20 + computed modifier vs DC. `verb`
+ *  (ACTIONS.md) overrides `skill` when present — the engine derives the skill,
+ *  so the model can tag a typed action with a verb instead of guessing a skill. */
 export const CheckSpec = z.object({
   skill: z.string().min(1),
+  verb: optionalNullable(z.enum(VERB_LIST)),
   dc: z.coerce.number().int().min(5).max(30),
   /** Only stakes=true rolls at DC 13+ earn skill ticks (levelling). */
   stakes: z.coerce.boolean().default(false),
@@ -54,10 +58,15 @@ export const CombatActionSpec = z.object({
   itemId: optionalNullable(z.string()),
 });
 
-/** A clickable next action; `check` makes clicking it roll before narration;
- *  `combatAction` routes it through the combat round engine. */
+/** A clickable next action. Preferred: tag an attemptable option with a `verb`
+ *  (+ optional `difficulty`) — the ENGINE maps verb → skill and builds the check,
+ *  so the model can't pick the wrong skill (ACTIONS.md). `check` is the legacy
+ *  escape hatch for an action no verb covers; `combatAction` routes through the
+ *  combat round engine. */
 export const ChoiceOption = z.object({
   label: z.string().min(1).max(160),
+  verb: optionalNullable(z.enum(VERB_LIST)),
+  difficulty: optionalNullable(z.enum(["easy", "normal", "hard"])),
   check: optionalNullable(CheckSpec),
   combatAction: optionalNullable(CombatActionSpec),
 });

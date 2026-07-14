@@ -63,7 +63,7 @@ function endChoices(outcome: CombatOutcome): ChoiceOption[] {
 }
 
 export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnResult> {
-  const model = resolveModel(input.model ?? resolveModel(process.env.NARRATOR_MODEL ?? "deepseek-chat"));
+  const model = resolveModel(input.model ?? resolveModel(process.env.NARRATOR_MODEL ?? "deepseek-v4-pro"));
   let activeModel = model;
   let fellBack = false;
   const startedAt = Date.now();

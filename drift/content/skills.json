@@ -9,6 +9,7 @@
     "gunnery": { "attribute": "reflex", "does": "firing ship-mounted weapons in space combat" },
     "smallArms": { "attribute": "reflex", "does": "personal ranged weapons — pistols, rifles, sidearms" },
     "melee": { "attribute": "might", "hazard": true, "does": "close-quarters fighting — blades, fists, improvised weapons" },
+    "athletics": { "attribute": "might", "hazard": true, "does": "physical feats — forcing/lifting/moving heavy things, climbing, vaulting, breaking through (NOT fighting; that's melee)" },
     "stealth": { "attribute": "reflex", "does": "moving unseen, hiding, tailing, sleight of hand" },
     "streetwise": { "attribute": "presence", "does": "working the underworld — contacts, rumors, fences, black markets, reading a station" },
     "negotiation": { "attribute": "presence", "does": "bargaining, deals, haggling, persuasion" },

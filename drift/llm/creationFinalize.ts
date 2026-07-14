@@ -103,7 +103,7 @@ function cheapModel() {
   // key. (Per-turn PLAY stays on DeepSeek — that's where token volume lives.)
   return (
     process.env.SUMMARIZER_MODEL ??
-    (process.env.ANTHROPIC_API_KEY ? "claude-haiku-4-5-20251001" : "deepseek-chat")
+    (process.env.ANTHROPIC_API_KEY ? "claude-haiku-4-5-20251001" : "deepseek-v4-flash")
   );
 }
 
@@ -214,7 +214,7 @@ A tell/mannerism: ${blank(input.flavor.tell)}${startingSituation}`;
   if (isDeepSeekModel(primary) && process.env.ANTHROPIC_API_KEY) {
     candidates.push("claude-haiku-4-5-20251001");
   } else if (!isDeepSeekModel(primary) && deepseekAvailable()) {
-    candidates.push("deepseek-chat");
+    candidates.push("deepseek-v4-flash");
   }
 
   // Telemetry captured across the (possibly two) attempts, for the audit log.

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { CampaignState } from "@/shared/schemas";
 import type { ChatEntry } from "@/shared/chat";
-import { buildOpeningRecap, buildOpeningChoices } from "@/shared/recap";
+import { buildOpeningRecap, buildOpeningChoices, buildFallbackChoices } from "@/shared/recap";
 import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { stripInlineMenu } from "@/shared/narration";
 import type { ChoiceOption } from "@/shared/turnPlan";
@@ -103,8 +103,13 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
         } else if (d.lastChoices?.length) {
           // Restore the chips the player last saw so a refresh doesn't blank them.
           setChoices(normalizeChoices(d.lastChoices));
-        } else if (!restored.length) {
-          setChoices(normalizeChoices(buildOpeningChoices(d.state)));
+        } else {
+          // No persisted chips (fresh start, or a campaign last played before this
+          // feature). Never leave the bar empty: opening moves if brand-new, else
+          // next moves derived from live state.
+          setChoices(
+            normalizeChoices(restored.length ? buildFallbackChoices(d.state) : buildOpeningChoices(d.state)),
+          );
         }
         // A refresh after death stays terminal: no choices, input locked.
         const loadedPc = d.state.characters.find((c: { kind: string }) => c.kind === "pc");
@@ -452,11 +457,15 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                         key={i}
                         onClick={() => send(c)}
                         disabled={!hasApiKey}
-                        className="rounded-full border border-edge bg-panel px-4 py-2 text-left text-[15px] text-neutral-200 transition hover:border-accent hover:text-accent disabled:opacity-40"
+                        className="flex items-center gap-2 rounded-full border border-edge bg-panel px-4 py-2 text-left text-[15px] text-neutral-200 transition hover:border-accent hover:text-accent disabled:opacity-40"
                         title={c.check ? `Skill check: ${c.check.skill} vs DC ${c.check.dc}` : undefined}
                       >
-                        {c.label}
-                        {c.check && <span className="ml-1.5 text-xs text-accent/80">🎲 {c.check.skill}</span>}
+                        <span>{c.label}</span>
+                        {c.check && (
+                          <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium capitalize text-accent">
+                            🎲 {c.check.skill}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>

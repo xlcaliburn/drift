@@ -46,7 +46,7 @@ export function resolveModel(requested: string): string {
     !process.env.ANTHROPIC_API_KEY &&
     process.env.DEEPSEEK_API_KEY
   ) {
-    return "deepseek-chat";
+    return "deepseek-v4-flash";
   }
   return requested;
 }

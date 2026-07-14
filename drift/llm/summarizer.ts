@@ -12,7 +12,7 @@ const SYSTEM =
 function defaultSummarizerModel() {
   return (
     process.env.SUMMARIZER_MODEL ??
-    (deepseekAvailable() ? "deepseek-chat" : "claude-haiku-4-5-20251001")
+    (deepseekAvailable() ? "deepseek-v4-flash" : "claude-haiku-4-5-20251001")
   );
 }
 

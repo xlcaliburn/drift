@@ -4,6 +4,7 @@ import { skillProgress } from "@/engine";
 import { skillReference } from "@/content";
 import { backgrounds, ambitions } from "@/content/creation";
 import { itemReference, allItems, itemCount } from "@/shared/items";
+import { verbReference, freeVerbReference } from "@/shared/actions";
 import { relationSuffix, RECENT_SCENES_IN_PROMPT, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_DIRECTIVE, TUTORIAL_JSON_DIRECTIVE } from "@/shared/tutorial";
@@ -48,6 +49,8 @@ const DM_STYLE = `You are the DM of DRIFT, a brutal space-opera TTRPG. Voice and
  *  system prompt so the narrator picks the right skill. */
 const SKILL_REFERENCE = skillReference();
 const ITEM_REFERENCE = itemReference();
+const VERB_REFERENCE = verbReference();
+const FREE_VERB_REFERENCE = freeVerbReference();
 
 const JSON_DM_STYLE = `You are the DM of DRIFT, a brutal space-opera TTRPG. The engine rolls all dice and tracks all numbers — you write the story and propose options as data.
 
@@ -58,7 +61,7 @@ STAKES ARE REAL: this character can be hurt and can DIE. When an action or situa
 Respond with ONE json object and nothing else:
 {
   "narration": "the beat's prose. No option lists, no dice math, no questions like 'do you A or B?'",
-  "choices": [{"label": "a plain action that just advances the story (NO check — this is the norm)"}, {"label": "a genuinely risky action", "check": {"skill": "stealth", "dc": 13, "stakes": true, "failDamage": "1d6"}}],
+  "choices": [{"label": "Head back to the docks", "verb": "go"}, {"label": "Move the fallen shelving aside", "verb": "force"}, {"label": "Examine the data shard", "verb": "examine", "difficulty": "easy"}],
   "roll": {"skill": "piloting", "dc": 13, "stakes": true, "failDamage": "2d6"},
   "danger": {"skill": "piloting", "dc": 13, "damage": "2d6", "target": "ship", "note": "punching through the debris field"},
   "combatStart": {"tier": "T2", "count": 2, "name": "Sable gunhand", "surprise": "none"},
@@ -73,7 +76,10 @@ Respond with ONE json object and nothing else:
 
 RULES:
 1. "narration" is required. "choices" needs 2-4 entries unless "sceneEnd" is set.
-2. ALWAYS include AT LEAST ONE option that carries a check — every turn should offer a real roll (the dice are the game). Give the check to the most consequential/uncertain action on offer; if the beat is genuinely all-safe (pure dialogue with no risk), invent one option that DOES carry a risk worth rolling and include it. But keep the REST mostly check-free — clicking them just moves the story forward: talking, asking, looking around, examining or TESTING something (e.g. testing the cuffs, checking a door, feeling out a mood), deciding, buying, walking somewhere safe → NO check. So the shape is: one (sometimes two) checked options + the rest plain. NEVER make every option a check. A check belongs when the player commits to a risky attempt (picking the lock, making the jump), not when they inspect or size it up. Whenever you offer a "PUSH ON / press your luck (with a risk)" option beside a "play it safe / pull back" one, the risky option MUST carry the check — that IS the roll for whether it gets worse (attach failDamage or use a danger if pushing on could physically cost them). Pick the skill from this list by what the action actually is (do NOT guess from the word — e.g. an FTL jump is navigation, not zeroG):
+2. TAG EVERY option with a "verb". There are two kinds:
+   ATTEMPT verbs (these ROLL — the ENGINE maps the verb to the right skill, so you NEVER pick a skill yourself; this is what stops wrong picks like "move a shelf" → zeroG): ${VERB_REFERENCE}. Add optional "difficulty": "easy" | "normal" | "hard" (default normal).
+   FREE verbs (these carry NO check — the action just advances): ${FREE_VERB_REFERENCE}.
+   Pick the verb by what the option IS: "Move the fallen shelving" → force; "Examine the data shard" → examine; "Cross the coolant pool" → climb; "Talk the guard down" → persuade; but "Head to the docks" → go; "Ask her name" → talk; "Wait and watch" → wait; "Pocket the loose shard" → take. ALWAYS include AT LEAST ONE ATTEMPT-verb option every turn (the dice are the game) AND usually one or two FREE options too — a mix, never all-attempts or all-free. Give the attempt verb to the risky "push on / press your luck" option when there's a safe alternative. ESCAPE HATCH: only if no verb fits an unusual action, use a "check" with an explicit skill from this list — pick by what the action IS (an FTL jump is navigation, not zeroG):
 ${SKILL_REFERENCE}
 DC: 10 easy, 13 pressured, 15 hard, 18 severe. stakes=true only when failure genuinely costs something.
 3. "failDamage" (dice, e.g. "1d6", "2d6") on a check → the engine deals that damage when the check FAILS, and only on a PHYSICAL-HAZARD skill: piloting, zeroG, melee, survival — a check that risks bodily harm (a fall, a crash, a vacuum breach, a blow). NEVER put failDamage on perception, negotiation, mechanics, electronics, stealth, streetwise, deception, intimidation, or navigation — failing those just fails (you miss the detail, lose the deal, botch the wiring); the engine ignores failDamage there anyway. It hurts ONLY the player, NEVER an enemy (a real fight is combatStart). SHIP HAZARD: for a flying/piloting/docking mishap that would harm the HULL and not the pilot (scraping a debris field, a hard burn, a rough dock), add "target":"ship" — the engine damages the hull (0 = disabled, adrift, not death). When damage lands, your narration must show HOW it went wrong. (The engine caps any single hit to a fraction of max HP/hull.)
@@ -90,8 +96,8 @@ ${ITEM_REFERENCE}
 11. "scene" — the running scene memory. Update "situation" (one sentence: what is happening RIGHT NOW) whenever it meaningfully changes, and append a "beats" entry whenever a promise, deal, threat, or debt is made THIS turn ("Doyle promised 200c on verification"). Set "place" whenever the player MOVES somewhere the location list can't name — aboard a ship, in transit, out in the black, in a specific room ("aboard the Dust Eater, in the black") — so the game knows where they actually are, not just the last station. These persist even when older messages scroll away — they are how the story stays consistent. The SCENE NOW and PREVIOUSLY blocks in your context came from this: treat them as fact.
 12. Ground everything in the CURRENT SCENE block; don't contradict it. NPCs listed there show the player's standing with them ([trusted (+2) · your handler · last: …]) — play them ACCORDINGLY: they remember the player and everything in "last". Never treat a known NPC as a stranger.
 
-EXAMPLE (a check is the EXCEPTION — most choices carry none) — player: "Ask around the dock about the missing courier"
-{"narration":"The dockmaster's office reeks of burnt coffee and cold solder. A clerk marks a manifest without looking up; two longshoremen by the crate-lift stop talking as you enter.","choices":[{"label":"Ask the clerk who last signed for the courier's cargo"},{"label":"Buy the longshoremen a round and get them talking"},{"label":"Lean on the clerk hard for the manifest","check":{"skill":"intimidation","dc":13,"stakes":true}}]}
+EXAMPLE (verb-tagged options — the engine picks the skill) — player: "Ask around the dock about the missing courier"
+{"narration":"The dockmaster's office reeks of burnt coffee and cold solder. A clerk marks a manifest without looking up; two longshoremen by the crate-lift stop talking as you enter.","choices":[{"label":"Ask the clerk who last signed for the cargo","verb":"talk"},{"label":"Buy the longshoremen a round and get them talking","verb":"persuade"},{"label":"Lean on the clerk hard for the manifest","verb":"threaten"}]}
 
 EXAMPLE (a freely-typed ATTEMPT — DEFAULT to a roll, even for social/romance) — player: "sweet-talk the quartermaster into fronting me a better rig"
 {"narration":"You lean on the counter and lay it on thick — steady hands, a fair cut, the kind of pitch that's opened doors before. She sets down her cup, eyes narrowing as she weighs you.","roll":{"skill":"negotiation","dc":13,"stakes":true}}
@@ -148,6 +154,14 @@ function tokenize(s: string): string[] {
 /** An NPC whose status marks them out of play (dead/gone/…) shouldn't be pulled in. */
 function npcIsGone(status?: string): boolean {
   return !!status && /\b(dead|gone|killed|removed|inactive|departed|left)\b/i.test(status);
+}
+
+/** How close an NPC is: in the scene with the player (immediate), on the same
+ *  station/area (nearby), or neither (unmarked — recalled from elsewhere). */
+function proximityTag(n: { id: string; locationId?: string }, present: Set<string>, currentLoc?: string): string {
+  if (present.has(n.id)) return " [immediate]";
+  if (n.locationId && currentLoc && n.locationId === currentLoc) return " [nearby]";
+  return "";
 }
 
 /**
@@ -369,6 +383,8 @@ export function buildContextSlice(
 
   // SCENE NOW: the current scene's working memory (engine-owned card).
   const card = memory?.sceneCard;
+  // Proximity: who is right here vs. merely on the same station (engine-derived).
+  const presentSet = new Set(card?.presentNpcIds ?? []);
   const sceneNow = card
     ? [
         `SCENE NOW (scene ${card.seq}, turn ${card.turnCount})`,
@@ -397,8 +413,8 @@ export function buildContextSlice(
     `Ship: ${shipLine}`,
     ``,
     npcs.length
-      ? `NPCs in play (standing is the player's history with them — play them ACCORDINGLY, they remember):\n${npcs
-          .map((n) => `  - ${n.name} (id: ${n.id}): ${n.oneBreath}${relationSuffix(rels[n.id])}`)
+      ? `NPCs in play (proximity = how close to the player; standing = their history, play them ACCORDINGLY):\n${npcs
+          .map((n) => `  - ${n.name} (id: ${n.id})${proximityTag(n, presentSet, loc?.id)}: ${n.oneBreath}${relationSuffix(rels[n.id])}`)
           .join("\n")}`
       : `NPCs in play: none flagged`,
     ``,

@@ -166,7 +166,7 @@ export function sanitizeHistory(history: Anthropic.MessageParam[]): Anthropic.Me
 function defaultNarratorModel() {
   return (
     process.env.NARRATOR_MODEL ??
-    (deepseekAvailable() ? "deepseek-chat" : "claude-haiku-4-5-20251001")
+    (deepseekAvailable() ? "deepseek-v4-pro" : "claude-haiku-4-5-20251001")
   );
 }
 function cinematicModel() {

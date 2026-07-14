@@ -98,7 +98,7 @@ export async function formatFeedback(raw: string): Promise<FormattedFeedback> {
     let text = "";
     if (deepseekAvailable()) {
       const resp = await deepseekChat({
-        model: "deepseek-chat",
+        model: "deepseek-v4-flash",
         maxTokens: 300,
         system: [{ type: "text", text: FORMAT_SYSTEM }],
         messages: [{ role: "user", content: raw }],

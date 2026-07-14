@@ -234,12 +234,18 @@ function StatusTab({
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
   const active = state.threads.filter((t) => t.status === "active");
   // Contacts: every NPC the player has a standing with, strongest ties first.
+  // Proximity: in the scene right now (immediate) vs. on the same station (nearby).
+  const present = new Set(sceneCard?.presentNpcIds ?? []);
+  const here = state.campaign.currentLocationId;
+  const proximity = (npc: CampaignState["npcs"][number]) =>
+    present.has(npc.id) ? "immediate" : npc.locationId && npc.locationId === here ? "nearby" : "";
   const contacts = Object.entries(npcRelations)
     .flatMap(([id, rel]) => {
       const npc = state.npcs.find((n) => n.id === id);
-      return npc ? [{ rel, npc }] : [];
+      return npc ? [{ rel, npc, prox: proximity(npc) }] : [];
     })
-    .sort((a, b) => Math.abs(b.rel.disposition) - Math.abs(a.rel.disposition))
+    // Nearest first, then strongest ties.
+    .sort((a, b) => (b.prox ? 1 : 0) - (a.prox ? 1 : 0) || Math.abs(b.rel.disposition) - Math.abs(a.rel.disposition))
     .slice(0, 8);
   return (
     <div className="space-y-4">
@@ -407,10 +413,15 @@ function StatusTab({
         <div className="rounded border border-edge p-2">
           <div className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">Contacts</div>
           <div className="space-y-1">
-            {contacts.map(({ npc, rel }) => (
+            {contacts.map(({ npc, rel, prox }) => (
               <div key={npc.id} className="flex items-baseline justify-between gap-2" title={rel.lastNote ? `Last: ${rel.lastNote}` : npc.oneBreath}>
                 <span className="truncate text-[13px] text-neutral-200">
                   {npc.name}
+                  {prox && (
+                    <span className={"ml-1 text-[10px] " + (prox === "immediate" ? "text-accent" : "text-neutral-500")}>
+                      · {prox}
+                    </span>
+                  )}
                   {rel.relationship && <span className="text-neutral-500"> · {rel.relationship}</span>}
                 </span>
                 <span

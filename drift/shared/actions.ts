@@ -1,0 +1,105 @@
+/**
+ * Action verbs (ACTIONS.md) — a fixed vocabulary the narrator tags choices with,
+ * so the ENGINE (not the unreliable model) owns which skill a check uses. The
+ * model picks a verb; the engine maps verb → skill + DC and builds the check.
+ * This kills the "zeroG to move a shelf" class of bug: the verb decides the skill.
+ */
+
+export interface ActionVerbDef {
+  /** Skill the engine rolls for this verb. */
+  skill: string;
+  /** DC when the model gives no difficulty. */
+  defaultDc: number;
+  /** Failing can physically hurt (a fall, a crush, a vacuum slip). */
+  hazard?: boolean;
+  /** This verb is an act of violence — routes to combat, not a self-check. */
+  combat?: boolean;
+  /** Synonyms shown to the model so it maps its phrasing to the verb. */
+  aliases: string[];
+  /** One-liner for the fed verb list in the prompt. */
+  hint: string;
+}
+
+export const ACTION_VERBS: Record<string, ActionVerbDef> = {
+  examine: { skill: "perception", defaultDc: 12, aliases: ["inspect", "study", "read", "scan", "check"], hint: "look something over for detail" },
+  loot: { skill: "scavenging", defaultDc: 12, aliases: ["search", "scavenge", "salvage", "strip", "rifle"], hint: "strip a wreck/body/stash for value" },
+  force: { skill: "athletics", defaultDc: 13, hazard: true, aliases: ["move", "shove", "lift", "haul", "pry", "break", "smash", "wrench"], hint: "muscle a heavy or stuck thing" },
+  climb: { skill: "athletics", defaultDc: 13, hazard: true, aliases: ["vault", "scramble", "scale", "clamber", "cross"], hint: "climb or vault across risky terrain" },
+  sneak: { skill: "stealth", defaultDc: 13, aliases: ["slip", "creep", "tail", "shadow", "hide"], hint: "move unseen / tail someone" },
+  hack: { skill: "electronics", defaultDc: 14, aliases: ["slice", "override", "bypass", "jack", "splice"], hint: "breach a system, lock, or comms" },
+  repair: { skill: "mechanics", defaultDc: 13, aliases: ["patch", "fix", "rig", "jury-rig", "weld"], hint: "fix or jury-rig machinery" },
+  pilot: { skill: "piloting", defaultDc: 13, aliases: ["fly", "dock", "burn", "evade", "thread"], hint: "fly/dock/evade at the stick" },
+  spacewalk: { skill: "zeroG", defaultDc: 13, hazard: true, aliases: ["float", "eva", "tether", "drift"], hint: "move in vacuum / zero-g / EVA" },
+  plot: { skill: "navigation", defaultDc: 13, aliases: ["navigate", "chart", "jump"], hint: "plot a course / FTL jump" },
+  persuade: { skill: "negotiation", defaultDc: 13, aliases: ["convince", "talk", "charm", "haggle", "negotiate", "reason"], hint: "win someone over / haggle" },
+  network: { skill: "streetwise", defaultDc: 13, aliases: ["ask around", "work", "canvass", "fence", "case", "sniff around"], hint: "work the underworld — rumors, contacts, fences, the word on the street" },
+  lie: { skill: "deception", defaultDc: 13, aliases: ["bluff", "con", "deceive", "disguise", "feign"], hint: "lie / bluff / con" },
+  threaten: { skill: "intimidation", defaultDc: 13, aliases: ["intimidate", "menace", "press", "strong-arm"], hint: "threaten / strong-arm" },
+  endure: { skill: "survival", defaultDc: 13, hazard: true, aliases: ["survive", "forage", "brace"], hint: "endure a hostile environment" },
+  attack: { skill: "smallArms", defaultDc: 13, combat: true, aliases: ["shoot", "fire", "gun", "strike", "open fire"], hint: "open fire / attack — STARTS A FIGHT" },
+};
+
+export type ActionVerb = keyof typeof ACTION_VERBS;
+
+/**
+ * FREE verbs — actions that DON'T map to a skill, so they carry NO check. They
+ * keep the vocabulary complete: an option is either an attempt (a check-verb) or
+ * one of these (just advances). Guarantees some options stay check-free (ACTIONS.md).
+ */
+export const FREE_VERBS: Record<string, { aliases: string[]; hint: string }> = {
+  go: { aliases: ["travel", "head", "approach", "walk", "enter", "leave", "board", "return"], hint: "move somewhere safe / travel / enter or leave" },
+  talk: { aliases: ["ask", "greet", "chat", "reply", "say", "answer"], hint: "simple talk — ask, greet, reply (NOT persuading/lying/threatening)" },
+  wait: { aliases: ["observe", "hold", "listen", "watch", "rest", "linger"], hint: "wait, watch, or listen — let the moment pass" },
+  take: { aliases: ["grab", "pocket", "collect", "gather"], hint: "pick up something with no resistance (a loose shard, an offered item)" },
+  give: { aliases: ["offer", "hand", "pay", "drop", "show"], hint: "give / offer / hand something over" },
+  use: { aliases: ["activate", "press", "open", "flip", "pull"], hint: "use an item or control that just works" },
+};
+
+/** Runtime tuple for z.enum (schema) — every verb key, attempt + free. */
+export const VERB_LIST = [...Object.keys(ACTION_VERBS), ...Object.keys(FREE_VERBS)] as [string, ...string[]];
+
+const DIFFICULTY_DC = { easy: 10, normal: 13, hard: 16 } as const;
+export type Difficulty = keyof typeof DIFFICULTY_DC;
+
+export interface VerbCheck {
+  skill: string;
+  dc: number;
+  stakes: boolean;
+  /** Present for hazard verbs — a failed attempt can hurt (engine-capped). */
+  failDamage?: string;
+  /** Attack verbs route to combat via the existing gun-skill reroute. */
+  combat?: boolean;
+}
+
+/** Build the engine's check spec for a verb-tagged action (null if unknown verb). */
+export function checkFromVerb(verb: string, difficulty?: string): VerbCheck | null {
+  const def = ACTION_VERBS[verb];
+  if (!def) return null;
+  const dc = difficulty && difficulty in DIFFICULTY_DC ? DIFFICULTY_DC[difficulty as Difficulty] : def.defaultDc;
+  return {
+    skill: def.skill,
+    dc,
+    stakes: true,
+    ...(def.hazard ? { failDamage: "1d6" } : {}),
+    ...(def.combat ? { combat: true } : {}),
+  };
+}
+
+/** Attempt-verb "verb (hint)" list — these ROLL a check (engine picks the skill). */
+export function verbReference(): string {
+  return Object.entries(ACTION_VERBS)
+    .map(([v, d]) => `${v} (${d.hint})`)
+    .join("; ");
+}
+
+/** Free-verb "verb (hint)" list — these carry NO check (the action just advances). */
+export function freeVerbReference(): string {
+  return Object.entries(FREE_VERBS)
+    .map(([v, d]) => `${v} (${d.hint})`)
+    .join("; ");
+}
+
+/** Whether a verb is an attempt (rolls a check) vs. a free action (no check). */
+export function verbRolls(verb: string | undefined | null): boolean {
+  return !!verb && verb in ACTION_VERBS;
+}
