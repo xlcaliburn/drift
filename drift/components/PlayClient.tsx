@@ -408,7 +408,13 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             )}
             {/* Waiting on the first token. */}
             {busy && (streamingText === null || streamingText.length === 0) && (
-              <div className="text-sm italic text-neutral-500">the world turns…</div>
+              <div className="flex items-center gap-2 text-sm italic text-neutral-500">
+                <span
+                  className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-neutral-700 border-t-accent"
+                  aria-hidden
+                />
+                the world turns…
+              </div>
             )}
             <div ref={chatEndRef} />
           </div>
