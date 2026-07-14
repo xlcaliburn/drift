@@ -60,13 +60,25 @@ export function allItems(): CatalogItem[] {
 }
 
 /**
- * How many of a catalog item the character holds: gear stacks (`itemId`/`qty`)
- * plus the legacy `stims` counter, which stays authoritative for stim until the
- * migration finishes (ITEMS.md IT-5). One item lives in exactly one of the two.
+ * The catalog id a gear entry resolves to — its explicit `itemId`, or a legacy
+ * NAME match (so an unmapped "Medkit" / "Stimpack" still behaves as the catalog
+ * item it clearly is). This is the single source of truth for "which catalog
+ * item is this gear", used by itemCount AND the engine's consume path so they
+ * can never disagree (the medkit-heal-that-did-nothing bug: counted by name,
+ * consumed by id → heal without spend, or vice-versa).
+ */
+export function resolveGearItemId(g: { itemId?: string; name: string }): string | undefined {
+  return g.itemId ?? legacyItemId(g.name);
+}
+
+/**
+ * How many of a catalog item the character holds: gear stacks (by resolved id,
+ * so unmapped legacy gear still counts) plus the legacy `stims` counter, which
+ * stays authoritative for stim until the migration finishes (ITEMS.md IT-5).
  */
 export function itemCount(c: Character, itemId: string): number {
   const inGear = (c.gear ?? [])
-    .filter((g) => g.itemId === itemId)
+    .filter((g) => resolveGearItemId(g) === itemId)
     .reduce((n, g) => n + (g.qty ?? 1), 0);
   const legacyStim = itemId === "stim" ? (c.stims ?? 0) : 0;
   return inGear + legacyStim;
@@ -86,6 +98,32 @@ export function usableConsumables(c: Character, scale: "personal" | "ship"): Usa
     .filter((it) => it.type === "consumable" && it.combat && it.scale === scale)
     .map((it) => ({ itemId: it.id, name: it.name, count: itemCount(c, it.id), verb: it.verb }))
     .filter((u) => u.count > 0);
+}
+
+/**
+ * Out-of-combat "Use X" chips (ITEMS.md — deterministic item use). Surfaced when
+ * they'd actually do something, so the player never has to trust the narrator to
+ * fire a heal: a personal heal only when hurt, a hull patch only when the ship is
+ * damaged, a missile reload only when the rack is below capacity. The chip carries
+ * `useItemId`; the ENGINE applies the effect (see route → jsonTurn preUseItem).
+ */
+export function outOfCombatItemChips(
+  c: Character,
+  ship?: { hp: number; maxHp: number; weapons: { type: string; ammo?: number; count?: number }[] } | null,
+): { label: string; useItemId: string }[] {
+  const chips: { label: string; useItemId: string }[] = [];
+  const hurt = c.hp < c.maxHp;
+  for (const it of allItems()) {
+    if (it.type !== "consumable") continue;
+    const n = itemCount(c, it.id);
+    if (n <= 0) continue;
+    const chip = { label: `${it.verb} ${it.name} (×${n})`, useItemId: it.id };
+    if (it.scale === "personal" && it.effect?.kind === "heal" && hurt) chips.push(chip);
+    else if (it.effect?.kind === "healShip" && ship && ship.hp < ship.maxHp) chips.push(chip);
+    else if (it.effect?.kind === "reloadMissiles" && ship?.weapons.some((w) => w.type === "missile" && (w.ammo ?? 0) < (w.count ?? 0)))
+      chips.push(chip);
+  }
+  return chips;
 }
 
 /** One-line effect description for the narrator/UI. */

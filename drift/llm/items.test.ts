@@ -136,4 +136,16 @@ describe("out-of-combat useItem", () => {
     const res = rt.useItem("medkit") as { error?: string };
     expect(res.error).toBeTruthy();
   });
+
+  it("heals AND consumes an UNMAPPED legacy medkit (name-only gear) — the bug", () => {
+    // A warm/legacy session: "Medkit" carried with NO itemId. Before the fix this
+    // healed (narrated) but the possession check saw 0, so nothing was spent — or
+    // the reverse. Now count/use/consume all resolve by name.
+    const rt = new TurnRuntime(withInventory([{ name: "Medkit" }], 0, 5), maxRng);
+    const res = rt.useItem("medkit") as { line?: string; error?: string };
+    expect(res.error).toBeUndefined();
+    expect(res.line).toContain("Medkit");
+    expect(rt.state.characters[0].hp).toBeGreaterThan(5); // actually healed
+    expect(itemCount(rt.state.characters[0], "medkit")).toBe(0); // actually spent
+  });
 });

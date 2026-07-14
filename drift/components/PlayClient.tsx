@@ -205,6 +205,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
           check: action?.check,
           combatAction: action?.combatAction,
           downedAction: action?.downedAction,
+          useItemId: action?.useItemId,
           fromChoice: !!action,
         }),
       });
@@ -638,17 +639,24 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                         key={i}
                         onClick={() => send(c)}
                         disabled={!hasApiKey}
-                        className="flex items-center gap-2 rounded-full border border-edge bg-panel px-4 py-2 text-left text-[15px] text-neutral-200 transition hover:border-accent hover:text-accent disabled:opacity-40"
+                        className={
+                          "flex items-center gap-2 rounded-full border px-4 py-2 text-left text-[15px] transition hover:border-accent hover:text-accent disabled:opacity-40 " +
+                          (c.useItemId
+                            ? "border-good/40 bg-good/5 text-neutral-200"
+                            : "border-edge bg-panel text-neutral-200")
+                        }
                         title={
                           c.check
                             ? `Skill check: ${c.check.skill ?? c.verb} vs DC ${c.check.dc}` +
                               (c.check.hazardLevel
                                 ? ` · danger ${"⚠".repeat(c.check.hazardLevel)} — up to ${c.check.hazardLevel * 2} damage on failure`
                                 : "")
-                            : undefined
+                            : c.useItemId
+                              ? "Use this item — the engine applies it immediately."
+                              : undefined
                         }
                       >
-                        <span>{c.label}</span>
+                        <span>{c.useItemId ? "🎒 " : ""}{c.label}</span>
                         {c.check && (
                           <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium capitalize text-accent">
                             🎲 {c.check.skill ?? c.verb}

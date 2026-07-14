@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { legacyItemId, mapLegacyGear, gearSlotCost, slotsUsed, maxSlotsFor, catalogItem } from "./items";
+import {
+  legacyItemId,
+  mapLegacyGear,
+  gearSlotCost,
+  slotsUsed,
+  maxSlotsFor,
+  catalogItem,
+  resolveGearItemId,
+  itemCount,
+  outOfCombatItemChips,
+} from "./items";
 import type { Character } from "./schemas";
 
 function char(over: Partial<Character> = {}): Character {
@@ -99,5 +109,43 @@ describe("catalog price calibration (COMBAT.md net-worth bands)", () => {
       (catalogItem("ballisticVest")?.price ?? 0);
     expect(worth).toBe(570);
     expect(worth).toBeLessThan(600);
+  });
+});
+
+describe("resolveGearItemId — unmapped legacy gear still resolves (the medkit bug)", () => {
+  it("counts a freeform 'Medkit'/'Stimpack' with no itemId as the catalog item", () => {
+    expect(resolveGearItemId({ name: "Medkit" })).toBe("medkit");
+    expect(resolveGearItemId({ name: "a Stimpack" })).toBe("stim");
+    expect(resolveGearItemId({ name: "Medkit", itemId: "medkit" })).toBe("medkit"); // explicit wins
+    expect(resolveGearItemId({ name: "Doctored transponder" })).toBeUndefined();
+  });
+
+  it("itemCount finds the medkit even when the gear entry was never mapped", () => {
+    const c = char({ gear: [{ name: "Medkit", qty: 2 }] }); // NO itemId (warm legacy session)
+    expect(itemCount(c, "medkit")).toBe(2);
+  });
+});
+
+describe("outOfCombatItemChips — deterministic use, only when useful", () => {
+  it("offers a heal chip only when hurt", () => {
+    const hurt = char({ hp: 5, maxHp: 18, gear: [{ name: "Medkit", itemId: "medkit", qty: 1 }] });
+    const full = char({ hp: 18, maxHp: 18, gear: [{ name: "Medkit", itemId: "medkit", qty: 1 }] });
+    expect(outOfCombatItemChips(hurt).map((c) => c.useItemId)).toContain("medkit");
+    expect(outOfCombatItemChips(full)).toEqual([]);
+  });
+
+  it("works off an unmapped legacy medkit too (resolves by name)", () => {
+    const hurt = char({ hp: 5, maxHp: 18, gear: [{ name: "Medkit", qty: 1 }] });
+    const chips = outOfCombatItemChips(hurt);
+    expect(chips.map((c) => c.useItemId)).toContain("medkit");
+    expect(chips[0].label).toContain("×1");
+  });
+
+  it("offers hull patch only on a damaged ship, missile reload only below capacity", () => {
+    const c = char({ hp: 18, maxHp: 18, gear: [{ name: "Hull patch kit", itemId: "hullPatch", qty: 1 }, { name: "Missile reload", itemId: "missileReload", qty: 1 }] });
+    const damaged = outOfCombatItemChips(c, { hp: 8, maxHp: 20, weapons: [{ type: "missile", ammo: 1, count: 3 }] });
+    expect(damaged.map((x) => x.useItemId).sort()).toEqual(["hullPatch", "missileReload"]);
+    const pristine = outOfCombatItemChips(c, { hp: 20, maxHp: 20, weapons: [{ type: "missile", ammo: 3, count: 3 }] });
+    expect(pristine).toEqual([]);
   });
 });

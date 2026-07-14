@@ -46,6 +46,9 @@ export interface JsonTurnInput {
   playerText: string;
   /** Check attached to the clicked choice — engine rolls it before narrating. */
   preCheck?: CheckSpec;
+  /** Catalog id from a clicked "Use X" chip — the engine applies the consumable
+   *  deterministically before narrating (a heal never depends on the model). */
+  preUseItem?: string;
   /** The action was a CLICKED choice (not typed). Its check is already decided and
    *  shown on the chip, so a checkless clicked choice must NOT get a surprise
    *  model-proposed roll — the badge is the contract (typed free text still can). */
@@ -418,6 +421,20 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
         engineLines.push(engineContextLine(res));
         emit(rollDisplayLines(res));
       }
+    }
+  }
+
+  // A clicked "Use X" consumable chip: the engine applies the item DETERMINISTICALLY
+  // (never depends on the model firing useItem — the medkit-that-did-nothing bug),
+  // and the resulting line rides engineLines so the model narrates around it.
+  if (input.preUseItem && pc) {
+    toolCalls.push("use_item");
+    const res = runtime.useItem(input.preUseItem, pc.id) as { line?: string; error?: string };
+    if (res.line) {
+      engineLines.push(`ENGINE RESULT: ${res.line}`);
+      emit([res.line]);
+    } else if (res.error) {
+      emit([`⚠ Can't use item: ${res.error}`]);
     }
   }
 

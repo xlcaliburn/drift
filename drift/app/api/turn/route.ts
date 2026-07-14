@@ -4,7 +4,7 @@ import { runCombatTurn } from "@/llm/combatTurn";
 import { runDownedTurn } from "@/llm/downedTurn";
 import { combatActions, interpretCombatText } from "@/shared/combat";
 import { downedActions } from "@/shared/death";
-import { usableConsumables } from "@/shared/items";
+import { usableConsumables, outOfCombatItemChips } from "@/shared/items";
 import { getSession, setSession, persistSession, loadReachableDossiers } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
@@ -112,6 +112,8 @@ export async function POST(req: NextRequest) {
   const combatAction = body.combatAction ? CombatActionSpec.safeParse(body.combatAction).data : undefined;
   // Desperate act from a clicked Bleeding Out chip (routes through death saves).
   const downedAction = body.downedAction ? DownedActionSpec.safeParse(body.downedAction).data : undefined;
+  // Catalog id from a clicked "Use X" consumable chip (engine applies it deterministically).
+  const useItemId = typeof body.useItemId === "string" && body.useItemId ? body.useItemId : undefined;
   // The action came from a CLICKED choice (not typed). A clicked choice's check is
   // already decided and shown on the chip, so the model can't add a surprise roll.
   const fromChoice: boolean = Boolean(body.fromChoice);
@@ -239,6 +241,7 @@ export async function POST(req: NextRequest) {
                 playerText,
                 focusIds: session.focusIds,
                 preCheck,
+                preUseItem: useItemId,
                 fromChoice,
                 // Scene memory (mutated in place by the runtime; session owns it).
                 sceneCard: session.sceneCard,
@@ -281,12 +284,17 @@ export async function POST(req: NextRequest) {
                   resultPc ? usableConsumables(resultPc, "personal") : [],
                   session.sceneCard.presentNpcIds.some((id) => (session.npcRelations[id]?.disposition ?? 0) >= 1),
                 )
-              : normalized.length === 0
-                ? // No choices from the model (incl. right after a scene ends) → give
-                  // the player concrete next moves so they're never left with a
-                  // dead end. Derived from live state, free (no tokens).
-                  buildFallbackChoices(result.state).map((label) => ({ label }))
-                : normalized;
+              : [
+                  // Deterministic "Use X" chips FIRST when they'd help (hurt →
+                  // heal, damaged hull → patch, dry racks → reload), so healing is
+                  // a reliable click, not a plea to the narrator.
+                  ...(resultPc ? outOfCombatItemChips(resultPc, result.state.ship) : []),
+                  // Then the model's choices — or free next moves if it gave none
+                  // (incl. right after a scene ends) so there's never a dead end.
+                  ...(normalized.length === 0
+                    ? buildFallbackChoices(result.state).map((label) => ({ label }))
+                    : normalized),
+                ];
 
         // Engine display lines (dice/ticks/damage/payment/combat) — the handlers
         // return them pre-prefixed; they become system transcript lines so a

@@ -93,6 +93,10 @@ export const ChoiceOption = z.object({
   /** Set on an engine-generated Bleeding Out chip — routes the click to the
    *  death-save resolver instead of a normal turn. */
   downedAction: optionalNullable(DownedActionSpec),
+  /** Set on an engine-generated "Use X" consumable chip (out of combat) — the
+   *  catalog id the engine applies DETERMINISTICALLY, so a heal never depends on
+   *  the model remembering to fire useItem. */
+  useItemId: optionalNullable(z.string()),
 });
 export type ChoiceOption = z.infer<typeof ChoiceOption>;
 

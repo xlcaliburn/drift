@@ -26,7 +26,7 @@ import {
 } from "@/engine/combatEngine";
 import { fleeDC, threatLevel } from "@/shared/combat";
 import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
-import { catalogItem, itemCount, allItems, slotsUsed, maxSlotsFor } from "@/shared/items";
+import { catalogItem, itemCount, allItems, slotsUsed, maxSlotsFor, resolveGearItemId } from "@/shared/items";
 import { marketStock, repPriceFactor, localRep, SELL_RATE } from "@/engine/market";
 import { gearValue } from "@/shared/netWorth";
 import {
@@ -1178,7 +1178,10 @@ export class TurnRuntime {
     const c = this.char(characterId);
     if (!c) return false;
     const gear = [...c.gear];
-    const idx = gear.findIndex((g) => g.itemId === itemId && (g.qty ?? 1) > 0);
+    // Resolve by the SAME rule itemCount uses (explicit id or legacy name match),
+    // so a medkit counted as held is always the medkit spent — never a heal that
+    // reports a stock it can't decrement.
+    const idx = gear.findIndex((g) => resolveGearItemId(g) === itemId && (g.qty ?? 1) > 0);
     if (idx >= 0) {
       const q = (gear[idx].qty ?? 1) - 1;
       if (q <= 0) gear.splice(idx, 1);

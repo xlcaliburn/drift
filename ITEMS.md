@@ -1,10 +1,14 @@
 # ITEMS.md — Item Audit, Consumables & Inventory Design
 
 *ALL SLICES SHIPPED (2026-07-14): consumables + loot, weapon/armor catalog (W),
-inventory slots (B), ammo/reload gating (D), shops (E). This doc is now the
-reference for how the item system works. Remaining polish: engine-generated
-swap chips on a full pack (v1 blocks with a visible line instead); dock repair
-credit/debt (ECONOMY E-3) is still unbuilt.*
+inventory slots (B), ammo/reload gating (D), shops (E), and DETERMINISTIC item use
+(out-of-combat "Use X" chips route through the engine — a heal never depends on the
+model firing useItem). Consumable resolution is name-resilient: an unmapped legacy
+"Medkit"/"Stimpack" still counts, uses, and is spent (`resolveGearItemId` — one
+source of truth for count AND consume, so they can't disagree; fixed the
+heal-that-did-nothing bug). This doc is now the reference for how items work.
+Remaining polish: engine-generated swap chips on a full pack (v1 blocks with a
+visible line instead); dock repair credit/debt (ECONOMY E-3) is still unbuilt.*
 
 ## Locked decisions (2026-07-14)
 
