@@ -18,6 +18,8 @@ import {
 /** How many example cards / flavor chips to surface at once (reshuffle for more). */
 const GALLERY_COUNT = 6;
 const CHIP_COUNT = 4;
+/** Backgrounds shown at once; the rest surface on reshuffle. */
+const BACKGROUND_COUNT = 8;
 import type { CreationInput } from "@/shared/multiplayer";
 import type { Character, UniqueSkill, AttributeKey } from "@/shared/schemas";
 
@@ -80,6 +82,7 @@ export default function CreateWizard() {
   // Reshuffle seed for the signature-skill gallery (bump → new random picks).
   const [skillSeed, setSkillSeed] = useState(0);
   const shownSkills = useMemo(() => sample(exampleSkills, GALLERY_COUNT, skillSeed), [skillSeed]);
+  const [bgSeed, setBgSeed] = useState(0);
 
   // Every step change starts a fresh screen — jump back to the top so long
   // pages (faction list, questionnaire) don't open scrolled halfway down.
@@ -138,6 +141,16 @@ export default function CreateWizard() {
   const [sex, setSex] = useState("");
   const [background, setBackground] = useState("");
   const [ambition, setAmbition] = useState("");
+  // Show a random subset of backgrounds; reshuffle (↻) for more. The current pick
+  // is pinned to the front so it never disappears when the player reshuffles.
+  const shownBackgrounds = useMemo(() => {
+    const picks = sample(backgrounds, BACKGROUND_COUNT, bgSeed);
+    if (background && !picks.some((b) => b.id === background)) {
+      const sel = backgrounds.find((b) => b.id === background);
+      if (sel) return [sel, ...picks.slice(0, BACKGROUND_COUNT - 1)];
+    }
+    return picks;
+  }, [bgSeed, background]);
   // Optional flavor — blank fields are auto-generated at finalize.
   const [moralCode, setMoralCode] = useState("");
   const [loss, setLoss] = useState("");
@@ -397,9 +410,24 @@ export default function CreateWizard() {
             </div>
           </Field>
 
-          <Field label="Background — where you came from">
-            <Choices options={backgrounds.map((b) => ({ id: b.id, label: b.label, description: b.hook }))} value={background} onPick={setBackground} />
-          </Field>
+          <div className="mb-4">
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="block text-sm text-neutral-400">Background — where you came from</label>
+              <button
+                type="button"
+                onClick={() => setBgSeed((s) => s + 1)}
+                className="shrink-0 text-xs text-neutral-400 hover:text-accent"
+                title="Show a different set of backgrounds"
+              >
+                ↻ more backgrounds
+              </button>
+            </div>
+            <Choices
+              options={shownBackgrounds.map((b) => ({ id: b.id, label: b.label, description: b.hook }))}
+              value={background}
+              onPick={setBackground}
+            />
+          </div>
 
           <Field label="Focus — what you're good at">
             <Choices options={BIASES.map((b) => ({ id: b.id, label: b.label, description: b.description }))} value={bias} onPick={setBias} />
