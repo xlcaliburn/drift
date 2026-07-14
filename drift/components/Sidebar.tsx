@@ -390,7 +390,7 @@ function StatusTab({
                 <span
                   key={id}
                   className="rounded border border-edge bg-ink/40 px-1.5 py-0.5 text-[11px] text-neutral-300"
-                  title={npc.oneBreath}
+                  title={npc.role ?? undefined}
                 >
                   {npc.name}
                 </span>
@@ -819,36 +819,30 @@ function PeopleView({
                 <p className={"mt-1 " + sel.w.tone}>{sel.w.label}</p>
               </div>
 
-              {sel.npc.oneBreath && (
-                <div>
-                  <div className="text-[11px] uppercase tracking-wide text-neutral-500">Who they are</div>
-                  <p className="mt-1 leading-snug text-neutral-300">{sel.npc.oneBreath}</p>
-                </div>
-              )}
-
+              {/* PLAYER KNOWLEDGE only — never the NPC's global canon (oneBreath) or
+                  hidden backstory hook. What THIS character has learned lives in the
+                  per-player relation note (how they were introduced, what they've since
+                  found out); it grows as they interact. */}
               <div>
-                <div className="text-[11px] uppercase tracking-wide text-neutral-500">Manner</div>
-                <p className="mt-1 leading-snug text-neutral-400">{sel.npc.quirk ?? generateQuirk(sel.npc.id)}</p>
-              </div>
-
-              {sel.npc.backstory && (
-                <div>
-                  <div className="text-[11px] uppercase tracking-wide text-neutral-500">Story</div>
-                  <p className="mt-1 leading-snug text-neutral-400">{sel.npc.backstory}</p>
-                </div>
-              )}
-
-              <div>
-                <div className="text-[11px] uppercase tracking-wide text-neutral-500">What you last knew</div>
+                <div className="text-[11px] uppercase tracking-wide text-neutral-500">What you know</div>
                 {sel.rel?.lastNote ? (
                   <p className="mt-1 leading-snug text-neutral-300">
                     {sel.rel.lastNote}
                     {sel.rel.lastSceneSeq ? <span className="text-neutral-600"> · scene {sel.rel.lastSceneSeq}</span> : null}
                   </p>
                 ) : (
-                  <p className="mt-1 text-neutral-500">Nothing notable has passed between you yet.</p>
+                  <p className="mt-1 text-neutral-500">You&apos;ve only just crossed paths — you know little about them yet.</p>
                 )}
               </div>
+
+              {/* Their manner is a read you can only take in person — shown once you've
+                  actually dealt with them (a passing mention doesn't reveal it). */}
+              {sel.rel?.lastNote && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-neutral-500">Manner</div>
+                  <p className="mt-1 leading-snug text-neutral-400">{sel.npc.quirk ?? generateQuirk(sel.npc.id)}</p>
+                </div>
+              )}
             </div>
           )}
         </div>
