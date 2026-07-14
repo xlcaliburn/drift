@@ -13,9 +13,10 @@ Every roll returns a full auditable breakdown (`d20(14) +8 = 22 vs DC 15 → suc
 
 ## Where things live (app is in `drift/`)
 
-- `drift/engine/` — the rules engine + tests (64 vitest, no API key needed)
+- `drift/engine/` — the rules engine + tests (256 vitest, no API key needed)
 - `drift/shared/schemas.ts` — Zod game state, single source of truth
-- `drift/shared/multiplayer.ts` — dossier / ledger / season schemas (not yet wired)
+- `drift/shared/multiplayer.ts` — dossier / ledger / season schemas (not yet wired —
+  shared NPCs are wired via the `npcs` table, but dossiers/ledgers/seasons aren't)
 - `drift/llm/{narrator,deepseek,tools,promptBuilder,engineBridge,summarizer}.ts`
 - `drift/lib/state.ts` — session store (in-memory cache backed by Supabase)
 - `drift/lib/auth.ts` — `getAuthedUser` / `requireApprovedUser` / `requireAdmin`
@@ -26,7 +27,7 @@ Every roll returns a full auditable breakdown (`d20(14) +8 = 22 vs DC 15 → suc
 ## Commands (run from `drift/`)
 
 ```bash
-npm test          # 75 engine/llm tests — no keys needed
+npm test          # 256 engine/llm tests — no keys needed
 npm run dev       # http://localhost:3000
 npm run build     # required before a commit — but see the gotcha below
 npx tsc --noEmit  # fast typecheck; never touches .next
@@ -45,66 +46,39 @@ refresh. Never run two dev servers against the same `.next` dir, and don't
 
 ## Current state
 
-M0–M7 done: engine, character creation + unique skills, narrator tool-loop, play
-UI, Supabase persistence, Google auth (OAuth live), admin panel, per-user monthly
-budgets (default 2M tokens / $5), and **durable play sessions** — transcript, dice
-log, and narrator history persist to `campaign_runtime` and restore on cold load
-(migration 006). Full milestone table + resume detail: **`STATUS.md`**.
+The app is built, playable, persistent, and multiplayer-seeded. Shipped and stable
+(don't rebuild these — they're the platform the remaining work sits on): the pure
+engine, character creation + signature skills, **structured JSON turns**
+(`llm/jsonTurn.ts` — validated `TurnPlan`, DeepSeek json mode, validate→retry→
+repair, canonical history; the freeform tool loop is RETIRED, all turns run the JSON
+path, cinematic = Sonnet), Supabase persistence + durable sessions, Google auth,
+admin panel, per-user budgets, retrieval tuning, **multi-turn combat both scales**,
+bounded-accuracy leveling (compressed `skillProficiency` = `ceil(level/2)`, never
+raw level in `computeModifier`), verb-driven actions, items (consumables + engine-
+generated loot), **scene-memory continuity v1** + NPC registration backstops,
+quest-gated relationships, the bleed-out limit, **universe-shared NPCs**
+(migration 014 — generated NPCs promote to the universe `npcs` table; per-player
+standing stays in `npc_relations`) + backstory NPCs at creation, and the People /
+Factions sidebar tabs.
 
-**M8 retrieval tuning done:** `promptBuilder.retrieveEntities` now scores NPCs
-(focus > named > location-present > faction) and threads (entityRefs > title
-overlap > objective floor), capped and tested; `focusIds` carries entities the
-player *named* into the next turn for short-term continuity (no self-pin).
+**What's LEFT to build** (rough order; each has a design doc):
 
-**Structured JSON turns (cheap-model discipline):** routine turns run
-`llm/jsonTurn.ts` — the model returns a validated `TurnPlan`
-(`shared/turnPlan.ts`: narration + choices [+ attached checks] + roll/worldEvent/
-sceneEnd), DeepSeek json_object mode, validator → one retry → repair. A clicked
-choice's check is **pre-rolled by the engine** (dice shown as 🎲 system lines,
-tick awarded immediately — `campaign_runtime.ticked_this_scene` holds the
-per-scene cap). History is CANONICAL (action + `[ENGINE: …]` summary / cleaned
-narration only — never raw model output; prevents few-shot contamination).
-Narration still streams via `llm/jsonStream.ts`. Combat set-pieces keep the tool
-loop in `narrator.ts`. Don't add prose rules for things the engine can enforce.
+- **Items v1 slices B / D / E** (`ITEMS.md`) — inventory slots, ammo spend, shops.
+  (Slice A consumables + slice C loot are shipped.)
+- **Crew v1** (`CREW.md`) — recruitment + scaling upkeep. Nothing built yet.
+- **Shared-world runtime** (`MULTIPLAYER.md`) — dossiers, relationship ledgers,
+  cross-campaign reads, break-from-faction trigger, seasons + season-end reckoning.
+  (Universe-shared NPCs are the first piece and are done.)
+- **World systems** (`WORLD_SYSTEMS.md`) — exploration / artifacts / consequence-web.
+- **Continuity v2** (`CONTINUITY.md`) — a durable facts ledger, and the history-
+  window shrink (~10→6 exchanges) after a playtest cycle.
+- **Small deferred:** optimistic-lock guard on `campaign_runtime` (`updated_at` is
+  written, not checked); the I-2 combat backstop (auto-START combat when the model
+  narrates a fight but under-fires `combatStart` — the player-triggered gun-skill
+  reroute half already ships); a summarizer bug that persisted raw truncated JSON as
+  a few scene summaries.
 
-**Combat v1 done (both scales):** engine-owned multi-turn combat — a fight is a
-persisted `CombatState` (`campaign_runtime.combat`, migration 009), one player
-turn = one round (engine-generated action chips → player action → enemy volley →
-end check), damage through `applyDamage` (downed→dead) / `applyShipDamage`
-(hull-0 = disabled, not death). Personal + ship (burst-drive flee, interaction
-matrix). Model only emits `combatStart` + narrates; it can't skip mechanics. The
-freeform tool loop is RETIRED — all turns run the JSON path (cinematic = Sonnet).
-Engine-clamped money (`award_payout` bands), immediate skill ticks, real-stakes
-damage/death all landed alongside. Money/repair: `content/economy.json`.
-
-**Bounded-accuracy leveling + gun-skill reroute:** skill levels run 0–10 (cap in
-`progression.MAX_SKILL_LEVEL`; tick cost stays quadratic) but the d20 bonus is a
-*compressed* `skillProficiency(level)` = `ceil(level/2)` → +0…+5, NOT raw level —
-so a maxed specialist reliably clears routine DCs without swamping the die, and
-combat hit-rolls (same modifier) stay tense. Don't reintroduce raw `level` into
-`computeModifier`. And a `smallArms`/`gunnery` **check is auto-rerouted into the
-combat engine** (`jsonTurn.openFightFromSkill`): it spawns the target and resolves
-an opening shot (roll-to-hit → damage), then flows into multi-turn combat — gun
-skills never resolve as a self-only `roll_check`. This is the player-triggered
-half of the I-2 backstop.
-
-**Scene memory / continuity v1 done (`CONTINUITY.md`):** the scene is the unit of
-memory. Engine-owned **SceneCard** (seq/turnCount/presentNpcIds + model-proposed
-situation/beats, capped) rides every prompt as SCENE NOW; present NPCs are forced
-into retrieval all scene. **NPC relations** (`campaign_runtime.npc_relations`,
-migration 012) — relationship (set-once) + disposition (engine-clamped −3..+3,
-model nudges ±1/NPC/turn, visible "👤 Doyle: warm → trusted" lines) + rolling
-lastNote — render on NPC context lines and in the sidebar Contacts section.
-**Scene summaries**: sceneEnd (or the auto-close backstop at 12 turns) triggers a
-background `summarizeScene` → `scenes` table → PREVIOUSLY block (last 3 + up to 2
-entity-matched older scenes). Deferred: facts ledger (v2), history 10→6 shrink
-(D-3, one playtest cycle after summaries prove out).
-
-**Next up (build order, docs are ready):** items v1 slices B–E (`ITEMS.md` —
-slots + loot + ammo spend + shops; slice A consumables SHIPPED) → **crew v1**
-(`CREW.md`). Then the shared-world runtime / `WORLD_SYSTEMS.md` artifact slice.
-Small deferred: optimistic-lock guard on `campaign_runtime`, the I-2 combat
-backstop (auto-start combat if the model under-fires `combatStart`).
+Don't add prose rules for things the engine can enforce.
 
 ## Locked decisions (don't re-litigate)
 
@@ -157,11 +131,10 @@ backstop (auto-start combat if the model under-fires `combatStart`).
 
 - `ARCHITECTURE.md` — why it's built this way (token economics, engine/narrator split)
 - `CONTINUITY.md` — scene-memory design (scene card / summaries / NPC relations)
-- `COMBAT.md` / `CREW.md` / `ITEMS.md` — build-ready designs: multi-turn combat
-  (both scales, escape-by-disparity, tool-loop retirement), crew recruitment +
-  scaling upkeep, item catalog + consumables + inventory slots. Build order:
-  combat → items → crew.
-- `IMPLEMENTATION.md` — milestone-by-milestone build plan
-- `MULTIPLAYER.md` — shared-world season design (factions, dossiers, ledgers)
-- `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design
-- `STATUS.md` — the detailed resume snapshot (read this first when picking work back up)
+- `ITEMS.md` — remaining item slices (slots / ammo / shops); `CREW.md` — crew
+  recruitment + scaling upkeep (unbuilt); `COMBAT.md` — the one deferred combat item
+  (I-2 auto-start backstop). Build order: items → crew.
+- `IMPLEMENTATION.md` — what's left to build, in rough order
+- `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
+- `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
+- `STATUS.md` — remaining-work snapshot + how to run/verify

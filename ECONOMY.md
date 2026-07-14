@@ -5,25 +5,21 @@ WORLD_SYSTEMS.md (artifact returns). Status: draft for review.*
 
 ---
 
-## 0. The structural problem to fix first
+## 0. The governing rule (live)
 
-**Income is currently narrator-invented and unclamped.** Every payout is
-whatever DeepSeek says (`adjust_resource credits +N`), so any balance math is
-fiction until payouts are engine-clamped — the same lesson as dice, menus, and
-damage: *if it matters, the engine owns it.* The core change of this doc:
-
-> **Engine-clamped payout bands by job tier.** The model picks the tier and
-> narrates; the engine rolls the payout inside the band. Negotiation checks
-> shift position *within* the band (±20%), never outside it. Direct credit
-> grants above a small cap (say ¢50 flavor money) are rejected.
-
-Without this, a "trading lean" is just prompt-injection for money.
+**Engine-clamped payout bands by job tier.** The model picks the tier and
+narrates; the engine rolls the payout inside the band. Negotiation checks shift
+position *within* the band, never outside it. Direct credit grants above a small
+flavor cap are rejected. Same lesson as dice, menus, and damage: *if it matters,
+the engine owns it* — otherwise a "trading lean" is just prompt-injection for
+money. (Wired: see flag E-1.)
 
 ## 1. Baseline numbers (current facts)
 
 - Start: **¢120**, flat (thin by design — a minion's pocket).
-- Sinks today: dock fee 15, repair **18/HP**, missiles 51. (Barely anything —
-  credits currently accumulate meaninglessly; items/crew are the missing sinks.)
+- Sinks today: dock fee 15, dock repair **¢12/HP** (per E-3; hull patch kit
+  ≈¢14.5/HP as the field-emergency premium), missiles 51. Still thin —
+  items/crew are the missing sinks.
 - Observed real-play payout: courier run **¢200** over ~3 days. Anchor point.
 
 ## 2. Income — job tiers (the clamp tables)
@@ -61,10 +57,10 @@ a *decision*, not a rounding error or a wall):
   45% of fresh income → **you need T2 jobs before a third crew member**; that's
   the intended gate. 6-crew corvette (~¢665/tenday) needs late-trade income or
   a contract portfolio — exactly the "new solutions for upkeep" pressure.
-- **Repairs at 18/HP**: a real fight (~15 hull) costs ¢270 — more than a T1 job
-  pays. Verdict: fights must either pay (T2+ bounty) or be fled. Consistent
-  with flee-or-die, and it makes combat-lean income *feel* high-variance even
-  when the band is the same.
+- **Repairs at ¢12/HP** (E-3): a real fight (~15 hull) costs ~¢180 — around a
+  whole T1 job. Verdict: fights must either pay (T2+ bounty) or be fled.
+  Consistent with flee-or-die, and it makes combat-lean income *feel*
+  high-variance even when the band is the same.
 - **Missiles ¢51**: 2–3 per professional job is affordable; spamming them on
   errand-tier work is ruinous. Correct.
 - **Ship upgrade / hull** (future trade loop): should sit at multiple tendays of

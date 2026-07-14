@@ -210,8 +210,8 @@ once — which is why it's the recommended first prototype.
 3. **Pressure-clock authoring:** a fixed roster of route/faction clocks seeded per
    campaign, or created on demand when a route first "matters"?
 4. **Cross-campaign propagation:** intra-campaign only for v1, or wire into the
-   shared-world `world_events` corpus immediately? (Depends on Supabase persistence,
-   which is the current critical path in STATUS.md.)
+   shared-world `world_events` corpus immediately? (Supabase persistence and
+   universe-shared NPCs already exist; the gate now is the shared-world runtime.)
 5. **Weapon-mod cap:** how many artifact mods can a ship carry, given the existing
    "one hardpoint" ship constraints?
 
@@ -227,8 +227,10 @@ once — which is why it's the recommended first prototype.
 3. **Pressure clocks + propagation**: generalize the Fault Line into action-driven
    route/faction clocks; add the propagation rules to the narrator's toolset and
    prompt.
-4. **Shared-world wiring**: once Supabase persistence lands, let these clocks +
-   world_events cross campaigns so paths impact *other players'* worlds.
+4. **Shared-world wiring**: once the shared-world runtime lands (dossiers,
+   ledgers, cross-campaign reads), let these clocks + world_events cross
+   campaigns so paths impact *other players'* worlds. (Supabase persistence is
+   already in place.)
 
 Each phase is independently valuable and testable; #1 is the wedge that makes the
 rest concrete.

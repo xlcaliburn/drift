@@ -1,6 +1,7 @@
 # CREW.md — Recruitment & Scaling Upkeep Design
 
-*Spun off from COMBAT.md review round 1 (I-5). Status: draft for review.*
+*Spun off from COMBAT.md review round 1 (I-5). Status: designed, not yet built —
+this is the remaining crew v1 work. Combat v1 (its dependency) has shipped.*
 
 ---
 
@@ -22,7 +23,8 @@ makes it a system every campaign can reach.
 - `economy.crewWagePerPayingJob = 50` — wages already charged at scene end for
   paying jobs (`runSceneEnd`).
 - `contracts` table — standing income, the natural counterweight to upkeep.
-- Combat v1: party members auto-act each round and are targetable/killable.
+- Combat v1 (shipped): the engine-owned round loop crew members plug into —
+  party members auto-act each round and are targetable/killable.
 
 ## 3. Recruitment
 
@@ -113,8 +115,9 @@ death event and the crew's loyalty context to play the fallout.
 
 ## 9. Build order & dependencies
 
-Depends on combat v1 (auto-act, targeting) and benefits from ITEMS.md (medkits
-vs medic role). Suggested: **combat v1 → items v1 → crew v1.**
+Depends on combat v1 (shipped: auto-act, targeting) and benefits from ITEMS.md
+(medkits vs medic role). Crew v1 is the last of the three: **combat → items →
+crew.**
 
 ## ⚠ Flags
 

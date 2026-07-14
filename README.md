@@ -6,8 +6,8 @@ characters embedded in rival factions of one persistent universe.
 
 - **[drift/](drift/)** — the app (Next.js + TypeScript). See [drift/README.md](drift/README.md) for setup.
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — why it's built this way (token economics, engine/narrator split).
-- **[IMPLEMENTATION.md](IMPLEMENTATION.md)** — milestone-by-milestone build plan.
-- **[MULTIPLAYER.md](MULTIPLAYER.md)** — the shared-world season design: factions, dossiers, relationship ledgers.
+- **[IMPLEMENTATION.md](IMPLEMENTATION.md)** — what's left to build, in rough order.
+- **[MULTIPLAYER.md](MULTIPLAYER.md)** — the shared-world design: dossiers, relationship ledgers, seasons.
 
 ## Quick start
 

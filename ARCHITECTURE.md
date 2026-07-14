@@ -56,31 +56,25 @@ Rules data (weapon types, interaction matrix, ship classes, tier budgets) lives 
 Optimized for solo-dev simplicity and free-tier hosting:
 
 - **Next.js** (App Router) — one deployable covering UI + API routes, streaming responses built in. Host on **Vercel** (free tier fine).
-- **Supabase** — Postgres + auth + row-level security in one free tier. Auth sits unused until Phase 3, then it's already there for invites.
-- **Anthropic API** direct (server-side key only, never in the browser):
-  - Narration: **Sonnet** (good voice, ~5× cheaper than Opus). Try Opus for big set-piece scenes if Sonnet's prose disappoints.
-  - Scene summaries / log compression: **Haiku** — near-free.
+- **Supabase** — Postgres + auth + row-level security in one free tier. Google auth is live (open signup → admin approval).
+- **LLM APIs** direct (server-side keys only, never in the browser):
+  - Narration: **cheapest-model-first** — DeepSeek default, Haiku fallback, **Sonnet** reserved for cinematic / combat set-piece turns.
+  - Scene summaries / log compression: cheap model — near-free.
   - **Prompt caching** on the system prompt and rules block.
 - **Zod** schemas shared between engine, API, and DB — one source of truth for game state shape.
 - Engine = plain TypeScript module, pure functions, unit-testable without any UI or API.
 
 ## 5. Cost reality check
 
-With caching and trimmed context, a Sonnet narration turn ≈ **$0.01–0.03**. A long evening of play (~100 turns) ≈ **$1–3**, independent of how long the campaign gets (summaries keep context flat). Compare against burning through a subscription's limits in one session. Cheap scenes (shopping at Rook, routine dockings) can drop to Haiku for pennies.
+With caching and trimmed context, even a Sonnet narration turn ≈ **$0.01–0.03**; the DeepSeek-default routine turns are cheaper still. A long evening of play (~100 turns) ≈ **$1–3**, independent of how long the campaign gets (summaries keep context flat). Compare against burning through a subscription's limits in one session.
 
 ## 6. Build phases
 
-**Phase 0 — Schema + engine (no UI).** Define the Zod schemas, port `vess-karo-save_1.md` into structured JSON (a one-time import script), implement the engine functions (rolls, combat, ticks, clocks, economy) with unit tests against known cases from the save file ("Gunnery lvl 1: 4→5/6"). This is testable and useful before a single pixel exists.
+**Phases 0–2 are shipped** — the engine + schemas, the playable UI (streaming narration, structured JSON turns, dice-log panel, character/ship sidebar, scene-end checklist), Supabase persistence + durable sessions, Google auth, admin approval, per-user budgets, entity retrieval, multi-turn combat, and scene-memory continuity all exist today. What follows is the rationale those phases were built to satisfy, plus the one phase still remaining.
 
-**Phase 1 — Playable MVP.** Chat UI with streaming narration; the tool-use loop; a dice-log panel (every roll's full breakdown, visible — honest dice you can audit); character sheet + ship sidebar; scene-end button that runs the checklist; save/load. *You can retire the markdown file here.*
+Retrieval works by tagging scenes with entities — no vector DB needed at this scale, keyword/entity match is enough. DM style rules (arrival beats, difficulty ramp, "never spawn below weight class") live in the system prompt and get refined as drift is noticed.
 
-**Phase 2 — DM quality.** This is where chat-play magic gets recovered:
-- Retrieval: when the scene touches Rell or the Sable Chain, their cards + related threads get pulled into context automatically (tag scenes with entities; no vector DB needed at this scale — keyword/entity match is enough).
-- Clock dashboard with trigger warnings; combat tracker UI (initiative, HP bars, shield/DR state).
-- Session summaries and a browsable campaign journal built from scene logs.
-- Prompt tuning pass: the DM style rules (arrival beats, difficulty ramp, "never spawn below weight class") live in the system prompt and get refined as you notice drift.
-
-**Phase 3 — Shared universe (deferred; seams built early).** Minimum viable multiplayer = **faction lore spillover**: each friend plays their own Campaign + Character in the shared universe, and narrative events that touch shared factions (`world_events`, logged from session one even in solo play) surface in other campaigns as rumors/background color — mechanics never cross campaigns, only lore does. Universe owner curates which events become canon. Same-scene co-op play is explicitly out of scope. Detailed steps in IMPLEMENTATION.md Milestone 8.
+**Phase 3 — Shared universe (still remaining; the seams were built early).** Minimum viable multiplayer = **faction lore spillover**: each player runs their own Campaign + Character in the shared universe, and narrative events that touch shared factions (`world_events`, logged from session one even in solo play) surface in other campaigns as rumors/background color — mechanics never cross campaigns, only lore does. Universe owner curates which events become canon. Same-scene co-op play is explicitly out of scope. Universe-shared NPCs already exist (migration 014); the remaining runtime is dossiers, ledgers, cross-campaign reads, seasons, and season-end reckoning. Detailed steps in IMPLEMENTATION.md Milestone 8.
 
 ## 7. Design decisions (defaults chosen, flag if you disagree)
 
@@ -97,5 +91,5 @@ With caching and trimmed context, a Sonnet narration turn ≈ **$0.01–0.03**. 
 
 - **Narrator quality dip.** In chat, Claude sees *everything*; here it sees slices. Mitigation is Phase 2 retrieval + good scene summaries — expect a few sessions of tuning what goes in the context window.
 - **Over-engineering the engine.** Port the rules as they are in the save file; resist redesigning the game system while building the app.
-- **API key hygiene.** Key lives server-side only. If friends join later, either you eat their costs, or add per-user BYO-key — decide then.
+- **API key hygiene.** Keys live server-side only; per-user monthly budget caps (default 2M tokens / $5) protect them now that signup is open.
 - **Scope creep at Phase 3.** Async shared canon first; real-time co-op only if the async version leaves people wanting it.

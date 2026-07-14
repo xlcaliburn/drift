@@ -1,34 +1,19 @@
 # DRIFT
 
-A webapp for the DRIFT tabletop campaign (Vess Karo). The **engine** (pure code)
+A shared-world, AI-narrated space-opera TTRPG webapp. The **engine** (pure code)
 does all dice, combat, progression, clocks, and economy — deterministic, honest,
-free. The **narrator** (Claude API) only tells the story and proposes mechanics
-via tool calls. This is what keeps token cost flat and the dice auditable.
+free. The **narrator** (a cheap LLM) only tells the story and proposes mechanics
+via structured turns. This is what keeps token cost flat and the dice auditable.
 
-Built from `../IMPLEMENTATION.md`. Faithful port of `../vess-karo-save_1.md`.
-
-## Status
-
-| Milestone | State |
-|---|---|
-| M0 Scaffold | ✅ |
-| M1 Schemas + rules content + DB schema | ✅ |
-| M2 Pure engine + 93 passing tests | ✅ |
-| M3 Save import (Zod-validated seed) | ✅ |
-| M4 Narrator loop (tools, prompt cache, summarizer) | ✅ |
-| M5 Play UI (chat, sheet, ship, clocks, dice log) | ✅ |
-| M6 Persistence + Google auth + user/admin system + budgets | ✅ |
-| M7 Durable transcript/dice log (runtime snapshot, restore on reload) | ✅ |
-| M8 Retrieval tuning (scored entity/thread retrieval + carried focus) | ✅ |
-| M9 Multiplayer spillover | seams in place (`world_events`, `log_world_event`) |
+The core platform is built and playable; what's left to build is tracked in
+`../STATUS.md` / `../IMPLEMENTATION.md`.
 
 ## Quick start
 
 ```bash
 npm install
-npm test                 # 64 engine tests — no keys needed
-npm run import-save      # validate the seed against Zod (dry run)
-cp .env.example .env.local   # add ANTHROPIC_API_KEY (or DEEPSEEK_API_KEY) to actually play
+npm test                 # 256 engine/llm tests — no keys needed
+cp .env.example .env.local   # add DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY to play
 npm run dev              # http://localhost:3000
 ```
 
@@ -71,8 +56,8 @@ queue (formerly `/requests`).
 engine/     pure TypeScript rules — rolls, combat matrix, ticks, clocks, economy, sceneEnd
 content/    the save file's rules tables as versioned JSON (weapons, matrix, tiers, ...)
 shared/     Zod schemas — single source of truth for state shape
-scripts/    seedData.ts (ported save) + import-save.ts (validate/push)
-llm/        tools, promptBuilder (cache breakpoints), engineBridge, narrator, summarizer
+scripts/    seedData.ts (universe seed) + import-save.ts (validate/push)
+llm/        jsonTurn (structured turns), promptBuilder, engineBridge, deepseek, summarizer, combatTurn
 db/         Supabase schema.sql + query helpers (snake<->camel mapping)
 app/, components/   Next.js App Router UI + API routes
 ```
