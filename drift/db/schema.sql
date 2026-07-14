@@ -46,6 +46,10 @@ create table if not exists npcs (
   -- provenance for NPCs promoted into the shared cast from play/creation (014).
   role          text,
   origin_campaign_id text,
+  -- Canonical engine-generated flavor (016): a personality quirk and a light
+  -- backstory hook, seeded off id, shared so the NPC reads the same for everyone.
+  quirk         text,
+  backstory     text,
   notes         text
 );
 

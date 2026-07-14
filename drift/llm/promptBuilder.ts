@@ -6,6 +6,7 @@ import { backgrounds, ambitions } from "@/content/creation";
 import { itemReference, allItems, itemCount } from "@/shared/items";
 import { verbReference, freeVerbReference } from "@/shared/actions";
 import { relationSuffix, RECENT_SCENES_IN_PROMPT, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
+import { generateQuirk } from "@/shared/npcFlavor";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_DIRECTIVE, TUTORIAL_JSON_DIRECTIVE } from "@/shared/tutorial";
 import type { Dossier } from "@/shared/multiplayer";
@@ -491,8 +492,12 @@ export function buildContextSlice(
     `Ship: ${shipLine}`,
     ``,
     npcs.length
-      ? `NPCs in play (proximity = how close to the player; standing = their history, play them ACCORDINGLY):\n${npcs
-          .map((n) => `  - ${n.name} (id: ${n.id})${proximityTag(n, presentSet, loc?.id)}: ${n.oneBreath}${relationSuffix(rels[n.id])}`)
+      ? `NPCs in play (proximity = how close; standing = their history; "plays:" = their canon personality — play it CONSISTENTLY; "hook:" = a backstory thread you can pull into a quest):\n${npcs
+          .map((n) => {
+            const quirk = n.quirk ?? generateQuirk(n.id);
+            const hook = presentSet.has(n.id) && n.backstory ? ` [hook: ${n.backstory}]` : "";
+            return `  - ${n.name} (id: ${n.id})${proximityTag(n, presentSet, loc?.id)}: ${n.oneBreath} (plays: ${quirk})${relationSuffix(rels[n.id])}${hook}`;
+          })
           .join("\n")}`
       : `NPCs in play: none flagged`,
     ``,

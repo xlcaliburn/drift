@@ -7,6 +7,7 @@ import { shipIsOwned } from "@/shared/recap";
 import { backgrounds } from "@/content/creation";
 import type { CombatState } from "@/shared/combat";
 import { dispositionLabel, type NpcRelation, type NpcRelations, type SceneCard } from "@/shared/scene";
+import { generateQuirk } from "@/shared/npcFlavor";
 import { allItems, itemCount, describeEffect } from "@/shared/items";
 import skillsMeta from "@/content/skills.json";
 
@@ -888,6 +889,18 @@ function PeopleView({
                 <div>
                   <div className="text-[11px] uppercase tracking-wide text-neutral-500">Who they are</div>
                   <p className="mt-1 leading-snug text-neutral-300">{sel.npc.oneBreath}</p>
+                </div>
+              )}
+
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-neutral-500">Manner</div>
+                <p className="mt-1 leading-snug text-neutral-400">{sel.npc.quirk ?? generateQuirk(sel.npc.id)}</p>
+              </div>
+
+              {sel.npc.backstory && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-neutral-500">Story</div>
+                  <p className="mt-1 leading-snug text-neutral-400">{sel.npc.backstory}</p>
                 </div>
               )}
 

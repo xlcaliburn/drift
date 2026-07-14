@@ -202,6 +202,12 @@ export const Npc = z.object({
   /** Campaign that first spawned this NPC (provenance for generated NPCs that
    *  are promoted into the shared universe cast). Absent on the hand-seeded cast. */
   originCampaignId: z.string().optional(),
+  /** Canonical personality — a demeanor + a tell the narrator plays consistently.
+   *  Engine-generated (deterministic, seeded off id), set once, universe-shared. */
+  quirk: z.string().optional(),
+  /** Light backstory — a want + a complication; a latent quest hook. Same as quirk:
+   *  engine-generated, set once, shared so the NPC is the same person for everyone. */
+  backstory: z.string().optional(),
   notes: z.string().optional(),
 });
 export type Npc = z.infer<typeof Npc>;

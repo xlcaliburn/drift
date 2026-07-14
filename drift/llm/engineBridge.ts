@@ -15,6 +15,7 @@ import { enemyTiers, shipClasses, economy, isHazardSkill } from "@/content";
 import { awardTick } from "@/engine/progression";
 import { rollDamage, maxDice } from "@/engine/dice";
 import { generateScavengeLoot } from "@/engine/loot";
+import { generateQuirk, generateBackstory, generateNpcFlavor } from "@/shared/npcFlavor";
 import {
   spawnCombatEnemies,
   spawnCombatShips,
@@ -698,6 +699,12 @@ export class TurnRuntime {
                 oneBreath: n.oneBreath || oneBreath || n.oneBreath,
                 // Fill a role only if we didn't already know one (set-once).
                 role: n.role ?? cleanRole,
+                // Backfill canonical flavor for NPCs that predate it (set-once,
+                // deterministic from id). A quirk is safe for anyone; a generated
+                // backstory only for GENERATED NPCs — a hand-seeded NPC's oneBreath
+                // is already its authored backstory, so we don't overwrite it.
+                quirk: n.quirk ?? generateQuirk(n.id),
+                backstory: n.backstory ?? (n.originCampaignId ? generateBackstory(n.id) : undefined),
               }
             : n,
         ),
@@ -715,6 +722,8 @@ export class TurnRuntime {
       ...(cleanRole ? { role: cleanRole } : {}),
       // Provenance so a promoted NPC (persistSession) traces back to this campaign.
       originCampaignId: this.state.campaign.id,
+      // Canonical personality + backstory hook — engine-generated, shared, set once.
+      ...generateNpcFlavor(id),
     };
     this.state = { ...this.state, npcs: [...this.state.npcs, npc] };
     return { added: true, id };
