@@ -1,6 +1,6 @@
 import { Character, type Attributes, type Skill } from "@/shared/schemas";
 import type { CreationInput } from "@/shared/multiplayer";
-import { backgrounds, biasSkills, attributeBaseline } from "@/content/creation";
+import { backgrounds, biasSkills, biasAttribute, attributeBaseline } from "@/content/creation";
 
 /**
  * Turn character-creation answers into a starting sheet — pure and
@@ -14,9 +14,11 @@ export function buildCharacterFromCreation(
   const bg = backgrounds.find((b) => b.id === input.background);
   if (!bg) throw new Error(`unknown background: ${input.background}`);
 
-  // Attributes: baseline + background lean (+3 primary, +1 secondary, -1 weakness).
+  // Attributes: your FOCUS drives the primary (+3) — it's the main build choice —
+  // and the background adds a secondary (+1) and a weakness (-1) for texture.
+  // Net is always +3 regardless of overlap, so every character stays equal-footing.
   const attributes: Attributes = { ...attributeBaseline };
-  attributes[bg.primary] += 3;
+  attributes[biasAttribute[input.bias]] += 3;
   attributes[bg.secondary] += 1;
   attributes[bg.weakness] -= 1;
 

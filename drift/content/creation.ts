@@ -8,6 +8,21 @@ import type { AttributeKey } from "@/shared/schemas";
 
 export type Bias = "commerce" | "combat" | "intrigue" | "piloting" | "diplomacy";
 
+/**
+ * The attribute your FOCUS makes you strong in (+3). This is the player's main
+ * build choice, so it drives the primary attribute — the background then adds a
+ * secondary (+1) and a weakness (-1) for texture. Chosen to reinforce the focus's
+ * signature skills: combat/piloting/intrigue lean reflex-adjacent, the social
+ * focuses lean presence, and intrigue takes intellect (the operator/hacker).
+ */
+export const biasAttribute: Record<Bias, AttributeKey> = {
+  combat: "reflex", // shooting + reflexes win firefights
+  piloting: "reflex", // hands and instincts at the stick
+  intrigue: "intellect", // the hacker/operator
+  commerce: "presence", // deals are made face to face
+  diplomacy: "presence", // words as weapons
+};
+
 /** Skill levels granted by focus/bias (total 4 levels across each). */
 export const biasSkills: Record<Bias, { name: string; level: number }[]> = {
   combat: [

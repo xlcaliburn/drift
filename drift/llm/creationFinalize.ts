@@ -97,9 +97,13 @@ Reply ONLY with JSON, no prose:
 Only include a note when severity is "warn". Return "notes": [] if everything is fine.`;
 
 function cheapModel() {
+  // Creation is a ONE-TIME call per character, so favour the FAST model: Haiku
+  // finishes the flesh-out in ~2-3s vs DeepSeek's ~8-10s, and the cost of a single
+  // call per character is negligible. Falls back to DeepSeek only with no Anthropic
+  // key. (Per-turn PLAY stays on DeepSeek — that's where token volume lives.)
   return (
     process.env.SUMMARIZER_MODEL ??
-    (deepseekAvailable() ? "deepseek-chat" : "claude-haiku-4-5-20251001")
+    (process.env.ANTHROPIC_API_KEY ? "claude-haiku-4-5-20251001" : "deepseek-chat")
   );
 }
 
@@ -206,8 +210,11 @@ A tell/mannerism: ${blank(input.flavor.tell)}${startingSituation}`;
   // AI pass entirely. Only then use the deterministic fallback.
   const primary = resolveModel(cheapModel());
   const candidates = [primary];
+  // Fall back to the OTHER engine if the primary errors at runtime.
   if (isDeepSeekModel(primary) && process.env.ANTHROPIC_API_KEY) {
     candidates.push("claude-haiku-4-5-20251001");
+  } else if (!isDeepSeekModel(primary) && deepseekAvailable()) {
+    candidates.push("deepseek-chat");
   }
 
   // Telemetry captured across the (possibly two) attempts, for the audit log.
