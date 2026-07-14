@@ -1036,7 +1036,10 @@ export class TurnRuntime {
       scale,
       enemies,
       playerCoverAc: 0,
-      playerAimBonus: surprise === "player" ? 2 : 0,
+      // Ship-scale surprise keeps its flat aim edge; personal-scale surprise uses the
+      // D&D rule instead (opening strike at advantage + the foe can't answer round 1).
+      playerAimBonus: scale === "ship" && surprise === "player" ? 2 : 0,
+      playerSurprise: scale === "personal" && surprise === "player",
       fleeAttempts: 0,
     };
     const lines = [`⚔ ${scale === "ship" ? "Ship combat" : "Combat"} — ${enemies.map((e) => e.name).join(", ")}.`];
@@ -1080,12 +1083,16 @@ export class TurnRuntime {
     let aim = combat.playerAimBonus;
     let cover = combat.playerCoverAc;
     let fleeAttempts = combat.fleeAttempts;
+    // Surprise round: the player struck an unaware foe. The opening strike rolls with
+    // advantage and the surprised enemies get NO return volley this round (D&D). One
+    // round only — cleared on `next` so round 2 onward is a normal exchange.
+    const surpriseRound = combat.playerSurprise === true;
 
     switch (action.type) {
       case "attack": {
         const enemy = enemies.find((e) => e.id === action.enemyId && e.hp > 0) ?? enemies.find((e) => e.hp > 0);
         if (enemy) {
-          const r = playerAttack(enemy, cbt.attackMod, cbt.weaponDamage, aim, this.rng);
+          const r = playerAttack(enemy, cbt.attackMod, cbt.weaponDamage, aim, this.rng, surpriseRound);
           lines.push(`🎯 ${r.breakdown}`);
           enemy.hp = r.enemyHpAfter;
           enemy.shieldReady = r.shieldReadyAfter;
@@ -1174,8 +1181,16 @@ export class TurnRuntime {
       return { combat: { ...combat, enemies, active: false }, lines, outcome: "victory", loot };
     }
 
-    // Enemy volley (halts if the player drops).
-    const next: CombatState = { ...combat, enemies, playerAimBonus: aim, playerCoverAc: cover, fleeAttempts };
+    // Enemy volley (halts if the player drops) — SKIPPED on the surprise round: the
+    // ambushed foe is caught flat-footed and can't answer until it has had a turn.
+    const next: CombatState = {
+      ...combat, enemies, playerAimBonus: aim, playerCoverAc: cover, fleeAttempts, playerSurprise: false,
+    };
+    if (surpriseRound) {
+      lines.push("You struck from surprise — they don't get to answer this round.");
+      next.round += 1;
+      return { combat: next, lines, outcome: "continue", loot: 0 };
+    }
     const outcome = this.enemyVolley(next, lines);
     if (outcome === "continue") {
       next.round += 1;

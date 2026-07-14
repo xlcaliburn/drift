@@ -38,6 +38,11 @@ export interface CombatState {
   playerCoverAc: number;
   /** +to-hit on the player's next attack (consumed after one attack). */
   playerAimBonus: number;
+  /** The player opened from surprise (they struck an unaware foe). For ONE round
+   *  the opening strike rolls with advantage and the surprised enemies can't act —
+   *  the D&D surprise rule. Cleared after the first round resolves. Personal scale
+   *  only (ship surprise keeps its aim-bonus edge). */
+  playerSurprise?: boolean;
   /** Escalates the flee DC on repeated attempts. */
   fleeAttempts: number;
 }

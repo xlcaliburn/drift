@@ -103,3 +103,29 @@ describe("startCombat", () => {
     expect(pcHp(rt)).toBe(20);
   });
 });
+
+describe("player surprise round (D&D surprise: advantage + no enemy answer)", () => {
+  it("the opening strike lands but the surprised foe can't answer — player takes NO damage", () => {
+    const rt = new TurnRuntime(fighter(20), maxRng);
+    const { combat } = rt.startCombat([{ tier: "T2", count: 1 }], "player");
+    // Tough foe survives the opening hit so the fight continues into round 2.
+    const tough: CombatState = { ...combat, enemies: combat.enemies.map((e) => ({ ...e, hp: 200, maxHp: 200 })) };
+    const r = rt.resolveCombatRound(tough, { type: "attack", enemyId: tough.enemies[0].id });
+    expect(r.outcome).toBe("continue");
+    expect(pcHp(rt)).toBe(20); // the ambushed foe gets no return volley this round
+    expect(r.combat.playerSurprise).toBe(false); // consumed — round 2 is a normal exchange
+    expect(r.combat.round).toBe(2);
+    expect(r.lines.some((l) => /surprise/i.test(l))).toBe(true);
+    expect(r.lines.some((l) => /adv /.test(l))).toBe(true); // advantage shown in the breakdown
+  });
+
+  it("round 2 is a normal exchange — the foe answers", () => {
+    const rt = new TurnRuntime(fighter(20), maxRng);
+    const { combat } = rt.startCombat([{ tier: "T2", count: 1 }], "player");
+    const tough: CombatState = { ...combat, enemies: combat.enemies.map((e) => ({ ...e, hp: 200, maxHp: 200 })) };
+    const r1 = rt.resolveCombatRound(tough, { type: "attack", enemyId: tough.enemies[0].id });
+    expect(pcHp(rt)).toBe(20);
+    rt.resolveCombatRound(r1.combat, { type: "attack", enemyId: r1.combat.enemies[0].id });
+    expect(pcHp(rt)).toBeLessThan(20); // no longer surprised — they hit back
+  });
+});

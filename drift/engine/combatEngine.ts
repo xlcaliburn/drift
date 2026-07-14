@@ -140,12 +140,24 @@ export function playerAttack(
   weaponDamage: string,
   aimBonus: number,
   rng: RNG,
+  /** Unseen/surprise strike — roll 2d20 and take the higher (D&D advantage). */
+  advantage = false,
 ): PlayerAttackResult {
-  const d20 = rng.int(1, 20);
+  let d20: number;
+  let rollStr: string;
+  if (advantage) {
+    const a = rng.int(1, 20);
+    const b = rng.int(1, 20);
+    d20 = Math.max(a, b);
+    rollStr = `d20(adv ${a}/${b}→${d20})`;
+  } else {
+    d20 = rng.int(1, 20);
+    rollStr = `d20(${d20})`;
+  }
   const crit = d20 === 20;
   const total = d20 + attackMod + aimBonus;
   const aimStr = aimBonus ? `+${aimBonus}(aim)` : "";
-  const head = `attack: d20(${d20})+${attackMod}${aimStr} = ${total} vs AC ${enemy.ac}`;
+  const head = `attack: ${rollStr}+${attackMod}${aimStr} = ${total} vs AC ${enemy.ac}`;
 
   if (!crit && total < enemy.ac) {
     return { hit: false, crit: false, damage: 0, enemyHpAfter: enemy.hp, shieldReadyAfter: enemy.shieldReady, killed: false, breakdown: `${head} → miss` };
