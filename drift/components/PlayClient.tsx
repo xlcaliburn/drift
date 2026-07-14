@@ -10,7 +10,7 @@ import { stripInlineMenu } from "@/shared/narration";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import { combatActions, type CombatState } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
-import type { NpcRelations, SceneCard } from "@/shared/scene";
+import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
 import { riskOdds, type RiskTier } from "@/shared/risk";
 import Sidebar from "./Sidebar";
 
@@ -66,11 +66,22 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
   const [atBottom, setAtBottom] = useState(true);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showSheet, setShowSheet] = useState(false); // mobile sidebar drawer
+  // Mobile scene strip: the persistent Here & now bar under the header (tap to expand).
+  const [sceneStripOpen, setSceneStripOpen] = useState(false);
+  // Composer stays compact (1 row) until the player actually engages with it.
+  const [inputFocused, setInputFocused] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackState, setFeedbackState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   // The player's own submitted reports + status, shown inside the feedback modal.
   const [myFeedback, setMyFeedback] = useState<{ id: string; title: string; summary: string; status: string }[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // On a phone the choice chips eat half the screen — start them tucked behind
+  // the tab; the player's toggle is respected from then on. Set post-mount (not
+  // in the initializer) so server and client first-render match.
+  useEffect(() => {
+    if (window.innerWidth < 640) setChoicesCollapsed(true);
+  }, []);
 
   useEffect(() => {
     fetch(`/api/state?campaignId=${campaignId}`)
@@ -380,6 +391,90 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
         </div>
       </header>
 
+      {/* Mobile-only scene strip — the Here & now, persistent under the header.
+          One truncated line (place · situation · danger count); tap to expand the
+          full card: situation, active dangers, and who's present with standing.
+          The sidebar drawer still holds the deep view; this keeps the essentials
+          on screen while playing. */}
+      {state && (
+        <div className="border-b border-edge bg-panel/40 md:hidden">
+          {(() => {
+            const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
+            const place = sceneCard?.place ?? loc?.name ?? "Unknown";
+            const dangers = sceneCard?.dangers ?? [];
+            const present = (sceneCard?.presentNpcIds ?? [])
+              .map((id) => state.npcs.find((n) => n.id === id))
+              .filter((n): n is NonNullable<typeof n> => !!n);
+            return (
+              <>
+                <button
+                  onClick={() => setSceneStripOpen((v) => !v)}
+                  className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left"
+                  aria-expanded={sceneStripOpen}
+                >
+                  <span className="shrink-0 text-[11px]" aria-hidden>
+                    📍
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-neutral-300">
+                    <span className="font-medium text-neutral-200">{place}</span>
+                    {sceneCard?.situation && !sceneStripOpen && (
+                      <span className="text-neutral-500"> — {sceneCard.situation}</span>
+                    )}
+                  </span>
+                  {dangers.length > 0 && (
+                    <span className="shrink-0 text-[11px] font-medium text-bad">⚠{dangers.length}</span>
+                  )}
+                  {present.length > 0 && !sceneStripOpen && (
+                    <span className="shrink-0 text-[11px] text-neutral-500">👤{present.length}</span>
+                  )}
+                  <span className="shrink-0 text-[9px] text-neutral-600" aria-hidden>
+                    {sceneStripOpen ? "▲" : "▼"}
+                  </span>
+                </button>
+                {sceneStripOpen && (
+                  <div className="space-y-1.5 px-3 pb-2.5">
+                    {sceneCard?.place && loc?.name && !sceneCard.place.includes(loc.name) && (
+                      <div className="text-[11px] text-neutral-600">near {loc.name}</div>
+                    )}
+                    {sceneCard?.situation && (
+                      <p className="text-[12px] italic leading-snug text-neutral-300">{sceneCard.situation}</p>
+                    )}
+                    {dangers.length > 0 && (
+                      <div className="rounded border border-bad/40 bg-bad/5 px-2 py-1">
+                        {dangers.map((d, i) => (
+                          <div key={i} className="text-[12px] font-medium text-bad">
+                            ⚠ {d}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {present.length > 0 && (
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                        {present.map((npc) => {
+                          const rel = npcRelations[npc.id];
+                          const tone =
+                            rel && rel.disposition > 0
+                              ? "text-good"
+                              : rel && rel.disposition < 0
+                                ? "text-bad"
+                                : "text-neutral-500";
+                          return (
+                            <span key={npc.id} className="text-[12px] text-neutral-200">
+                              {npc.name}
+                              {rel && <span className={tone}> ({dispositionLabel(rel.disposition)})</span>}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Feature-request modal */}
       {showFeedback && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 p-4" onClick={() => setShowFeedback(false)}>
@@ -516,20 +611,24 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             </button>
           )}
 
-          <div className="mx-auto w-full max-w-3xl border-t border-edge px-5 py-4">
-            {/* Suggested actions — click to act, or type your own below. The tab
-                collapses this row so the narration above is easier to read on a
-                small screen. */}
+          <div className="mx-auto w-full max-w-3xl border-t border-edge px-3 py-2.5 sm:px-5 sm:py-4">
+            {/* Suggested actions — click to act, or type your own below. The
+                toggle is a compact icon tab on mobile (⚡ + count) so the row
+                costs almost nothing when tucked away; full label on desktop. */}
             {choices.length > 0 && !busy && (
-              <div className="mb-3">
+              <div className={choicesCollapsed ? "mb-1.5 sm:mb-3" : "mb-3"}>
                 <button
                   onClick={() => setChoicesCollapsed((v) => !v)}
-                  className="mb-2 inline-flex items-center gap-1.5 rounded-md border border-edge px-2.5 py-1 text-xs text-neutral-400 transition hover:border-accent hover:text-accent"
+                  className="mb-1.5 inline-flex items-center gap-1 rounded-md border border-edge px-2 py-1 text-xs text-neutral-400 transition hover:border-accent hover:text-accent sm:mb-2 sm:gap-1.5 sm:px-2.5"
                   aria-expanded={!choicesCollapsed}
+                  aria-label={`Suggested actions (${choices.length})`}
                 >
                   <span className="text-[10px]">{choicesCollapsed ? "▸" : "▾"}</span>
-                  Suggested actions
-                  <span className="text-neutral-600">({choices.length})</span>
+                  <span aria-hidden>⚡</span>
+                  <span className="hidden sm:inline">Suggested actions</span>
+                  <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                    {choices.length}
+                  </span>
                 </button>
                 {!choicesCollapsed && (
                   <div className="flex flex-wrap gap-2">
@@ -608,23 +707,27 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
               </div>
             ) : (
               <div className="flex gap-2">
+                {/* Compact until engaged: one row idle, two while focused or
+                    holding text — reclaims vertical space for the story. */}
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
+                  onFocus={() => setInputFocused(true)}
+                  onBlur={() => setInputFocused(false)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       send();
                     }
                   }}
-                  rows={2}
+                  rows={inputFocused || input.trim() ? 2 : 1}
                   placeholder={choices.length ? "…or write your own action" : `What does ${state?.characters.find((c) => c.kind === "pc")?.name ?? "you"} do?`}
-                  className="flex-1 resize-none rounded-lg border border-edge bg-ink px-4 py-3 text-[16px] outline-none focus:border-accent"
+                  className="flex-1 resize-none rounded-lg border border-edge bg-ink px-4 py-2.5 text-[16px] outline-none transition-all focus:border-accent sm:py-3"
                 />
                 <button
                   onClick={() => send()}
                   disabled={busy || !hasApiKey}
-                  className="rounded-lg bg-accent px-6 text-base font-semibold text-ink disabled:opacity-40"
+                  className="rounded-lg bg-accent px-4 text-base font-semibold text-ink disabled:opacity-40 sm:px-6"
                 >
                   Act
                 </button>
