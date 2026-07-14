@@ -318,6 +318,21 @@ function StatusTab({
               {cond && <span className={`font-semibold ${cond.className}`}> · {cond.text}</span>}
             </div>
 
+            {/* Bleeding Out — the death-save track while Downed (COMBAT.md). Pips
+                fill as the engine rolls: three ● stabilise, three ✕ is death. */}
+            {c.deathSaves && (c.injuries ?? []).some((i) => i.name === "Downed") && (
+              <div className="mt-1 flex items-center gap-3 text-[12px]" title="Death saves — 3 successes stabilise you, 3 failures is death.">
+                <span className="text-good">
+                  saves {"●".repeat(Math.min(3, c.deathSaves.successes))}
+                  <span className="text-neutral-700">{"○".repeat(Math.max(0, 3 - c.deathSaves.successes))}</span>
+                </span>
+                <span className="text-bad">
+                  fails {"✕".repeat(Math.min(3, c.deathSaves.failures))}
+                  <span className="text-neutral-700">{"○".repeat(Math.max(0, 3 - c.deathSaves.failures))}</span>
+                </span>
+              </div>
+            )}
+
             {(weapons.length > 0 || inventory.length > 0 || c.stims > 0) && (
               <SheetSection label={`Equipment · ${slotsUsed(c)}/${maxSlotsFor(c)} slots`}>
                 <div className="space-y-0.5">

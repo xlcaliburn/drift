@@ -56,7 +56,9 @@ admin panel, per-user budgets, retrieval tuning, **multi-turn combat both scales
 bounded-accuracy leveling (compressed `skillProficiency` = `ceil(level/2)`, never
 raw level in `computeModifier`), verb-driven actions, items (consumables + engine-
 generated loot), **scene-memory continuity v1** + NPC registration backstops,
-quest-gated relationships, the bleed-out limit, **universe-shared NPCs**
+quest-gated relationships, **Bleeding Out death saves** (COMBAT.md — `shared/death.ts`
++ `llm/downedTurn.ts`; D&D-style 3-success/3-failure track, engine-rolled, self-
+rescue with a held stim, hostile-over-you pressure, tutorial-safe), **universe-shared NPCs**
 (migration 014 — generated NPCs promote to the universe `npcs` table; per-player
 standing stays in `npc_relations`) + backstory NPCs at creation, the People /
 Factions sidebar tabs, **net-worth enemy scaling** (COMBAT.md §1 —

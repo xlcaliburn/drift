@@ -43,6 +43,15 @@ import {
 } from "@/shared/scene";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
+import {
+  freshDeathSaves,
+  advanceSaves,
+  readDeathSave,
+  trackOutcome,
+  saveTrackLabel,
+  type DownedAction,
+  type DeathOutcome,
+} from "@/shared/death";
 
 /** Victory loot band by top tier faced (ECONOMY.md). */
 const LOOT_BAND: Record<"T1" | "T2" | "T3", [number, number]> = {
@@ -148,12 +157,19 @@ export class TurnRuntime {
     } else if (hp === 0 || before === 0) {
       downed = true;
       if (!injuries.some((i) => i.name === "Downed")) {
-        injuries = [...injuries, { name: "Downed", effect: "critical — bleeding out; one more hit is fatal" }];
+        injuries = [...injuries, { name: "Downed", effect: "critical — bleeding out; three failed saves is death" }];
       }
     }
+    // Seed the death-save track the moment they go down (Bleeding Out); a hit that
+    // lands WHILE already down tacks on a failure — the D&D "struck while down".
+    let deathSaves = c.deathSaves;
+    if (downed) deathSaves = deathSaves ?? freshDeathSaves();
+    if (before === 0 && !died && deathSaves) deathSaves = advanceSaves(deathSaves, { failures: 1 });
     this.state = {
       ...this.state,
-      characters: this.state.characters.map((x) => (x.id === characterId ? { ...x, hp, injuries } : x)),
+      characters: this.state.characters.map((x) =>
+        x.id === characterId ? { ...x, hp, injuries, ...(deathSaves ? { deathSaves } : {}) } : x,
+      ),
     };
     const tag = died ? " · KILLED" : downed ? " · DOWNED" : "";
     this.events.push({
@@ -1048,6 +1064,109 @@ export class TurnRuntime {
         x.id === characterId ? { ...x, injuries: (x.injuries ?? []).filter((i) => i.name !== name) } : x,
       ),
     };
+  }
+
+  /** Clear the Downed state, bring the PC up to at least `hp`, and drop the
+   *  death-save track — the shared tail of stabilise / rally / self-rescue. */
+  private reviveDowned(characterId: string, hp: number) {
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((x) =>
+        x.id === characterId
+          ? { ...x, hp: Math.max(hp, x.hp), injuries: (x.injuries ?? []).filter((i) => i.name !== "Downed"), deathSaves: undefined }
+          : x,
+      ),
+    };
+  }
+
+  /**
+   * Resolve ONE turn of Bleeding Out (COMBAT.md). The Downed player picks a
+   * desperate act; the engine rolls the death save (or spends a stim) and reports
+   * where the track now stands. Reaching for a held stim/medkit is the self-
+   * rescue; "hold on" is a raw save; "cover" steadies the hand (+2 edge); "help"
+   * a raw save that, on success, is the ally reaching them. A hostile or an active
+   * hazard in the scene tacks on a failure — the pressure that makes bleeding out
+   * lethal. Returns engine lines + the outcome (continue / stabilized / dead).
+   */
+  resolveDeathSave(
+    action: DownedAction,
+    ctx: { hostilePresent?: boolean; hazardPresent?: boolean } = {},
+  ): { lines: string[]; outcome: DeathOutcome | "recovered" } {
+    const pc = this.pc();
+    if (!pc) return { lines: [], outcome: "continue" };
+    const lines: string[] = [];
+
+    // Self-rescue: a held stim/medkit clears the whole thing (D&D's "a potion
+    // brings you back up"). The engine heals + clears Downed + drops the track.
+    if (action.kind === "item") {
+      const itemId = action.itemId ?? "stim";
+      const item = catalogItem(itemId);
+      if (item && itemCount(pc, itemId) > 0 && item.effect?.kind === "heal") {
+        const before = pc.hp;
+        this.consumeItem(pc.id, itemId);
+        const rolled = rollDamage(item.effect.dice ?? "1d6+2", this.rng);
+        this.reviveDowned(pc.id, Math.max(1, rolled));
+        const after = this.pc()?.hp ?? 1;
+        lines.push(`🩹 ${item.name} — you jam it home. +${after - before} HP; back on your feet.`);
+        return { lines, outcome: "recovered" };
+      }
+      lines.push("You grope for a stim — nothing in reach. You steady yourself instead.");
+      action = { kind: "hold" };
+    }
+
+    const track = pc.deathSaves ?? freshDeathSaves();
+    const d20 = this.rng.int(1, 20);
+    const edge = action.kind === "cover" ? 2 : 0;
+    const read = readDeathSave(d20, edge);
+
+    // Nat-20 rally: back up at 1 HP (the fight, if any, already ended when you
+    // dropped — you scramble up as it resolves).
+    if (read.kind === "rally") {
+      this.reviveDowned(pc.id, 1);
+      lines.push(`🎲 Death save: d20(20) — a surge of adrenaline. You claw back to 1 HP.`);
+      return { lines, outcome: "recovered" };
+    }
+
+    let next = advanceSaves(track, { successes: read.successes, failures: read.failures });
+    // Pressure: a hostile looming over you (or a live hazard) is a failure a turn —
+    // the D&D "an attack on a downed creature is an automatic failure".
+    const pressured = Boolean(ctx.hostilePresent || ctx.hazardPresent);
+    if (pressured) next = advanceSaves(next, { failures: 1 });
+
+    const nat1 = d20 === 1;
+    const crawl = action.kind === "cover" ? " (crawling for cover)" : "";
+    lines.push(
+      `🎲 Death save${crawl}: d20(${d20})${edge ? ` +${edge}` : ""} vs DC ${10 - edge} → ${read.kind === "success" ? "hold" : nat1 ? "critical fail (×2)" : "fail"}` +
+        (pressured ? " · +1 fail (enemy over you)" : ""),
+    );
+
+    const inTut = inTutorial(this.state);
+    const outcome = trackOutcome(next, { inTutorial: inTut });
+    // Persist the track (or clear it on a terminal outcome; revive handled below).
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((x) => (x.id === pc.id ? { ...x, deathSaves: next } : x)),
+    };
+
+    if (outcome === "stabilized") {
+      this.reviveDowned(pc.id, 1); // black out, patched to 1 HP
+      lines.push(`✚ Stabilised (${saveTrackLabel(next)}) — you hold on. The dark eases; you're alive, barely.`);
+      return { lines, outcome: "stabilized" };
+    }
+    if (outcome === "dead") {
+      this.state = {
+        ...this.state,
+        characters: this.state.characters.map((x) =>
+          x.id === pc.id
+            ? { ...x, hp: 0, deathSaves: undefined, injuries: [...(x.injuries ?? []).filter((i) => i.name !== "Downed"), { name: "Dead", effect: "bled out" }] }
+            : x,
+        ),
+      };
+      lines.push(`☠ Bled out (${saveTrackLabel(next)}) — no more saves. This character's story ends.`);
+      return { lines, outcome: "dead" };
+    }
+    lines.push(`   ${saveTrackLabel(next)}`);
+    return { lines, outcome: "continue" };
   }
 
   /**

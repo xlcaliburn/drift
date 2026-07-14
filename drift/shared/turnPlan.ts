@@ -67,6 +67,13 @@ export const CombatActionSpec = z.object({
   itemId: optionalNullable(z.string()),
 });
 
+/** A desperate act carried by an engine-generated Bleeding Out choice (death.ts).
+ *  Engine-owned like CombatActionSpec — the model never authors these. */
+export const DownedActionSpec = z.object({
+  kind: z.enum(["hold", "cover", "item", "help"]),
+  itemId: optionalNullable(z.string()),
+});
+
 /** A clickable next action. Preferred: tag an attemptable option with a `verb`
  *  (+ optional `difficulty`) — the ENGINE maps verb → skill and builds the check,
  *  so the model can't pick the wrong skill (ACTIONS.md). `check` is the legacy
@@ -83,6 +90,9 @@ export const ChoiceOption = z.object({
   difficulty: optionalNullable(z.enum(["easy", "normal", "hard"])),
   check: optionalNullable(CheckSpec),
   combatAction: optionalNullable(CombatActionSpec),
+  /** Set on an engine-generated Bleeding Out chip — routes the click to the
+   *  death-save resolver instead of a normal turn. */
+  downedAction: optionalNullable(DownedActionSpec),
 });
 export type ChoiceOption = z.infer<typeof ChoiceOption>;
 

@@ -62,7 +62,9 @@ function endChoices(outcome: CombatOutcome): ChoiceOption[] {
   if (outcome === "victory") return [{ label: "Search the wreckage" }, { label: "Move on" }];
   if (outcome === "escaped") return [{ label: "Catch your breath" }, { label: "Keep moving" }];
   if (outcome === "disabled") return [{ label: "Assess the damage" }, { label: "Signal for help" }];
-  return [{ label: "Take stock" }]; // downed — aftermath is narrated
+  // Downed → the route swaps in the engine-generated Bleeding Out chips (it has the
+  // held consumables + who's present); no dead-end "Take stock" button anymore.
+  return [];
 }
 
 export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnResult> {

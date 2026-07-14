@@ -96,11 +96,30 @@ fleeDC        = clamp( 10 + 2*fleeAttempts - 3*disparity, 5, 20 )
 The same formula generalizes to ship encounters (threat = enemy ship class tier);
 the starter loaner's whole identity is "its defense is running" (flee = burst drive).
 
-**Downed halt rule.** The enemy volley **halts** the instant the player drops — an
-aftermath beat (robbed / captured / left for dead) rather than a silent kill.
-Hit-while-already-downed still kills, so death stays reachable but most losses
-generate story. Ship-scale analog: hull 0 = disabled/adrift → aftermath (boarded,
-captured, towed), never a silent hull-zero death.
+**Downed halt rule.** The enemy volley **halts** the instant the player drops — the
+fight pauses and the PC enters **Bleeding Out** (below) rather than being finished
+off. Ship-scale analog: hull 0 = disabled/adrift → aftermath (boarded, captured,
+towed), never a silent hull-zero death.
+
+**Bleeding Out — D&D-style death saves** (`shared/death.ts`, `llm/downedTurn.ts`).
+At 0 HP the PC is Downed and the engine starts a death-save track. While Downed,
+EVERY input (clicked chip or free text) runs one engine-rolled death save — the
+state is engine-owned exactly like combat, so typing "I get up and run" can't skip
+the dice. Each turn the player picks a desperate act:
+- **Hold on** — a raw d20 save (10+ success). **Nat 20 → rally to 1 HP** (up; the
+  fight already ended when they dropped). **Nat 1 → two failures.**
+- **Crawl to cover** — a save at +2 edge (success on 8+).
+- **Reach for a held stim/medkit** — auto-rescue: heal + up, item spent. The
+  equipped escape hatch.
+- **Call for help** — a save; offered only when a friendly NPC is present.
+
+**3 successes → stabilise** (black out, patched to 1 HP, scene ends). **3 failures
+→ dead.** A **hostile standing over you** (disposition ≤ −2) or an **active hazard**
+adds +1 failure a turn — the pressure that makes bleeding out lethal (the D&D
+"attack on a downed creature = auto-fail"). The **tutorial never tips into death**
+(failures ride to the wire but resolve to stabilise). The chips are engine-generated
+(`downedActions`) so a cheap model can't derail a life-or-death moment; the model
+only narrates the beat. The sidebar shows the pip track (`saves ●●○ / fails ✕○○`).
 
 **Telegraphing obligation.** Because losing a fight can still be fatal, narration
 MUST make a fight's danger obvious, and an outmatched player must always be offered

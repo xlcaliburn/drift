@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { runJsonTurn, TurnGenerationError } from "@/llm/jsonTurn";
 import { runCombatTurn } from "@/llm/combatTurn";
+import { runDownedTurn } from "@/llm/downedTurn";
 import { combatActions, interpretCombatText } from "@/shared/combat";
+import { downedActions } from "@/shared/death";
 import { usableConsumables } from "@/shared/items";
 import { getSession, setSession, persistSession, loadReachableDossiers } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
 import { recordAiCall } from "@/lib/audit";
-import { TUTORIAL_GRADUATION_BEAT, inTutorial } from "@/shared/tutorial";
+import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { buildFallbackChoices } from "@/shared/recap";
-import { CheckSpec, CombatActionSpec, type ChoiceOption } from "@/shared/turnPlan";
-import { carryScene, isSceneMove, resolveDownedTurn, type SceneCard, type SceneMemory } from "@/shared/scene";
+import { CheckSpec, CombatActionSpec, DownedActionSpec, type ChoiceOption } from "@/shared/turnPlan";
+import { carryScene, isSceneMove, type SceneCard, type SceneMemory } from "@/shared/scene";
 import { summarizeScene } from "@/llm/summarizer";
 import type { ChatEntry } from "@/shared/chat";
 import { hasSupabase } from "@/lib/state";
@@ -108,6 +110,8 @@ export async function POST(req: NextRequest) {
   const preCheck = body.check ? CheckSpec.safeParse(body.check).data : undefined;
   // Combat action from a clicked combat chip (routes through the combat engine).
   const combatAction = body.combatAction ? CombatActionSpec.safeParse(body.combatAction).data : undefined;
+  // Desperate act from a clicked Bleeding Out chip (routes through death saves).
+  const downedAction = body.downedAction ? DownedActionSpec.safeParse(body.downedAction).data : undefined;
   // The action came from a CLICKED choice (not typed). A clicked choice's check is
   // already decided and shown on the chip, so the model can't add a surprise roll.
   const fromChoice: boolean = Boolean(body.fromChoice);
@@ -189,13 +193,28 @@ export async function POST(req: NextRequest) {
           onEngine: (lines: string[]) => send({ type: "engine", lines }),
         };
 
-        // Routing (tool loop retired — COMBAT.md D-7): a live fight + a combat
-        // action runs the engine-owned combat round; everything else runs the
-        // structured JSON turn (cinematic turns just use the pricier model there).
-        // While a fight is live, EVERY input runs the engine-owned combat round —
-        // a clicked chip, or free text mapped to an action. This is the security
+        // A Downed PC (bleeding out) is its own engine-owned mode — like combat,
+        // EVERY input runs a death save, so typing "I get up and run" can't skip
+        // the dice. (Going down halts the fight, so combat is already inactive.)
+        const pcDowned =
+          !!pcNow && pcNow.hp <= 0 && (pcNow.injuries ?? []).some((i) => i.name === "Downed");
+
+        // Routing (tool loop retired — COMBAT.md D-7): bleeding out → death saves;
+        // a live fight + a combat action → engine-owned combat round; everything
+        // else → the structured JSON turn (cinematic turns just use the pricier
+        // model there). While a fight is live, EVERY input runs the combat round —
+        // a clicked chip or free text mapped to an action. This is the security
         // boundary: typing "I gun them all down" can't skip the rolls/return fire.
-        const result = session.combat?.active
+        const result = pcDowned && !session.combat?.active
+          ? await runDownedTurn({
+              ...common,
+              downedAction,
+              playerText,
+              sceneCard: session.sceneCard,
+              npcRelations: session.npcRelations,
+              model: cinematic ? "claude-sonnet-5" : undefined,
+            })
+          : session.combat?.active
           ? await (async () => {
               const combatPc = session.state.characters.find((c) => c.kind === "pc");
               const action =
@@ -236,51 +255,16 @@ export async function POST(req: NextRequest) {
         const resultPc = result.state.characters.find((c) => c.kind === "pc");
         // Death ends the story immediately — this turn is the last one. No choices,
         // no fallbacks; the client goes terminal on the `dead` flag.
-        let pcDied = !!resultPc && (resultPc.injuries ?? []).some((i) => i.name === "Dead");
+        const pcDied = !!resultPc && (resultPc.injuries ?? []).some((i) => i.name === "Dead");
 
-        // Bleed-out backstop: a Downed PC out of combat must not be handed endless
-        // normal turns. Count consecutive downed turns; once the limit trips the
-        // engine forces a conclusion this turn — stabilise if the coast is clear,
-        // die if the scene is hostile (never in the tutorial). In combat the fight
-        // engine already resolves a downed PC, so this only guards the JSON path.
+        // Bleeding Out is engine-owned end to end now (runDownedTurn resolves the
+        // death saves), so the route only needs to detect the state for the chips:
+        // a PC that's Downed & alive & out of combat is offered the desperate-act
+        // menu — whether they just dropped in a fight (combat handed "Take stock")
+        // or they're mid-sequence.
         const stillDowned =
           !!resultPc && !pcDied && !resultCombat?.active &&
           resultPc.hp <= 0 && (resultPc.injuries ?? []).some((i) => i.name === "Downed");
-        if (stillDowned) {
-          const { downedTurns, outcome } = resolveDownedTurn({
-            downedTurns: session.sceneCard.downedTurns ?? 0,
-            presentHostile: session.sceneCard.presentNpcIds.some(
-              (id) => (session.npcRelations[id]?.disposition ?? 0) <= -2,
-            ),
-            dangerPresent: (session.sceneCard.dangers ?? []).length > 0,
-            inTutorial: inTutorial(result.state),
-          });
-          session.sceneCard.downedTurns = downedTurns;
-          if (outcome === "die") {
-            resultPc!.injuries = [
-              ...(resultPc!.injuries ?? []).filter((i) => i.name !== "Downed"),
-              { name: "Dead", effect: "bled out — no one came" },
-            ];
-            resultPc!.hp = 0;
-            pcDied = true;
-            result.narration =
-              (result.narration ? result.narration.trimEnd() + "\n\n" : "") +
-              "You've lost too much blood, and no one is coming. The cold climbs from your fingers, the din folds into a long grey hush — and then nothing.";
-            result.engineLines = [...(result.engineLines ?? []), "☠ bled out — dead"];
-          } else if (outcome === "stabilize") {
-            resultPc!.hp = Math.max(1, resultPc!.hp);
-            resultPc!.injuries = (resultPc!.injuries ?? []).filter((i) => i.name !== "Downed");
-            result.sceneEnded = true;
-            result.choices = [];
-            result.narration =
-              (result.narration ? result.narration.trimEnd() + "\n\n" : "") +
-              "The dark closes in — and then, somehow, eases. You come to with a rough patch job holding you together: alive, barely, and back on your feet. This scene's cost was paid in blood.";
-            result.engineLines = [...(result.engineLines ?? []), "✚ stabilised — back to 1 HP"];
-          }
-        } else if ((session.sceneCard.downedTurns ?? 0) !== 0) {
-          // Back on their feet (healed, or a fresh scene) → reset the clock.
-          session.sceneCard.downedTurns = 0;
-        }
 
         const burstReady = !!result.state.ship?.burstDriveReady;
         const normalized: ChoiceOption[] = result.choices.map((c) =>
@@ -290,12 +274,19 @@ export async function POST(req: NextRequest) {
           ? []
           : resultCombat?.active
             ? combatActions(resultCombat, resultPc ? usableConsumables(resultPc, resultCombat.scale) : [], burstReady)
-            : normalized.length === 0
-              ? // No choices from the model (incl. right after a scene ends) → give
-                // the player concrete next moves so they're never left with a
-                // dead end. Derived from live state, free (no tokens).
-                buildFallbackChoices(result.state).map((label) => ({ label }))
-              : normalized;
+            : stillDowned
+              ? // Bleeding Out — the engine-generated desperate-act chips (self-
+                // rescue with a held stim, crawl for cover, call for help, hold on).
+                downedActions(
+                  resultPc ? usableConsumables(resultPc, "personal") : [],
+                  session.sceneCard.presentNpcIds.some((id) => (session.npcRelations[id]?.disposition ?? 0) >= 1),
+                )
+              : normalized.length === 0
+                ? // No choices from the model (incl. right after a scene ends) → give
+                  // the player concrete next moves so they're never left with a
+                  // dead end. Derived from live state, free (no tokens).
+                  buildFallbackChoices(result.state).map((label) => ({ label }))
+                : normalized;
 
         // Engine display lines (dice/ticks/damage/payment/combat) — the handlers
         // return them pre-prefixed; they become system transcript lines so a

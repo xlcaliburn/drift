@@ -105,6 +105,10 @@ export const Character = z.object({
   drives: z.string().optional(),
   gear: z.array(GearItem).default([]),
   injuries: z.array(Injury).default([]),
+  /** Death-save track while Downed (COMBAT.md — the Bleeding Out sequence). Absent
+   *  when up; the engine seeds it the moment HP hits 0 and clears it on recovery,
+   *  stabilise, or death. 3 successes → stabilise, 3 failures → dead. */
+  deathSaves: z.object({ successes: z.number().int().min(0), failures: z.number().int().min(0) }).optional(),
 
   // ── Multiplayer / character-creation metadata (optional; absent on legacy PCs) ──
   /** Which faction the character starts embedded in. */

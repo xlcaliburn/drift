@@ -204,6 +204,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
           playerText: text,
           check: action?.check,
           combatAction: action?.combatAction,
+          downedAction: action?.downedAction,
           fromChoice: !!action,
         }),
       });
