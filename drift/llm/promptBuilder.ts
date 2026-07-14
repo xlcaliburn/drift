@@ -414,6 +414,11 @@ export function buildContextSlice(
     ...(moralLine ? [moralLine] : []),
     `Party & PC vitals:`,
     ...state.characters.map((c) => `  ${vitals(c)} (id: ${c.id})`),
+    ...(pc && pc.hp <= 0 && (pc.injuries ?? []).some((i) => i.name === "Downed")
+      ? [
+          `⚠ ${pc.name} is DOWNED — bleeding out, one hit from death. They CANNOT fight, run, or act normally: only a desperate, likely-failing effort (drag to cover, claw for a stim/medkit, croak for help). Frame this as moments from blacking out; every offered choice must be a last-ditch act of that kind — no ordinary options.`,
+        ]
+      : []),
     `Ship: ${shipLine}`,
     ``,
     npcs.length

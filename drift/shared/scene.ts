@@ -30,6 +30,10 @@ export interface SceneCard {
   dangers?: string[];
   /** Transcript index where this scene began — the summarizer's slice start. */
   startTranscriptIdx: number;
+  /** Consecutive turns the PC has ended still Downed (bleeding out) — the engine
+   *  forces a conclusion once this hits DOWNED_TURN_LIMIT so a downed player isn't
+   *  handed endless normal turns. Reset the moment they're back on their feet. */
+  downedTurns?: number;
 }
 
 export interface NpcRelation {
@@ -62,6 +66,10 @@ export const DISPOSITION_MIN = -3;
 export const DISPOSITION_MAX = 3;
 /** Auto-close backstop (D-1): force a scene boundary after this many turns. */
 export const SCENE_TURN_CAP = 12;
+/** Bleed-out backstop: after this many turns still Downed (out of combat), the
+ *  engine forces a conclusive beat — stabilise or die — instead of handing the
+ *  player yet another normal turn. 1 = they get a single desperate action first. */
+export const DOWNED_TURN_LIMIT = 2;
 /** How many recent scene summaries ride in every prompt (PREVIOUSLY block). */
 export const RECENT_SCENES_IN_PROMPT = 3;
 
@@ -86,8 +94,30 @@ export function carryScene(prev: SceneCard, startTranscriptIdx: number): SceneCa
     // Dangers are scene-scoped: a new scene starts clear; the narrator re-states
     // any hazard that genuinely persists (overwrite semantics).
     dangers: [],
+    downedTurns: 0,
     startTranscriptIdx,
   };
+}
+
+export type DownedOutcome = "continue" | "stabilize" | "die";
+
+/**
+ * Advance the bleed-out clock for a PC that ended the turn still Downed (out of
+ * combat). Returns the new counter and what the engine should do: keep letting
+ * them make a desperate effort, or — once the limit trips — force a conclusion
+ * (stabilise if the coast is clear, die if the scene is hostile). The tutorial
+ * never kills. Pure so the route logic stays honest and testable.
+ */
+export function resolveDownedTurn(opts: {
+  downedTurns: number;
+  presentHostile: boolean;
+  dangerPresent: boolean;
+  inTutorial: boolean;
+}): { downedTurns: number; outcome: DownedOutcome } {
+  const downedTurns = opts.downedTurns + 1;
+  if (downedTurns < DOWNED_TURN_LIMIT) return { downedTurns, outcome: "continue" };
+  const die = !opts.inTutorial && (opts.presentHostile || opts.dangerPresent);
+  return { downedTurns, outcome: die ? "die" : "stabilize" };
 }
 
 const DISPOSITION_LABELS: Record<number, string> = {

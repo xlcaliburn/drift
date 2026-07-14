@@ -7,10 +7,10 @@ import { getSession, setSession, persistSession } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
 import { recordAiCall } from "@/lib/audit";
-import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
+import { TUTORIAL_GRADUATION_BEAT, inTutorial } from "@/shared/tutorial";
 import { buildFallbackChoices } from "@/shared/recap";
 import { CheckSpec, CombatActionSpec, type ChoiceOption } from "@/shared/turnPlan";
-import { carryScene, type SceneCard, type SceneMemory } from "@/shared/scene";
+import { carryScene, resolveDownedTurn, type SceneCard, type SceneMemory } from "@/shared/scene";
 import { summarizeScene } from "@/llm/summarizer";
 import type { ChatEntry } from "@/shared/chat";
 import { hasSupabase } from "@/lib/state";
@@ -216,7 +216,52 @@ export async function POST(req: NextRequest) {
         const resultPc = result.state.characters.find((c) => c.kind === "pc");
         // Death ends the story immediately — this turn is the last one. No choices,
         // no fallbacks; the client goes terminal on the `dead` flag.
-        const pcDied = !!resultPc && (resultPc.injuries ?? []).some((i) => i.name === "Dead");
+        let pcDied = !!resultPc && (resultPc.injuries ?? []).some((i) => i.name === "Dead");
+
+        // Bleed-out backstop: a Downed PC out of combat must not be handed endless
+        // normal turns. Count consecutive downed turns; once the limit trips the
+        // engine forces a conclusion this turn — stabilise if the coast is clear,
+        // die if the scene is hostile (never in the tutorial). In combat the fight
+        // engine already resolves a downed PC, so this only guards the JSON path.
+        const stillDowned =
+          !!resultPc && !pcDied && !resultCombat?.active &&
+          resultPc.hp <= 0 && (resultPc.injuries ?? []).some((i) => i.name === "Downed");
+        if (stillDowned) {
+          const { downedTurns, outcome } = resolveDownedTurn({
+            downedTurns: session.sceneCard.downedTurns ?? 0,
+            presentHostile: session.sceneCard.presentNpcIds.some(
+              (id) => (session.npcRelations[id]?.disposition ?? 0) <= -2,
+            ),
+            dangerPresent: (session.sceneCard.dangers ?? []).length > 0,
+            inTutorial: inTutorial(result.state),
+          });
+          session.sceneCard.downedTurns = downedTurns;
+          if (outcome === "die") {
+            resultPc!.injuries = [
+              ...(resultPc!.injuries ?? []).filter((i) => i.name !== "Downed"),
+              { name: "Dead", effect: "bled out — no one came" },
+            ];
+            resultPc!.hp = 0;
+            pcDied = true;
+            result.narration =
+              (result.narration ? result.narration.trimEnd() + "\n\n" : "") +
+              "You've lost too much blood, and no one is coming. The cold climbs from your fingers, the din folds into a long grey hush — and then nothing.";
+            result.engineLines = [...(result.engineLines ?? []), "☠ bled out — dead"];
+          } else if (outcome === "stabilize") {
+            resultPc!.hp = Math.max(1, resultPc!.hp);
+            resultPc!.injuries = (resultPc!.injuries ?? []).filter((i) => i.name !== "Downed");
+            result.sceneEnded = true;
+            result.choices = [];
+            result.narration =
+              (result.narration ? result.narration.trimEnd() + "\n\n" : "") +
+              "The dark closes in — and then, somehow, eases. You come to with a rough patch job holding you together: alive, barely, and back on your feet. This scene's cost was paid in blood.";
+            result.engineLines = [...(result.engineLines ?? []), "✚ stabilised — back to 1 HP"];
+          }
+        } else if ((session.sceneCard.downedTurns ?? 0) !== 0) {
+          // Back on their feet (healed, or a fresh scene) → reset the clock.
+          session.sceneCard.downedTurns = 0;
+        }
+
         const burstReady = !!result.state.ship?.burstDriveReady;
         const normalized: ChoiceOption[] = result.choices.map((c) =>
           typeof c === "string" ? { label: c } : c,
