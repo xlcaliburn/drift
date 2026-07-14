@@ -149,6 +149,7 @@ type RollResult = {
   breakdown?: string;
   tick?: string;
   tickCapped?: string;
+  loot?: string;
   outcome?: string;
   critical?: boolean;
   criticalFailure?: boolean;
@@ -174,6 +175,7 @@ function rollDisplayLines(res: RollResult): string[] {
     else if (res.tickCapped) bits.push(`⬆ ${res.tickCapped}: already improved this scene (max 1/skill/scene)`);
     lines.push(bits.join(" · "));
   }
+  if (res.loot) lines.push(res.loot);
   if (res.damage) {
     lines.push(`💥 Took ${res.damage} damage${res.died ? " — KILLED" : res.downed ? " — DOWNED" : ""}`);
   }
@@ -196,7 +198,8 @@ function engineContextLine(res: RollResult): string {
   const ship = res.shipDamage
     ? ` · hull -${res.shipDamage}${res.shipDisabled ? " (DISABLED, adrift)" : ` (${res.shipHpAfter} hull left)`}`
     : "";
-  return `ENGINE RESULT: ${res.breakdown ?? ""}${crit}${res.tick ? ` · ${res.tick}` : ""}${dmg}${ship}`;
+  const loot = res.loot ? ` · ${res.loot} (narrate finding EXACTLY this — nothing more)` : "";
+  return `ENGINE RESULT: ${res.breakdown ?? ""}${crit}${res.tick ? ` · ${res.tick}` : ""}${loot}${dmg}${ship}`;
 }
 
 export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult> {
@@ -276,6 +279,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
         failDamage: input.preCheck.failDamage,
         hazardLevel: input.preCheck.hazardLevel ?? preVerb?.hazardLevel,
         target: input.preCheck.target ?? undefined,
+        loot: preVerb?.loot,
       }) as RollResult;
       if (res.breakdown) {
         lastRoll = { skill: preSkill, outcome: res.outcome };
@@ -381,7 +385,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     // Last resort: salvage what we can. If the repair produced ONLY the sentinel
     // stub (no real narration, no choices), the model gave us nothing — fail the
     // turn honestly instead of advancing the story on filler.
-    const repaired = repairTurnPlan(raw2 || raw);
+    const repaired = repairTurnPlan(raw2 || raw, { jsonOnly: true });
     if (repaired.narration === REPAIR_FALLBACK_NARRATION && repaired.choices.length === 0) {
       throw new TurnGenerationError(
         `narrator returned no usable turn (model=${activeModel}, stop=${lastStop}, ` +
@@ -437,6 +441,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       failDamage: plan.roll.failDamage,
       hazardLevel: plan.roll.hazardLevel ?? rollVerb?.hazardLevel,
       target: plan.roll.target ?? undefined,
+      loot: rollVerb?.loot,
     }) as RollResult;
     if (res.breakdown) {
       lastRoll = { skill: rollSkill, outcome: res.outcome };

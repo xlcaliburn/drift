@@ -255,7 +255,7 @@ export function parseTurnPlan(text: string): ParsedPlan {
  * prose and strip any inline menu. Either way the player gets clean narration +
  * clickable choices; the raw JSON never reaches them.
  */
-export function repairTurnPlan(text: string): TurnPlan {
+export function repairTurnPlan(text: string, opts?: { jsonOnly?: boolean }): TurnPlan {
   const obj = extractJsonObject(text);
   if (obj && typeof obj === "object") {
     const o = obj as Record<string, unknown>;
@@ -269,6 +269,10 @@ export function repairTurnPlan(text: string): TurnPlan {
       return TurnPlan.parse({ narration: o.narration.trim(), choices });
     }
   }
+  // JSON turns REQUIRE an object. With none found, the text is raw prose — for a
+  // hybrid model that's its chain-of-thought ("We need to generate a JSON…"), NOT
+  // player narration. Fail the turn (sentinel) instead of leaking the thinking.
+  if (opts?.jsonOnly) return TurnPlan.parse({ narration: REPAIR_FALLBACK_NARRATION, choices: [] });
   const { narration, choices } = parseInlineMenu(text.trim());
   return TurnPlan.parse({
     // Sentinel beat when generation returned nothing salvageable. Callers treat a

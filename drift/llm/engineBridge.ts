@@ -14,6 +14,7 @@ import {
 import { enemyTiers, shipClasses, economy, isHazardSkill } from "@/content";
 import { awardTick } from "@/engine/progression";
 import { rollDamage, maxDice } from "@/engine/dice";
+import { generateScavengeLoot } from "@/engine/loot";
 import {
   spawnCombatEnemies,
   spawnCombatShips,
@@ -79,6 +80,22 @@ export class TurnRuntime {
   npcRelations: NpcRelations;
   /** NPCs already disposition-nudged this turn (engine cap: ±1/NPC/turn). */
   private nudgedThisTurn = new Set<string>();
+  /** True once a quest/job concluded THIS turn (a payout was awarded, or a thread
+   *  resolved). Disposition only moves on such turns — standing is earned by
+   *  completing work, not by chatting (built-in engine gate, not a prompt rule). */
+  private questCompletedThisTurn = false;
+
+  /** Unlock disposition movement for this turn — called when a job/quest actually
+   *  completes (payout awarded, thread resolved). Public so any completion path
+   *  (and tests) can signal it. */
+  markQuestCompleted() {
+    this.questCompletedThisTurn = true;
+  }
+
+  /** True once the engine rolled loot this turn (a successful scavenge/loot check).
+   *  Also lets the narrator's own items[] gains through — they corroborate what the
+   *  engine just generated rather than conjuring something new. */
+  private lootedThisTurn = false;
 
   constructor(
     state: CampaignState,
@@ -254,6 +271,36 @@ export class TurnRuntime {
         harm = this.applyDamage(character.id, dealt, `Failed ${skill} check.`);
       }
     }
+    // Engine-owned loot: a successful loot/scavenge ATTEMPT is where items come
+    // from — the engine decides the haul (scrap + creds; a crit does better), the
+    // player never names it. Also unlocks the narrator's items[] for the turn so a
+    // corroborating "you pocket the shard" line is allowed to persist.
+    let loot: string | undefined;
+    if (input.loot && res.outcome === "success") {
+      const drop = generateScavengeLoot(this.rng, { crit: res.critical });
+      this.lootedThisTurn = true;
+      const target = this.char(character.id);
+      if (target) {
+        let gear = [...(target.gear ?? [])];
+        for (const g of drop.gear) gear.push({ name: g.name, detail: g.detail });
+        for (const itemId of drop.consumables) {
+          const cat = catalogItem(itemId);
+          if (!cat) continue;
+          const ex = gear.find((x) => x.itemId === itemId);
+          gear = ex
+            ? gear.map((x) => (x === ex ? { ...x, qty: (x.qty ?? 1) + 1 } : x))
+            : [...gear, { name: cat.name, itemId: cat.id, qty: 1 }];
+        }
+        this.state = {
+          ...this.state,
+          characters: this.state.characters.map((c) =>
+            c.id === character.id ? { ...c, gear, credits: (c.credits ?? 0) + drop.credits } : c,
+          ),
+        };
+      }
+      this.events.push({ type: "note", breakdown: drop.line });
+      loot = drop.line;
+    }
     return {
       breakdown: res.breakdown,
       total: res.total,
@@ -263,6 +310,7 @@ export class TurnRuntime {
       tickEligible: res.tickEligible,
       ...(tick ? { tick } : {}),
       ...(tickCapped ? { tickCapped } : {}),
+      ...(loot ? { loot } : {}),
       ...(harm && harm.taken > 0
         ? { damage: harm.taken, hpAfter: harm.hpAfter, downed: harm.downed, died: harm.died }
         : {}),
@@ -404,6 +452,8 @@ export class TurnRuntime {
     if (!Array.isArray(band)) return { error: `unknown payout tier ${input.tier}` };
     const pc = this.state.characters.find((c) => c.kind === "pc");
     if (!pc) return { error: "no player character" };
+    // A payout means a job/quest concluded — unlock disposition movement this turn.
+    this.markQuestCompleted();
     const [lo, hi] = band as [number, number];
     const mid = Math.round((lo + hi) / 2);
     const mood = input.mood === "high" ? "high" : input.mood === "low" ? "low" : undefined;
@@ -557,6 +607,10 @@ export class TurnRuntime {
       return { created: thread.id };
     }
     const threadId = String(input.threadId);
+    // Resolving a live thread is a quest completion — unlock disposition this turn.
+    if (op === "resolve" && this.state.threads.some((t) => t.id === threadId && t.status !== "resolved")) {
+      this.markQuestCompleted();
+    }
     this.state = {
       ...this.state,
       threads: this.state.threads.map((t) =>
@@ -669,6 +723,12 @@ export class TurnRuntime {
     if (!pc) return null;
     const trimmed = name.trim();
     if (!trimmed) return null;
+    // Item GAINS are engine-authored, not player-authored: the model may only hand
+    // over gear on a turn the engine recognises a legitimate source — a successful
+    // scavenge/loot roll (lootedThisTurn) or a quest reward (questCompletedThisTurn).
+    // Otherwise "I find a rocket launcher" grants nothing. Losses stay open (a
+    // confiscation is a valid consequence any time).
+    if (action === "gain" && !this.lootedThisTurn && !this.questCompletedThisTurn) return null;
     // A gained item that IS a catalog item (a looted "medkit") must become the
     // MECHANICAL item — with itemId — or useItem's possession check will fail
     // and the model will narrate heals that never happen (the medkit bug).
@@ -746,7 +806,7 @@ export class TurnRuntime {
   ): { line?: string } {
     const rel = this.npcRelations[npcId] ?? { disposition: 0 };
     let line: string | undefined;
-    if (upd.disposition && !this.nudgedThisTurn.has(npcId)) {
+    if (upd.disposition && this.questCompletedThisTurn && !this.nudgedThisTurn.has(npcId)) {
       this.nudgedThisTurn.add(npcId);
       const delta = Math.max(-1, Math.min(1, Math.round(upd.disposition)));
       const to = Math.max(DISPOSITION_MIN, Math.min(DISPOSITION_MAX, rel.disposition + delta));

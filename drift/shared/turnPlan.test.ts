@@ -105,4 +105,24 @@ describe("repairTurnPlan", () => {
     expect(plan.narration).toBe("You level the pistol.");
     expect(plan.choices.map((c) => c.label)).toEqual(["Fire", "Hold"]); // checks dropped, labels kept
   });
+
+  it("jsonOnly mode NEVER surfaces raw prose as narration (no reasoning leak)", () => {
+    // A hybrid model's chain-of-thought with no JSON object. For a JSON turn this
+    // must fail (sentinel), not stream the thinking to the player as narration.
+    const thinking =
+      "We need to generate a JSON response for the player's action. The player is downed, " +
+      "so we present 3 last-ditch choices and set a roll for the reach action.";
+    const p = repairTurnPlan(thinking, { jsonOnly: true });
+    expect(p.narration).toBe(REPAIR_FALLBACK_NARRATION); // → turn-failure detection → error+retry
+    expect(p.choices).toEqual([]);
+    // Without jsonOnly, the legacy prose salvage would leak it as narration:
+    expect(repairTurnPlan(thinking).narration).not.toBe(REPAIR_FALLBACK_NARRATION);
+  });
+
+  it("jsonOnly still salvages a real object buried in thinking", () => {
+    const raw = 'Okay, the player searches. {"narration":"You find scraps.","choices":["Move on"]}';
+    const p = repairTurnPlan(raw, { jsonOnly: true });
+    expect(p.narration).toBe("You find scraps.");
+    expect(p.choices.map((c) => c.label)).toEqual(["Move on"]);
+  });
 });

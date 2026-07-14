@@ -85,6 +85,7 @@ export default function Sidebar({
 }) {
   const [tab, setTab] = useState<Tab>("status");
   const [showDetails, setShowDetails] = useState(false);
+  const [showPeople, setShowPeople] = useState(false);
   const pc = state.characters.find((c) => c.kind === "pc");
 
   const body = (
@@ -112,6 +113,7 @@ export default function Sidebar({
             npcRelations={npcRelations}
             sceneCard={sceneCard}
             onDetails={() => setShowDetails(true)}
+            onPeople={() => setShowPeople(true)}
           />
         )}
         {tab === "traits" && <TraitsTab state={state} />}
@@ -120,6 +122,14 @@ export default function Sidebar({
       </div>
 
       {showDetails && pc && <DetailsModal state={state} character={pc} onClose={() => setShowDetails(false)} />}
+      {showPeople && (
+        <PeopleModal
+          state={state}
+          npcRelations={npcRelations}
+          sceneCard={sceneCard}
+          onClose={() => setShowPeople(false)}
+        />
+      )}
     </>
   );
 
@@ -225,12 +235,14 @@ function StatusTab({
   npcRelations,
   sceneCard,
   onDetails,
+  onPeople,
 }: {
   state: CampaignState;
   combat: CombatState | null;
   npcRelations: NpcRelations;
   sceneCard: SceneCard | null;
   onDetails: () => void;
+  onPeople: () => void;
 }) {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
   const active = state.threads.filter((t) => t.status === "active");
@@ -423,10 +435,20 @@ function StatusTab({
 
       {contacts.length > 0 && (
         <div className="rounded border border-edge p-2">
-          <div className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">Contacts</div>
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-[11px] uppercase tracking-wide text-neutral-500">Contacts</span>
+            <button onClick={onPeople} className="text-[11px] text-accent transition hover:underline">
+              People →
+            </button>
+          </div>
           <div className="space-y-1">
             {contacts.map(({ npc, rel, prox }) => (
-              <div key={npc.id} className="flex items-baseline justify-between gap-2" title={rel.lastNote ? `Last: ${rel.lastNote}` : npc.oneBreath}>
+              <button
+                key={npc.id}
+                onClick={onPeople}
+                className="flex w-full items-baseline justify-between gap-2 rounded px-1 py-0.5 text-left transition hover:bg-white/5"
+                title={rel.lastNote ? `Last: ${rel.lastNote}` : npc.oneBreath}
+              >
                 <span className="truncate text-[13px] text-neutral-200">
                   {npc.name}
                   {prox && (
@@ -444,7 +466,7 @@ function StatusTab({
                 >
                   {dispositionLabel(rel.disposition)}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -602,6 +624,160 @@ function DetailsModal({
         {tab === "story" && (
           <StoryDetail character={c} />
         )}
+      </div>
+    </div>
+  );
+}
+
+/** People popup — the cast the player has met. A clickable list on the left; the
+ *  selected person's dossier on the right: who they are, your standing, and the
+ *  last thing you knew about them (CONTINUITY tier CANON, surfaced for the player). */
+function PeopleModal({
+  state,
+  npcRelations,
+  sceneCard,
+  onClose,
+}: {
+  state: CampaignState;
+  npcRelations: NpcRelations;
+  sceneCard: SceneCard | null;
+  onClose: () => void;
+}) {
+  const present = new Set(sceneCard?.presentNpcIds ?? []);
+  const here = state.campaign.currentLocationId;
+  const locName = (id?: string) => state.locations.find((l) => l.id === id)?.name;
+  const where = (npc: CampaignState["npcs"][number]) =>
+    present.has(npc.id)
+      ? { label: "In the scene now", tone: "text-accent" }
+      : npc.locationId && npc.locationId === here
+        ? { label: "Nearby — same station", tone: "text-neutral-400" }
+        : { label: locName(npc.locationId) ? `Last seen: ${locName(npc.locationId)}` : "Elsewhere", tone: "text-neutral-500" };
+
+  // The cast worth showing: anyone the player has a standing with, is with right
+  // now, or who shares the current location. Ranked present → known → the rest.
+  const people = state.npcs
+    .map((npc) => ({ npc, rel: npcRelations[npc.id], w: where(npc) }))
+    .filter(({ npc, rel }) => rel || present.has(npc.id) || npc.locationId === here)
+    .sort((a, b) => {
+      const rank = (x: typeof a) => (present.has(x.npc.id) ? 2 : x.rel ? 1 : 0);
+      return rank(b) - rank(a) || Math.abs(b.rel?.disposition ?? 0) - Math.abs(a.rel?.disposition ?? 0);
+    });
+
+  const [selId, setSelId] = useState<string | null>(people[0]?.npc.id ?? null);
+  const sel = people.find((p) => p.npc.id === selId) ?? people[0] ?? null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 p-4" onClick={onClose}>
+      <div
+        className="flex max-h-[85dvh] w-full max-w-2xl overflow-hidden rounded-xl border border-edge bg-panel text-[13px]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Left: the roster. */}
+        <div className="scrollbar-thin w-2/5 shrink-0 overflow-y-auto border-r border-edge">
+          <div className="sticky top-0 flex items-center justify-between border-b border-edge bg-panel px-3 py-2">
+            <span className="text-[11px] uppercase tracking-wide text-neutral-500">People ({people.length})</span>
+            <button onClick={onClose} className="text-neutral-400 hover:text-accent md:hidden" aria-label="Close">✕</button>
+          </div>
+          {people.length === 0 ? (
+            <p className="p-3 text-neutral-500">You haven&apos;t met anyone worth tracking yet.</p>
+          ) : (
+            <div className="p-1.5">
+              {people.map(({ npc, rel, w }) => (
+                <button
+                  key={npc.id}
+                  onClick={() => setSelId(npc.id)}
+                  className={
+                    "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left transition " +
+                    (npc.id === sel?.npc.id ? "bg-accent/15 text-neutral-100" : "text-neutral-300 hover:bg-white/5")
+                  }
+                >
+                  <span className="truncate">
+                    {npc.name}
+                    <span className={"block text-[10px] " + w.tone}>{w.label}</span>
+                  </span>
+                  <span
+                    className={
+                      "shrink-0 text-[11px] " +
+                      (!rel ? "text-neutral-600" : rel.disposition > 0 ? "text-good" : rel.disposition < 0 ? "text-bad" : "text-neutral-500")
+                    }
+                  >
+                    {rel ? dispositionLabel(rel.disposition) : "—"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right: the selected person's dossier. */}
+        <div className="scrollbar-thin flex-1 overflow-y-auto p-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-neutral-100">{sel?.npc.name ?? "—"}</h3>
+              {sel?.rel?.relationship && <p className="text-[12px] text-accent/80">{sel.rel.relationship}</p>}
+            </div>
+            <button onClick={onClose} className="hidden text-neutral-400 hover:text-accent md:block" aria-label="Close">✕</button>
+          </div>
+
+          {sel && (
+            <div className="mt-4 space-y-4">
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-neutral-500">Standing</div>
+                {sel.rel ? <DispositionScale value={sel.rel.disposition} /> : <p className="mt-1 text-neutral-500">No read yet — you haven&apos;t dealt with them enough to know where you stand.</p>}
+              </div>
+
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-neutral-500">Whereabouts</div>
+                <p className={"mt-1 " + sel.w.tone}>{sel.w.label}</p>
+              </div>
+
+              {sel.npc.oneBreath && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-neutral-500">Who they are</div>
+                  <p className="mt-1 leading-snug text-neutral-300">{sel.npc.oneBreath}</p>
+                </div>
+              )}
+
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-neutral-500">What you last knew</div>
+                {sel.rel?.lastNote ? (
+                  <p className="mt-1 leading-snug text-neutral-300">
+                    {sel.rel.lastNote}
+                    {sel.rel.lastSceneSeq ? <span className="text-neutral-600"> · scene {sel.rel.lastSceneSeq}</span> : null}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-neutral-500">Nothing notable has passed between you yet.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A −3..+3 standing gauge with the current step highlighted. */
+function DispositionScale({ value }: { value: number }) {
+  const steps = [-3, -2, -1, 0, 1, 2, 3];
+  return (
+    <div className="mt-1.5">
+      <div className="flex gap-0.5">
+        {steps.map((s) => (
+          <div
+            key={s}
+            title={dispositionLabel(s)}
+            className={
+              "h-1.5 flex-1 rounded-sm " +
+              (s === value
+                ? value > 0 ? "bg-good" : value < 0 ? "bg-bad" : "bg-neutral-400"
+                : "bg-white/10")
+            }
+          />
+        ))}
+      </div>
+      <div className={"mt-1 text-[13px] " + (value > 0 ? "text-good" : value < 0 ? "text-bad" : "text-neutral-400")}>
+        {dispositionLabel(value)} <span className="text-neutral-600">({value >= 0 ? "+" : ""}{value})</span>
       </div>
     </div>
   );

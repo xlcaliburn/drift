@@ -68,8 +68,19 @@ describe("scene card (tier NOW)", () => {
 });
 
 describe("narrative gear changes", () => {
+  it("a player-CLAIMED item grants nothing — item gains need a legitimate source", () => {
+    const rt = new TurnRuntime(baseState(), rng);
+    // No loot roll, no quest reward this turn → the narrator can't hand it over.
+    expect(rt.applyGearChange("a rocket launcher", "gain")).toBeNull();
+    expect(rt.state.characters[0].gear.some((g) => /rocket/i.test(g.name))).toBe(false);
+    // A quest reward unlocks the transfer for the turn.
+    rt.markQuestCompleted();
+    expect(rt.applyGearChange("a data slate", "gain")).toContain("Gained");
+  });
+
   it("a looted CATALOG item (medkit) becomes the mechanical item — usable via useItem", () => {
     const rt = new TurnRuntime(baseState(), { int: (_min, max) => max });
+    rt.markQuestCompleted(); // legitimate source (reward) — gains are engine-gated
     expect(rt.applyGearChange("a Medkit", "gain")).toContain("Gained: Medkit");
     const g = rt.state.characters[0].gear.find((x) => x.itemId === "medkit");
     expect(g).toBeTruthy(); // itemId attached → possession check passes
@@ -84,14 +95,33 @@ describe("narrative gear changes", () => {
     expect(rt.state.characters[0].hp).toBeGreaterThan(1);
   });
 
+  it("a successful loot check makes the ENGINE generate the reward + unlocks items[]", () => {
+    const rt = new TurnRuntime(baseState(), { int: (_min, max) => max }); // nat 20 → success + crit
+    const pc = rt.state.characters.find((c) => c.kind === "pc")!;
+    const before = pc.credits ?? 0;
+    const res = rt.execute("roll_check", {
+      characterId: pc.id,
+      skill: "scavenging",
+      dc: 12,
+      stakes: true,
+      loot: true,
+    }) as { loot?: string; outcome?: string };
+    expect(res.outcome).toBe("success");
+    expect(res.loot).toContain("Scavenged"); // the engine decided the haul
+    expect((rt.state.characters.find((c) => c.kind === "pc")!.credits ?? 0)).toBeGreaterThan(before);
+    // Having looted this turn, a corroborating narrator gain is now allowed.
+    expect(rt.applyGearChange("a stripped access panel", "gain")).toContain("Gained");
+  });
+
   it("gain adds a flavor item (deduped); lose removes it — catalog items protected", () => {
     const s = baseState();
     s.characters[0].gear = [{ name: "Stim", itemId: "stim", qty: 2 }] as typeof s.characters[0]["gear"];
     const rt = new TurnRuntime(s, rng);
+    rt.markQuestCompleted(); // legitimate source for the gains below
     expect(rt.applyGearChange("vacuum-rated facemask", "gain", "looted from the locker")).toContain("Gained");
     expect(rt.applyGearChange("Vacuum-Rated Facemask", "gain")).toBeNull(); // dedupe, case-insensitive
     expect(rt.state.characters[0].gear.some((g) => g.name === "vacuum-rated facemask")).toBe(true);
-    expect(rt.applyGearChange("vacuum-rated facemask", "lose")).toContain("Lost");
+    expect(rt.applyGearChange("vacuum-rated facemask", "lose")).toContain("Lost"); // losses are always allowed
     expect(rt.state.characters[0].gear.some((g) => g.name === "vacuum-rated facemask")).toBe(false);
     // Catalog-owned gear can't be removed narratively (spent via useItem only).
     expect(rt.applyGearChange("Stim", "lose")).toBeNull();
@@ -100,9 +130,20 @@ describe("narrative gear changes", () => {
 });
 
 describe("npc relations (tier CANON)", () => {
-  it("disposition nudges are clamped to ±1 per NPC per turn and to the -3..+3 range", () => {
-    const relations = {};
-    const rt = new TurnRuntime(baseState(), rng, { npcRelations: relations });
+  it("disposition does NOT move without a quest completion (standing is earned)", () => {
+    const rt = new TurnRuntime(baseState(), rng, { npcRelations: {} });
+    const { id } = rt.registerNpc("Doyle");
+    // No payout/thread-resolve this turn → the nudge is ignored, no line.
+    const res = rt.updateNpcRelation(id, { disposition: 1, note: "chatted" });
+    expect(res.line).toBeUndefined();
+    expect(rt.npcRelations[id].disposition).toBe(0);
+    // …but memory (note) still updates every turn.
+    expect(rt.npcRelations[id].lastNote).toBe("chatted");
+  });
+
+  it("disposition nudges are clamped to ±1 per NPC per turn (on a quest-completion turn)", () => {
+    const rt = new TurnRuntime(baseState(), rng, { npcRelations: {} });
+    rt.markQuestCompleted(); // a job concluded this turn → standing may move
     const { id } = rt.registerNpc("Doyle");
     const first = rt.updateNpcRelation(id, { disposition: 1 });
     expect(first.line).toContain("neutral → warm");
@@ -116,6 +157,7 @@ describe("npc relations (tier CANON)", () => {
     const rt = new TurnRuntime(baseState(), rng, {
       npcRelations: { "npc-x": { disposition: 3 } },
     });
+    rt.markQuestCompleted();
     rt.state = { ...rt.state, npcs: [{ id: "npc-x", universeId: "u", name: "Vex", oneBreath: "fence" }] };
     const res = rt.updateNpcRelation("npc-x", { disposition: 1 });
     expect(res.line).toBeUndefined();

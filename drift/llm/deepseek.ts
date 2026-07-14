@@ -29,6 +29,36 @@ export function isDeepSeekModel(model: string): boolean {
   return model.startsWith("deepseek");
 }
 
+/**
+ * Pull the first COMPLETE, balanced JSON object out of a blob of text — used to
+ * rescue a turn the model drafted inside its "thinking" channel. Brace-depth scan
+ * that respects strings/escapes; returns null if there's no finished object
+ * (e.g. the thinking was truncated at max_tokens mid-draft), so a thinking-only
+ * response never surfaces raw chain-of-thought as narration.
+ */
+export function extractJsonObject(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+    } else if (ch === '"') inStr = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null; // unbalanced → truncated draft, no usable object
+}
+
 export function deepseekAvailable(): boolean {
   return Boolean(process.env.DEEPSEEK_API_KEY);
 }
@@ -213,9 +243,13 @@ export async function deepseekChat(params: {
     content.push({ type: "text", text: choice.message.content });
   } else if (choice?.message?.reasoning_content) {
     // Hybrid models sometimes spend the whole budget "thinking" and leave content
-    // empty. The thinking often CONTAINS the drafted JSON — surface it as text so
-    // the caller's extractor can salvage it instead of falling back to a stub.
-    content.push({ type: "text", text: choice.message.reasoning_content });
+    // empty. Salvage ONLY a complete JSON object drafted inside the thinking —
+    // never the raw reasoning prose, which would leak the model's chain-of-thought
+    // ("We need to generate a JSON response…") to the player as narration. If no
+    // finished object is in there, surface nothing → the caller treats it as a
+    // failed turn (honest error + retry) instead of showing the thinking.
+    const salvaged = extractJsonObject(choice.message.reasoning_content);
+    if (salvaged) content.push({ type: "text", text: salvaged });
   }
   for (const tc of choice?.message?.tool_calls ?? []) {
     content.push({
@@ -355,7 +389,12 @@ export async function deepseekChatStream(params: {
 
   const content: NormalizedResponse["content"] = [];
   if (text) content.push({ type: "text", text });
-  else if (reasoning) content.push({ type: "text", text: reasoning }); // salvage a thinking-only response
+  else {
+    // Thinking-only response: salvage a finished JSON object from the reasoning,
+    // never the raw chain-of-thought (which would stream to the player as prose).
+    const salvaged = extractJsonObject(reasoning);
+    if (salvaged) content.push({ type: "text", text: salvaged });
+  }
   for (const [, tc] of [...toolAcc.entries()].sort((a, b) => a[0] - b[0])) {
     content.push({ type: "tool_use", id: tc.id, name: tc.name, input: safeParseArgs(tc.args) });
   }

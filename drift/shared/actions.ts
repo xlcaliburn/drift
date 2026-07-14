@@ -14,6 +14,9 @@ export interface ActionVerbDef {
   hazard?: boolean;
   /** This verb is an act of violence — routes to combat, not a self-check. */
   combat?: boolean;
+  /** This verb is an attempt to acquire loot: on success the ENGINE generates the
+   *  reward (scrap + creds), so the player can't name their own prize. */
+  loot?: boolean;
   /** Synonyms shown to the model so it maps its phrasing to the verb. */
   aliases: string[];
   /** One-liner for the fed verb list in the prompt. */
@@ -22,7 +25,7 @@ export interface ActionVerbDef {
 
 export const ACTION_VERBS: Record<string, ActionVerbDef> = {
   examine: { skill: "perception", defaultDc: 12, aliases: ["inspect", "study", "read", "scan", "check"], hint: "look something over for detail" },
-  loot: { skill: "scavenging", defaultDc: 12, aliases: ["search", "scavenge", "salvage", "strip", "rifle"], hint: "strip a wreck/body/stash for value" },
+  loot: { skill: "scavenging", defaultDc: 12, loot: true, aliases: ["search", "scavenge", "salvage", "strip", "rifle"], hint: "strip a wreck/body/stash for value" },
   force: { skill: "athletics", defaultDc: 13, hazard: true, aliases: ["move", "shove", "lift", "haul", "pry", "break", "smash", "wrench"], hint: "muscle a heavy or stuck thing" },
   climb: { skill: "athletics", defaultDc: 13, hazard: true, aliases: ["vault", "scramble", "scale", "clamber", "cross"], hint: "climb or vault across risky terrain" },
   sneak: { skill: "stealth", defaultDc: 13, aliases: ["slip", "creep", "tail", "shadow", "hide"], hint: "move unseen / tail someone" },
@@ -70,6 +73,8 @@ export interface VerbCheck {
   hazardLevel?: number;
   /** Attack verbs route to combat via the existing gun-skill reroute. */
   combat?: boolean;
+  /** Loot verbs: a successful check makes the ENGINE generate the reward. */
+  loot?: boolean;
 }
 
 /** Build the engine's check spec for a verb-tagged action (null if unknown verb). */
@@ -83,6 +88,7 @@ export function checkFromVerb(verb: string, difficulty?: string): VerbCheck | nu
     stakes: true,
     ...(def.hazard ? { hazardLevel: 2 } : {}), // verb default: dangerous (⚠⚠); model may override
     ...(def.combat ? { combat: true } : {}),
+    ...(def.loot ? { loot: true } : {}),
   };
 }
 
