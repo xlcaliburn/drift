@@ -1,43 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { extractNpcNames, extractRoleNpcs, knownEntityNames, isPlausibleNpcName } from "./npcExtract";
-
-describe("extractNpcNames — the missing-NPC backstop", () => {
-  // Eddie's world: Draven already tracked; Rook/Meridian/Talos/the Nest are places.
-  const known = knownEntityNames([
-    "Draven", "Rook Station", "Meridian Ring", "Talos", "The Nest", "Sable Chain", "The Hollow Crown", "Cinder",
-  ]);
-
-  it("catches a NEW named figure the narrator forgot to declare", () => {
-    const n = "A wiry woman steps from the shadows — Kessa, Draven's second, gun already drawn.";
-    expect(extractNpcNames(n, known)).toEqual(["Kessa"]);
-  });
-
-  it("does NOT re-register a known NPC, location, or faction", () => {
-    const n = "Draven laughs from his throne in the Nest; the Sable Chain would pay well for this.";
-    expect(extractNpcNames(n, known)).toEqual([]);
-  });
-
-  it("ignores sentence-initial capitalization (not a name)", () => {
-    const n = "You cross the threshold. They watch you. Nothing moves. Your hand rests on your sidearm.";
-    expect(extractNpcNames(n, known)).toEqual([]);
-  });
-
-  it("catches a single-word name only when it appears mid-sentence", () => {
-    // "Vex" only at a sentence start → skipped (could be capitalization).
-    expect(extractNpcNames("Vex is here.", known)).toEqual([]);
-    // "Vex" mid-sentence → a real name.
-    expect(extractNpcNames("The fixer, Vex, leans in.", known)).toEqual(["Vex"]);
-  });
-
-  it("catches multi-word names even at a sentence start; caps the count", () => {
-    const n = "Rourke Vane blocks the door. Tam Hollis flanks left. Sil Draeger covers the rear. Bex Corrin waits.";
-    const found = extractNpcNames(n, known);
-    expect(found).toEqual(["Rourke Vane", "Tam Hollis", "Sil Draeger"]); // capped at 3
-  });
-});
+import { extractDialogueNpcs, knownEntityNames, isPlausibleNpcName } from "./npcExtract";
 
 describe("isPlausibleNpcName — the model-npcs junk filter", () => {
-  // Eddie's real polluters: the cheap narrator listed these as NPCs.
   it("rejects sentence-fragment junk (verbs, contractions, numbers)", () => {
     for (const junk of ["End", "Get", "Sixty", "You're", "The", "And then", "Wait"]) {
       expect(isPlausibleNpcName(junk)).toBe(false);
@@ -63,24 +27,35 @@ describe("isPlausibleNpcName — the model-npcs junk filter", () => {
   });
 });
 
-describe("extractRoleNpcs — the unnamed-figure backstop", () => {
-  const known = knownEntityNames(["Rook Station", "Sable Chain"]); // non-person entities only
+describe("extractDialogueNpcs — dialogue-gated registration", () => {
+  const known = knownEntityNames(["Draven", "Rook Station", "Sable Chain", "Cinder"]);
 
-  it("catches an occupational figure the narrator names by role", () => {
-    const n = "You lay the chip on the fixer's counter. The data broker leans back, watching.";
-    expect(extractRoleNpcs(n, known)).toEqual(["Fixer", "Data Broker"]);
+  it("registers a NAMED speaker attributed to a line of dialogue", () => {
+    expect(extractDialogueNpcs('"Deal," says Vex, sliding the chip back.', known)).toEqual([{ handle: "Vex" }]);
+    expect(extractDialogueNpcs("Kessa mutters something about the Crown.", known)).toEqual([{ handle: "Kessa" }]);
   });
 
-  it("prefers the longer role phrase (data broker over broker) and Title-cases it", () => {
-    expect(extractRoleNpcs("A grizzled guard blocks the hall.", known)).toEqual(["Grizzled Guard"]);
+  it("registers an occupational-ROLE speaker ('the fixer says')", () => {
+    expect(extractDialogueNpcs('The fixer says, "Payout\'s on the tab."', known)).toEqual([
+      { handle: "Fixer", role: "fixer" },
+    ]);
   });
 
-  it("ignores non-person nouns and generic words", () => {
-    expect(extractRoleNpcs("The door slid open and the man said nothing.", known)).toEqual([]);
+  it("does NOT register dialogue CONTENT or an unnamed speaker (the reported bug)", () => {
+    const n =
+      "'Clean. Payout's on the tab.' She slides a cred chip across the counter. The courier run is complete.";
+    expect(extractDialogueNpcs(n, known)).toEqual([]);
   });
 
-  it("caps the count and dedupes", () => {
-    const n = "The fixer nods. The fixer smiles. A guard, a pilot, a medic all wait.";
-    expect(extractRoleNpcs(n, known)).toEqual(["Fixer", "Guard"]); // deduped + capped at 2
+  it("does NOT register a passing mention with no dialogue", () => {
+    expect(extractDialogueNpcs("You pass the broker's empty stall and keep walking.", known)).toEqual([]);
+  });
+
+  it("does not re-register a known NPC that speaks", () => {
+    expect(extractDialogueNpcs('Draven laughs. "Get out," he says.', known)).toEqual([]);
+  });
+
+  it("catches the Name-colon-quote script form", () => {
+    expect(extractDialogueNpcs('Vex: "We are done here."', known)).toEqual([{ handle: "Vex" }]);
   });
 });

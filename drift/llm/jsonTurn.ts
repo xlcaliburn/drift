@@ -18,7 +18,7 @@ import { SCENE_TURN_CAP, type SceneCard, type NpcRelations, type SceneMemory } f
 import { checkFromVerb, verbFromLabel, verbRolls } from "@/shared/actions";
 import { dcForRisk, difficultyToRisk, type RiskTier } from "@/shared/risk";
 import type { Character } from "@/shared/schemas";
-import { extractNpcNames, extractRoleNpcs, knownEntityNames, isPlausibleNpcName } from "@/shared/npcExtract";
+import { extractDialogueNpcs, knownEntityNames, isPlausibleNpcName } from "@/shared/npcExtract";
 import type { CombatState } from "@/shared/combat";
 import type { Dossier } from "@/shared/multiplayer";
 import type { SpawnSpec, ShipClass } from "@/engine/combatEngine";
@@ -677,9 +677,11 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   narration = stripInlineMenu(narration.trim());
   if (lastStop === "max_tokens") narration = trimToLastSentence(narration);
 
-  // NPC backstop: register named figures the narrator mentioned but forgot to
-  // declare (Eddie's un-tracked "wrecker woman") so the scene's cast is complete
-  // in Here & now. Filtered hard against everything already known.
+  // NPC backstop: register a figure the model forgot to declare ONLY when the
+  // narration shows them in EXPLICIT DIALOGUE — a named or role speaker attributed
+  // to a line of speech. This is deliberately precise: passing mentions and dialogue
+  // CONTENT never create NPCs (an earlier broad name/role scrape turned words like
+  // "Clean" from "'Clean. Payout's on the tab.'" into junk NPCs).
   if (!combat) {
     const known = knownEntityNames([
       ...runtime.state.npcs.map((n) => n.name),
@@ -689,24 +691,13 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       ...(runtime.state.ship ? [runtime.state.ship.name] : []),
       runtime.state.universe.name ?? "",
     ]);
-    for (const name of extractNpcNames(narration, known)) {
-      toolCalls.push("register_npc(auto)");
-      runtime.registerNpc(name, `Mentioned in the scene.`);
-    }
-    // Role backstop: register unnamed occupational figures ("the fixer", "the data
-    // broker") so whoever the player is actually dealing with appears in the scene,
-    // even before they get a name. Filter only against NON-person entities (ship,
-    // locations, factions) so an existing role NPC still resolves + re-marks below.
-    const nonPersons = knownEntityNames([
-      ...runtime.state.locations.map((l) => l.name),
-      ...runtime.state.factions.map((f) => f.name),
-      ...(runtime.state.ship ? [runtime.state.ship.name] : []),
-    ]);
-    for (const handle of extractRoleNpcs(narration, nonPersons)) {
-      toolCalls.push("register_npc(role)");
-      // The handle IS a role ("Data Broker") — store it as the NPC's role so the
-      // UI can show it until the player learns a proper name.
-      runtime.registerNpc(handle, `${handle} the player is dealing with.`, handle.toLowerCase());
+    for (const speaker of extractDialogueNpcs(narration, known)) {
+      toolCalls.push("register_npc(dialogue)");
+      runtime.registerNpc(
+        speaker.handle,
+        speaker.role ? `${speaker.handle} the player is dealing with.` : `Spoke with the player.`,
+        speaker.role,
+      );
     }
     // Presence: mark present ANY known NPC actually named in THIS narration — so
     // whoever the player is dealing with (new, or continuing after a scene reset)

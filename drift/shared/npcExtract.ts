@@ -70,39 +70,6 @@ export function knownEntityNames(names: string[]): Set<string> {
   return set;
 }
 
-/**
- * Extract likely person-names from narration that aren't already known.
- * `known` should come from knownEntityNames(state entities). Returns unique
- * names in first-seen order, capped by `max`.
- */
-export function extractNpcNames(narration: string, known: Set<string>, max = 3): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  const re = /([A-Z][a-z'’]+(?:\s+[A-Z][a-z'’]+){0,2})/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(narration)) !== null) {
-    // Drop a trailing possessive so "Draven's" resolves to the known "Draven".
-    const name = m[1].trim().replace(/['’]s$/i, "");
-    const lc = name.toLowerCase();
-    if (name.length < 3 || seen.has(lc)) continue;
-    // Any word of the candidate is a stopword or a known entity → skip the whole.
-    const words = lc.split(/\s+/);
-    if (words.some((w) => NAME_STOPWORDS.has(w) || known.has(w)) || known.has(lc)) continue;
-    // Multi-word capitalized phrases are almost always proper nouns. A single
-    // word must appear MID-sentence — preceded by a lowercase letter, comma, dash,
-    // or opening quote/paren (an appositive/dialogue name) — not at a sentence
-    // start, where a stray capitalized adjective ("Cold sweat…") would false-match.
-    const multiWord = words.length > 1;
-    const preceding = narration.slice(0, m.index).replace(/\s+$/, "");
-    const prevChar = preceding[preceding.length - 1] ?? "";
-    const midSentence = /[a-z0-9,;:—–\-"'“‘(]/.test(prevChar);
-    if (!multiWord && !midSentence) continue;
-    seen.add(lc);
-    out.push(name);
-    if (out.length >= max) break;
-  }
-  return out;
-}
 
 /** Occupational person-roles a narrator names WITHOUT a proper noun ("the fixer",
  *  "the data broker", "the guard"). These are unambiguously people, so "the <role>"
@@ -119,36 +86,75 @@ const PERSON_ROLES = [
   "foreman", "overseer", "administrator", "official", "envoy", "emissary", "diplomat",
   "priest", "prophet", "oracle", "bounty hunter", "hunter", "assassin",
 ];
-// Longest role first so "data broker" wins over "broker"; word-boundaried, case-insensitive.
-const ROLE_RE = new RegExp(
-  `\\b(?:the|a|an)\\s+((?:[a-z][a-z'’-]+\\s+)?(?:${[...PERSON_ROLES]
-    .sort((a, b) => b.length - a.length)
-    .join("|")}))\\b`,
-  "gi",
-);
-
 /** Title-case a role phrase into a display handle ("data broker" → "Data Broker"). */
 function titleCase(s: string): string {
   return s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
 }
 
+/** Verbs that attribute spoken dialogue to a speaker. A figure is registered ONLY
+ *  when they clearly SPEAK, so passing mentions and dialogue CONTENT never become
+ *  NPCs ("'Clean. Payout's on the tab.' She slides a chip" → nobody registered:
+ *  the speaker is an unnamed "She", and "Clean" is just what was said). */
+const SPEECH_VERBS = [
+  "says", "said", "asks", "asked", "replies", "replied", "answers", "answered",
+  "mutters", "muttered", "murmurs", "murmured", "growls", "growled", "snaps", "snapped",
+  "whispers", "whispered", "warns", "warned", "tells", "told", "demands", "demanded",
+  "insists", "insisted", "promises", "promised", "agrees", "agreed", "declares", "declared",
+  "shouts", "shouted", "yells", "yelled", "hisses", "hissed", "barks", "barked",
+  "sneers", "sneered", "drawls", "drawled", "grunts", "grunted", "chuckles", "scoffs",
+  "laughs", "laughed", "continues", "continued", "cuts in", "chimes in",
+];
+const VERB_ALT = SPEECH_VERBS.join("|");
+const NAME_PAT = `[A-Z][a-z'’]+(?:\\s+[A-Z][a-z'’]+){0,2}`;
+const ROLE_ALT = [...PERSON_ROLES].sort((a, b) => b.length - a.length).join("|");
+const ROLE_PAT = `(?:[a-z][a-z'’-]+\\s+)?(?:${ROLE_ALT})`;
+
+/** Speaker-attribution patterns: name/role before a speech verb, after one, or a
+ *  "Name:"-before-a-quote script form. Each capture group 1 is the speaker. */
+const DIALOGUE_PATTERNS: { re: RegExp; role: boolean }[] = [
+  { re: new RegExp(`\\b(${NAME_PAT})\\s+(?:${VERB_ALT})\\b`, "g"), role: false }, // Vex mutters
+  { re: new RegExp(`\\b(?:${VERB_ALT})[,]?\\s+(${NAME_PAT})\\b`, "g"), role: false }, // says Vex
+  { re: new RegExp(`\\b(?:the|a|an)\\s+(${ROLE_PAT})\\s+(?:${VERB_ALT})\\b`, "gi"), role: true }, // the fixer says
+  { re: new RegExp(`\\b(?:${VERB_ALT})[,]?\\s+(?:to\\s+)?(?:the|a|an)\\s+(${ROLE_PAT})\\b`, "gi"), role: true }, // says the fixer
+  { re: new RegExp(`\\b(${NAME_PAT})\\s*:\\s*["“]`, "g"), role: false }, // Vex: "…"
+];
+
+/** A figure found speaking in the narration: a proper-noun `handle`, or a role
+ *  handle ("Fixer") carrying its `role` ("fixer"). */
+export interface DialogueNpc {
+  handle: string;
+  role?: string;
+}
+
 /**
- * Extract role-named figures ("the fixer", "the data broker") the narrator refers
- * to WITHOUT a proper noun, so the person the player is dealing with still shows up
- * in the scene. Returns Title-cased handles not already known, capped by `max`.
+ * Register NPCs ONLY when the narration shows them in explicit dialogue — a named
+ * or occupational-role speaker attributed to a line of speech. Deliberately
+ * precise: dialogue content, pronoun speakers ("she says"), and passing mentions
+ * never create NPCs. `known` filters out figures already tracked (they get
+ * re-marked present elsewhere). Returns new speakers in first-seen order, capped.
  */
-export function extractRoleNpcs(narration: string, known: Set<string>, max = 2): string[] {
-  const out: string[] = [];
+export function extractDialogueNpcs(narration: string, known: Set<string>, max = 3): DialogueNpc[] {
+  const out: DialogueNpc[] = [];
   const seen = new Set<string>();
-  let m: RegExpExecArray | null;
-  ROLE_RE.lastIndex = 0;
-  while ((m = ROLE_RE.exec(narration)) !== null) {
-    const phrase = m[1].trim().replace(/\s+/g, " ");
-    const lc = phrase.toLowerCase();
-    if (seen.has(lc) || known.has(lc) || lc.split(" ").every((w) => known.has(w))) continue;
-    seen.add(lc);
-    out.push(titleCase(phrase));
-    if (out.length >= max) break;
+  for (const { re, role } of DIALOGUE_PATTERNS) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(narration)) !== null) {
+      const raw = m[1].trim().replace(/\s+/g, " ");
+      if (role) {
+        const lc = raw.toLowerCase();
+        if (seen.has(lc) || known.has(lc) || lc.split(" ").every((w) => known.has(w))) continue;
+        seen.add(lc);
+        out.push({ handle: titleCase(lc), role: lc });
+      } else {
+        const name = raw.replace(/['’]s$/i, "");
+        const lc = name.toLowerCase();
+        if (seen.has(lc) || known.has(lc) || !isPlausibleNpcName(name, known)) continue;
+        seen.add(lc);
+        out.push({ handle: name });
+      }
+      if (out.length >= max) return out;
+    }
   }
   return out;
 }

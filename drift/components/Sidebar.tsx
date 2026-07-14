@@ -112,10 +112,8 @@ export default function Sidebar({
           <StatusTab
             state={state}
             combat={combat}
-            npcRelations={npcRelations}
             sceneCard={sceneCard}
             onDetails={() => setDetailsTab("equipment")}
-            onPeople={() => setDetailsTab("relationships")}
           />
         )}
         {tab === "traits" && <TraitsTab state={state} />}
@@ -235,34 +233,16 @@ function condition(injuries?: { name: string }[]): { text: string; className: st
 function StatusTab({
   state,
   combat,
-  npcRelations,
   sceneCard,
   onDetails,
-  onPeople,
 }: {
   state: CampaignState;
   combat: CombatState | null;
-  npcRelations: NpcRelations;
   sceneCard: SceneCard | null;
   onDetails: () => void;
-  onPeople: () => void;
 }) {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
   const active = state.threads.filter((t) => t.status === "active");
-  // Contacts: every NPC the player has a standing with, strongest ties first.
-  // Proximity: in the scene right now (immediate) vs. on the same station (nearby).
-  const present = new Set(sceneCard?.presentNpcIds ?? []);
-  const here = state.campaign.currentLocationId;
-  const proximity = (npc: CampaignState["npcs"][number]) =>
-    present.has(npc.id) ? "immediate" : npc.locationId && npc.locationId === here ? "nearby" : "";
-  const contacts = Object.entries(npcRelations)
-    .flatMap(([id, rel]) => {
-      const npc = state.npcs.find((n) => n.id === id);
-      return npc ? [{ rel, npc, prox: proximity(npc) }] : [];
-    })
-    // Nearest first, then strongest ties.
-    .sort((a, b) => (b.prox ? 1 : 0) - (a.prox ? 1 : 0) || Math.abs(b.rel.disposition) - Math.abs(a.rel.disposition))
-    .slice(0, 8);
   return (
     <div className="space-y-4">
       {combat?.active && (
@@ -437,44 +417,6 @@ function StatusTab({
         )}
       </div>
 
-      {contacts.length > 0 && (
-        <div className="rounded border border-edge p-2">
-          <div className="mb-1 flex items-center justify-between">
-            <span className="text-[11px] uppercase tracking-wide text-neutral-500">Contacts</span>
-            <button onClick={onPeople} className="text-[11px] text-accent transition hover:underline">
-              People →
-            </button>
-          </div>
-          <div className="space-y-1">
-            {contacts.map(({ npc, rel, prox }) => (
-              <button
-                key={npc.id}
-                onClick={onPeople}
-                className="flex w-full items-baseline justify-between gap-2 rounded px-1 py-0.5 text-left transition hover:bg-white/5"
-                title={rel.lastNote ? `Last: ${rel.lastNote}` : npc.oneBreath}
-              >
-                <span className="truncate text-[13px] text-neutral-200">
-                  {npc.name}
-                  {prox && (
-                    <span className={"ml-1 text-[10px] " + (prox === "immediate" ? "text-accent" : "text-neutral-500")}>
-                      · {prox}
-                    </span>
-                  )}
-                  {rel.relationship && <span className="text-neutral-500"> · {rel.relationship}</span>}
-                </span>
-                <span
-                  className={
-                    "shrink-0 text-[11px] " +
-                    (rel.disposition > 0 ? "text-good" : rel.disposition < 0 ? "text-bad" : "text-neutral-500")
-                  }
-                >
-                  {dispositionLabel(rel.disposition)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
