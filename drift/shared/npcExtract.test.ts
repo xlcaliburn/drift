@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { extractDialogueNpcs, knownEntityNames, isPlausibleNpcName } from "./npcExtract";
+import {
+  extractDialogueNpcs,
+  knownEntityNames,
+  isPlausibleNpcName,
+  isCollectiveName,
+  isShareableNpcName,
+} from "./npcExtract";
 
 describe("isPlausibleNpcName — the model-npcs junk filter", () => {
   it("rejects sentence-fragment junk (verbs, contractions, numbers)", () => {
@@ -24,6 +30,37 @@ describe("isPlausibleNpcName — the model-npcs junk filter", () => {
     expect(isPlausibleNpcName("Sable")).toBe(true);
     expect(isPlausibleNpcName("Wrecker Boss")).toBe(true);
     expect(isPlausibleNpcName("Draven’s")).toBe(true); // possessive stripped → "Draven"
+  });
+
+  it("rejects collective/group handles (the prod-observed junk)", () => {
+    for (const mob of ["Two heavies", "Wrecker crowd", "Docking bay crew", "Three thugs", "The guards"]) {
+      expect(isPlausibleNpcName(mob)).toBe(false);
+    }
+  });
+});
+
+describe("isCollectiveName — group vs individual", () => {
+  it("flags crowds, crews, and plural mobs", () => {
+    for (const mob of ["Wrecker crowd", "Docking bay crew", "Two heavies", "Several guards", "the mob"]) {
+      expect(isCollectiveName(mob)).toBe(true);
+    }
+  });
+  it("does not flag a single named figure or a singular role", () => {
+    for (const person of ["Rix", "Corso", "Wrecker Boss", "Data Broker", "Kael Voss"]) {
+      expect(isCollectiveName(person)).toBe(false);
+    }
+  });
+});
+
+describe("isShareableNpcName — universe-promotion gate", () => {
+  it("promotes genuinely-named individuals", () => {
+    expect(isShareableNpcName("Rix")).toBe(true);
+    expect(isShareableNpcName("Kael Voss")).toBe(true);
+  });
+  it("keeps bare roles and collective mobs campaign-local", () => {
+    for (const local of ["Guard", "Quartermaster", "Data Broker", "Two heavies", "Wrecker crowd"]) {
+      expect(isShareableNpcName(local)).toBe(false);
+    }
   });
 });
 

@@ -37,12 +37,54 @@ const NAME_STOPWORDS = new Set([
   "spacewalk", "plot", "persuade", "lie", "threaten", "network", "endure", "attack", "flee", "aim", "cover",
 ]);
 
+/** Group / collective nouns: a crowd or squad is not an individual to register.
+ *  A NAME containing one of these ("Wrecker crowd", "Docking bay crew") is a mob,
+ *  not a person — it pollutes the cast AND, once promoted, collapses every
+ *  campaign's nameless heavies into one shared "NPC". */
+const GROUP_NOUNS = new Set([
+  "crowd", "crew", "mob", "gang", "pack", "squad", "group", "band", "bunch", "team", "party",
+  "patrol", "cluster", "throng", "horde", "swarm", "posse", "cohort", "detail", "detachment",
+  "company", "platoon", "cell", "rest", "others", "lot", "pair", "duo", "trio",
+]);
+/** Trailing plural "mob" nouns the model reaches for as a group handle ("Two
+ *  heavies", "the guards", "three thugs") — a plural cast, never one figure. */
+const PLURAL_MOBS = new Set([
+  "heavies", "thugs", "guards", "goons", "raiders", "mercs", "mercenaries", "soldiers",
+  "men", "women", "enforcers", "wreckers", "dockhands", "gangers", "cronies", "minions",
+  "henchmen", "toughs", "bruisers", "hands", "workers", "scavengers", "pirates", "hunters",
+  "cultists", "troopers", "marines", "sailors", "crewmen", "bandits", "brigands", "fighters",
+]);
+/** Leading quantifiers that turn a following plural into a group ("Two heavies"). */
+const QUANTIFIERS = new Set([
+  "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "several",
+  "many", "few", "some", "couple", "dozen", "multiple", "numerous", "both",
+]);
+
+/**
+ * A collective/group handle rather than a single person — "Wrecker crowd", "Two
+ * heavies", "the docking bay crew". These must never register as NPCs: they aren't
+ * individuals, and promotion would merge unrelated campaigns' nameless mobs into
+ * one shared "character".
+ */
+export function isCollectiveName(name: string): boolean {
+  const lc = (name ?? "").trim().toLowerCase().replace(/['’]s$/i, "");
+  if (!lc) return false;
+  const words = lc.split(/\s+/);
+  if (words.some((w) => GROUP_NOUNS.has(w))) return true;
+  const last = words[words.length - 1];
+  if (PLURAL_MOBS.has(last)) return true;
+  // Quantifier + a plural-looking word: "two heavies", "several guards".
+  if (words.length >= 2 && QUANTIFIERS.has(words[0]) && /s$/.test(last) && last.length > 3) return true;
+  return false;
+}
+
 /**
  * Would this string pass as a person/NPC name worth registering? Rejects the junk
  * a sloppy narrator dumps into its npcs field: stopwords/verbs/numbers ("End",
- * "Get", "Sixty", "You're"), lowercase-led words, and anything that matches a
- * known NON-person entity (the ship, a location, a faction). `knownNonNpc` should
- * be knownEntityNames([...ship, ...locations, ...factions]).
+ * "Get", "Sixty", "You're"), lowercase-led words, group/collective handles ("Two
+ * heavies", "Wrecker crowd"), and anything that matches a known NON-person entity
+ * (the ship, a location, a faction). `knownNonNpc` should be
+ * knownEntityNames([...ship, ...locations, ...factions]).
  */
 export function isPlausibleNpcName(name: string, knownNonNpc?: Set<string>): boolean {
   const trimmed = (name ?? "").trim().replace(/['’]s$/i, "").replace(/['’]$/i, "").trim();
@@ -52,6 +94,8 @@ export function isPlausibleNpcName(name: string, knownNonNpc?: Set<string>): boo
   const words = lc.split(/\s+/);
   // Every word is a stopword/verb/number → not a name ("You're", "Get", "Sixty").
   if (words.every((w) => NAME_STOPWORDS.has(w))) return false;
+  // A crowd/crew/plural-mob handle is a group, not a person.
+  if (isCollectiveName(trimmed)) return false;
   // Matches a known non-person entity (ship "Sparrow", a location, a faction).
   if (knownNonNpc && (knownNonNpc.has(lc) || words.every((w) => knownNonNpc.has(w)))) return false;
   return true;
@@ -89,6 +133,27 @@ const PERSON_ROLES = [
 /** Title-case a role phrase into a display handle ("data broker" → "Data Broker"). */
 function titleCase(s: string): string {
   return s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
+const PERSON_ROLE_SET = new Set(PERSON_ROLES);
+/** A bare occupational-role handle with no proper noun ("Guard", "Quartermaster",
+ *  "Data Broker") — fine to track WITHIN a campaign, but too generic to be shared
+ *  canon: every campaign has "a guard", so promoting one would merge them all. */
+export function isBareRoleName(name: string): boolean {
+  return PERSON_ROLE_SET.has((name ?? "").trim().toLowerCase());
+}
+
+/**
+ * Should this NPC be PROMOTED to the universe-shared cast (so other campaigns can
+ * meet them)? Only genuinely-named individuals qualify — never a collective mob
+ * ("Two heavies") or a bare role handle ("Guard"), which would otherwise collapse
+ * unrelated campaigns' nameless extras into one shared "character". They still
+ * live in the originating campaign's own runtime cast; they just don't leak out.
+ */
+export function isShareableNpcName(name: string): boolean {
+  const trimmed = (name ?? "").trim();
+  if (trimmed.length < 2) return false;
+  return !isCollectiveName(trimmed) && !isBareRoleName(trimmed);
 }
 
 /** Verbs that attribute spoken dialogue to a speaker. A figure is registered ONLY
@@ -144,6 +209,7 @@ export function extractDialogueNpcs(narration: string, known: Set<string>, max =
       if (role) {
         const lc = raw.toLowerCase();
         if (seen.has(lc) || known.has(lc) || lc.split(" ").every((w) => known.has(w))) continue;
+        if (isCollectiveName(lc)) continue; // "the guards mutter" is a group, not one figure
         seen.add(lc);
         out.push({ handle: titleCase(lc), role: lc });
       } else {

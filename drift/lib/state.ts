@@ -6,6 +6,7 @@ import type { ChatEntry } from "@/shared/chat";
 import type { CombatState } from "@/shared/combat";
 import { freshSceneCard, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import { mergeNpcs } from "@/shared/npcMerge";
+import { isShareableNpcName } from "@/shared/npcExtract";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Dossier } from "@/shared/multiplayer";
 
@@ -146,10 +147,15 @@ export async function persistSession(campaignId: string, session: SessionData): 
     // same world can meet them (shared canon). Stamp provenance if unset. Failure
     // to promote must not break the turn — the per-campaign runtime copy below is
     // still the durable fallback (mergeNpcs prefers the table row when both exist).
+    // Only genuinely-named individuals leak to the shared world: a collective mob
+    // ("Two heavies") or a bare role ("Guard") stays campaign-local, else every
+    // campaign's nameless extras would collapse into one shared "NPC".
     try {
       await upsertNpcs(
         db,
-        campaignNpcs.map((n) => (n.originCampaignId ? n : { ...n, originCampaignId: campaignId })),
+        campaignNpcs
+          .filter((n) => isShareableNpcName(n.name))
+          .map((n) => (n.originCampaignId ? n : { ...n, originCampaignId: campaignId })),
       );
     } catch (e) {
       console.error(

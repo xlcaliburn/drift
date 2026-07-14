@@ -30,6 +30,23 @@ export function isDeepSeekModel(model: string): boolean {
 }
 
 /**
+ * DeepSeek V4 is a HYBRID reasoning model: left on its default it spends the whole
+ * token budget on hidden `reasoning_content` and returns EMPTY visible content, so
+ * the JSON never parses and the turn eats a full wasted retry round (observed in
+ * prod: ~half of all two-round turns were empty-thinking retries at 15-30s each).
+ * The engine owns ALL reasoning here — the model only fills a prose/JSON template —
+ * so thinking is pure latency. V4 defaults to thinking ENABLED; turn it off.
+ *
+ * Gated to `deepseek-v4*`: the older non-hybrid `deepseek-chat` (V3) 400s on an
+ * unknown `thinking` field. Escape hatch: NARRATOR_THINKING=1 re-enables it.
+ */
+function thinkingField(model: string): Record<string, unknown> {
+  const canToggle = /^deepseek-v4/.test(model);
+  const wantDisabled = process.env.NARRATOR_THINKING !== "1";
+  return canToggle && wantDisabled ? { thinking: { type: "disabled" } } : {};
+}
+
+/**
  * Pull the first COMPLETE, balanced JSON object out of a blob of text — used to
  * rescue a turn the model drafted inside its "thinking" channel. Brace-depth scan
  * that respects strings/escapes; returns null if there's no finished object
@@ -203,6 +220,7 @@ export async function deepseekChat(params: {
     temperature: TEMPERATURE,
     frequency_penalty: FREQUENCY_PENALTY,
     presence_penalty: PRESENCE_PENALTY,
+    ...thinkingField(params.model),
     ...(params.jsonMode ? { response_format: { type: "json_object" } } : {}),
     messages: [
       { role: "system", content: systemToString(params.system) },
@@ -312,6 +330,7 @@ export async function deepseekChatStream(params: {
     temperature: TEMPERATURE,
     frequency_penalty: FREQUENCY_PENALTY,
     presence_penalty: PRESENCE_PENALTY,
+    ...thinkingField(params.model),
     ...(params.jsonMode ? { response_format: { type: "json_object" } } : {}),
     stream: true,
     stream_options: { include_usage: true },
