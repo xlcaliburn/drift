@@ -78,12 +78,27 @@ export const ChoiceOption = z.object({
 });
 export type ChoiceOption = z.infer<typeof ChoiceOption>;
 
+/** One distinct foe or group in a fight the model just narrated: a named boss is
+ *  one entry (count 1, name "Calvo"); a pack of identical goons is one entry
+ *  (count N, a shared name "Heavy" → engine names them "Heavy 1", "Heavy 2"…). */
+export const EnemyGroupSpec = z.object({
+  tier: z.enum(["T1", "T2", "T3"]),
+  count: optionalNullable(z.coerce.number().int().min(1).max(4)),
+  name: optionalNullable(z.string()),
+});
+export type EnemyGroupSpec = z.infer<typeof EnemyGroupSpec>;
+
 /** The model declaring that this beat turns into a fight. Only tier/count/scale/
- *  surprise pass through — the engine owns the stats. */
+ *  surprise pass through — the engine owns the stats. `enemies` describes a fight
+ *  with MULTIPLE distinct foes/groups (a boss + his heavies); the legacy top-level
+ *  tier/count/name still works for a single lone group. Personal scale only. */
 export const CombatStartSpec = z.object({
   tier: z.enum(["T1", "T2", "T3"]),
   count: optionalNullable(z.coerce.number().int().min(1).max(4)),
   name: optionalNullable(z.string()),
+  /** Multiple distinct foes/groups — one entry per named boss or goon pack (max 4
+   *  groups). When present it takes precedence over the legacy tier/count/name. */
+  enemies: optionalNullable(z.array(EnemyGroupSpec).min(1).max(4)),
   scale: optionalNullable(z.enum(["personal", "ship"])),
   /** For ship fights: the enemy hull class (defaults from tier). */
   shipClass: optionalNullable(z.enum(["scout", "fighter", "hauler", "gunship", "corvette"])),

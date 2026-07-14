@@ -85,6 +85,41 @@ export function freshSceneCard(seq = 1, startTranscriptIdx = 0): SceneCard {
   return { seq, turnCount: 0, presentNpcIds: [], situation: "", beats: [], startTranscriptIdx };
 }
 
+/** Normalize a place string for move-comparison: lowercase, strip punctuation,
+ *  collapse whitespace — so "Calvo's Docking Bay" and "calvo s docking bay" compare. */
+export function normalizePlace(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Did the player MOVE to a new place this turn? A move is a SCENE boundary
+ * (CONTINUITY): a new scene opens and the old crowd is left behind.
+ *
+ * - A station/location change (`newLoc` set and differing from `prevLoc`) is the
+ *   reliable signal — always a move.
+ * - Otherwise a genuinely different free-text place is a move: normalize both and
+ *   require they differ AND neither contains the other. So "the fixer's stall" →
+ *   "the Undertow bounty desk" IS a move, but a reword/elaboration
+ *   ("docking bay" → "Calvo's docking bay") is NOT.
+ * - First-set of a place, a re-affirmation, or empty inputs are NOT moves.
+ */
+export function isSceneMove(
+  prevPlace: string | undefined,
+  newPlace: string | undefined,
+  prevLoc: string | undefined,
+  newLoc: string | undefined,
+): boolean {
+  if (newLoc && newLoc !== prevLoc) return true;
+  const a = (prevPlace ?? "").trim();
+  const b = (newPlace ?? "").trim();
+  if (!a || !b) return false; // first-set or missing → not a move
+  const na = normalizePlace(a);
+  const nb = normalizePlace(b);
+  if (!na || !nb || na === nb) return false; // re-affirmation
+  if (na.includes(nb) || nb.includes(na)) return false; // reword/elaboration
+  return true;
+}
+
 /**
  * Open the NEXT scene, carrying forward the persistent whereabouts (place) so the
  * sidebar never blanks out — especially when the player hasn't actually moved.

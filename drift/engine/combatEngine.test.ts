@@ -27,6 +27,24 @@ describe("spawnCombatEnemies", () => {
     const es = spawnCombatEnemies([{ tier: "T1", count: 1, name: "Thug" }], maxRng);
     expect(es[0].name).toBe("Thug");
   });
+
+  it("spawns MULTIPLE named groups — a boss plus a numbered goon pack", () => {
+    // "Calvo and his two heavies" → one boss (count 1) + one goon group (count 2).
+    const es = spawnCombatEnemies(
+      [
+        { tier: "T3", count: 1, name: "Calvo" },
+        { tier: "T2", count: 2, name: "Heavy" },
+      ],
+      maxRng,
+    );
+    expect(es).toHaveLength(3);
+    // Boss keeps its bare name; the pack gets numbered suffixes.
+    expect(es.map((e) => e.name)).toEqual(["Calvo", "Heavy 1", "Heavy 2"]);
+    // Ids stay unique across groups.
+    expect(new Set(es.map((e) => e.id)).size).toBe(3);
+    expect(es[0].tier).toBe("T3");
+    expect(es[1].tier).toBe("T2");
+  });
 });
 
 describe("playerAttack", () => {

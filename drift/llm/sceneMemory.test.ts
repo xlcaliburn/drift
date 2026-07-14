@@ -42,6 +42,24 @@ describe("scene card (tier NOW)", () => {
     expect(next.startTranscriptIdx).toBe(42);
   });
 
+  it("a genuine place change clears present NPCs (old crowd left behind); a reword keeps them", () => {
+    const card = freshSceneCard(2);
+    const rt = new TurnRuntime(baseState(), rng, { sceneCard: card });
+    const { id: fixer } = rt.registerNpc("The Fixer");
+    rt.markPresent(fixer);
+    rt.updateScene(undefined, undefined, "the fixer's stall");
+    expect(card.presentNpcIds).toEqual([fixer]);
+
+    // A reword/elaboration of the same place must NOT wipe the cast.
+    rt.updateScene(undefined, undefined, "the fixer's stall, back room");
+    expect(card.presentNpcIds).toEqual([fixer]);
+
+    // A move to a genuinely different place leaves the old crowd behind.
+    rt.updateScene(undefined, undefined, "the Undertow bounty desk");
+    expect(card.presentNpcIds).toEqual([]);
+    expect(card.place).toBe("the Undertow bounty desk");
+  });
+
   it("dangers overwrite and clear with []; a new scene starts clear", () => {
     const card = freshSceneCard(2);
     const rt = new TurnRuntime(baseState(), rng, { sceneCard: card });

@@ -30,6 +30,7 @@ import { catalogItem, itemCount, allItems } from "@/shared/items";
 import {
   freshSceneCard,
   dispositionLabel,
+  isSceneMove,
   MAX_BEATS,
   MAX_BEAT_CHARS,
   MAX_SITUATION_CHARS,
@@ -800,8 +801,15 @@ export class TurnRuntime {
   updateScene(situation?: string, beats?: string[], place?: string, dangers?: string[]) {
     if (situation?.trim()) this.sceneCard.situation = situation.trim().slice(0, MAX_SITUATION_CHARS);
     if (place?.trim()) {
-      this.sceneCard.place = place.trim().slice(0, 120);
-      this.sceneCard.placeSeq = this.sceneCard.seq; // stamp freshness for the sidebar
+      const incoming = place.trim().slice(0, 120);
+      // A genuinely new place = the player moved on; the old crowd is left behind.
+      // Clear present NPCs so the new place's cast repopulates from this turn's
+      // narration. A reword/elaboration (isSceneMove's normalize+substring gate)
+      // must NOT wipe the cast.
+      if (this.sceneCard.place && isSceneMove(this.sceneCard.place, incoming, undefined, undefined)) {
+        this.sceneCard.presentNpcIds = [];
+      }
+      this.sceneCard.place = incoming;
     }
     // Overwrite semantics: [] explicitly CLEARS a dealt-with danger.
     if (dangers) this.sceneCard.dangers = dangers.map((d) => d.trim().slice(0, 80)).filter(Boolean).slice(0, 3);

@@ -10,7 +10,7 @@ import { recordAiCall } from "@/lib/audit";
 import { TUTORIAL_GRADUATION_BEAT, inTutorial } from "@/shared/tutorial";
 import { buildFallbackChoices } from "@/shared/recap";
 import { CheckSpec, CombatActionSpec, type ChoiceOption } from "@/shared/turnPlan";
-import { carryScene, resolveDownedTurn, type SceneCard, type SceneMemory } from "@/shared/scene";
+import { carryScene, isSceneMove, resolveDownedTurn, type SceneCard, type SceneMemory } from "@/shared/scene";
 import { summarizeScene } from "@/llm/summarizer";
 import type { ChatEntry } from "@/shared/chat";
 import { hasSupabase } from "@/lib/state";
@@ -170,6 +170,12 @@ export async function POST(req: NextRequest) {
         npcRelations: structuredClone(session.npcRelations),
         npcs: session.state.npcs,
       };
+      // Pre-turn whereabouts, for scene-move detection after the turn. A move to a
+      // new place/location is a scene boundary (CONTINUITY): the scene turns over.
+      const prevPlace = memorySnapshot.sceneCard.place;
+      const prevLoc = session.state.campaign.currentLocationId;
+      // Combat turns never change place — only compute `moved` on the JSON path.
+      const wasCombatTurn = !!session.combat?.active;
       try {
         // Shared per-scene tick-cap set — mutated in place by the engine bridge,
         // persisted back after the turn, reset when a scene ends.
@@ -326,9 +332,19 @@ export async function POST(req: NextRequest) {
           ? { ...result.state, campaign: { ...result.state.campaign, status: "deceased" as const } }
           : result.state;
         const newTranscript = [...session.transcript, ...transcriptAdds].slice(-400);
+        // Did the player MOVE to a new place/location this turn? A move is a scene
+        // boundary too — the memory tier turns over even though the model didn't fire
+        // sceneEnd. (Only on the non-combat JSON path; combat never moves place. The
+        // sceneCard was mutated in place by the turn, so it holds the post-turn place.)
+        const moved =
+          !wasCombatTurn &&
+          isSceneMove(prevPlace, session.sceneCard.place, prevLoc, result.state.campaign.currentLocationId);
         // Scene closed this turn → snapshot the card for the background summarizer
         // and start a fresh one at the new transcript tail (CONTINUITY lifecycle).
-        const sceneClosed = result.sceneEnded && !pcDied;
+        // A move closes the MEMORY tier only — it does NOT run the economic scene-end
+        // checklist (wages/dock fees); that fires solely via the model's sceneEnd
+        // (already handled inside the turn). Never carry mid-combat.
+        const sceneClosed = (result.sceneEnded || moved) && !pcDied && !resultCombat?.active;
         const closedCard = sceneClosed
           ? { ...session.sceneCard, presentNpcIds: [...session.sceneCard.presentNpcIds], beats: [...session.sceneCard.beats] }
           : null;

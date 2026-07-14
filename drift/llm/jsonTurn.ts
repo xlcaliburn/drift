@@ -604,24 +604,42 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     toolCalls.push("combat_start");
     const cs = plan.combatStart;
     const surprise = cs.surprise ?? "none";
-    // Ship-scale needs a ship to fly; otherwise resolve on foot.
-    const started =
-      cs.scale === "ship" && input.state.ship
-        ? runtime.startShipCombat(
-            [
-              {
-                shipClass: (cs.shipClass ?? TIER_TO_CLASS[cs.tier]) as ShipClass,
-                count: cs.count ?? undefined,
-                name: cs.name ?? undefined,
-                tier: cs.tier,
-              },
-            ],
-            surprise,
-          )
-        : runtime.startCombat(
-            [{ tier: cs.tier, count: cs.count ?? undefined, name: cs.name ?? undefined }] as SpawnSpec[],
-            surprise,
-          );
+    // Ship-scale stays single-group (one enemy vessel/wolfpack); personal scale can
+    // field several distinct foes/groups (a boss + his heavies) via cs.enemies.
+    let started;
+    if (cs.scale === "ship" && input.state.ship) {
+      started = runtime.startShipCombat(
+        [
+          {
+            shipClass: (cs.shipClass ?? TIER_TO_CLASS[cs.tier]) as ShipClass,
+            count: cs.count ?? undefined,
+            name: cs.name ?? undefined,
+            tier: cs.tier,
+          },
+        ],
+        surprise,
+      );
+    } else {
+      // enemies[] when the model listed distinct foes; else the legacy single group.
+      // Cap the TOTAL spawned at 5 (deterministic: clamp each group 1-4, then trim
+      // group counts in order until the running total hits 5, dropping any overflow)
+      // so a fight can't balloon regardless of what the model asks for.
+      const rawGroups: SpawnSpec[] =
+        cs.enemies?.length
+          ? cs.enemies.map((g) => ({ tier: g.tier, count: g.count ?? undefined, name: g.name ?? undefined }))
+          : [{ tier: cs.tier, count: cs.count ?? undefined, name: cs.name ?? undefined }];
+      const MAX_TOTAL = 5;
+      const specs: SpawnSpec[] = [];
+      let total = 0;
+      for (const g of rawGroups) {
+        if (total >= MAX_TOTAL) break;
+        const want = Math.max(1, Math.min(4, g.count ?? 1));
+        const take = Math.min(want, MAX_TOTAL - total);
+        specs.push({ tier: g.tier, count: take, name: g.name });
+        total += take;
+      }
+      started = runtime.startCombat(specs, surprise);
+    }
     combat = started.combat.active ? started.combat : null; // a surprise volley could end it instantly
     if (started.lines.length) emit(started.lines);
   }
