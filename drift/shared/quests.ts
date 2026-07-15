@@ -228,6 +228,41 @@ export function generateJob(state: CampaignState, rng: RNG, tenday = 0): Job | n
   };
 }
 
+/**
+ * A PERSONAL job an NPC gives once the player has earned their trust
+ * (RELATIONSHIPS.md). Mechanically a standard tracked score, but `giver` is the NPC
+ * (not "board"), it enters ACTIVE immediately (accepted diegetically, never listed on
+ * the public board), and completing it resolves their arc (jobsRuntime bumps the
+ * relation). The NPC's `backstory` want rides as the blurb — the fiction hook the
+ * narrator dresses the beats in. Returns null only if no base score could be built.
+ */
+export function generatePersonalJob(
+  npc: { id: string; name: string; factionId?: string; backstory?: string },
+  state: CampaignState,
+  rng: RNG,
+  tenday = 0,
+): Job | null {
+  const base = generateJob(state, rng, tenday);
+  if (!base) return null;
+  const want = npc.backstory?.trim() || `${npc.name} needs a hand with something personal.`;
+  return {
+    ...base,
+    id: jobId(rng),
+    giver: npc.id,
+    title: `${npc.name} — a personal favor`,
+    blurb: want,
+    factionId: npc.factionId,
+    // Personal jobs pay standing with the NPC's own faction (their want furthers it).
+    reward: {
+      tier: base.reward.tier,
+      ...(npc.factionId ? { repFactionId: npc.factionId, repDelta: 1 } : {}),
+    },
+    status: "active",
+    createdTenday: tenday,
+    expiresTenday: undefined, // a personal favor doesn't lapse off a board timer
+  };
+}
+
 /** Top the OFFERED board up to `count`, dropping expired offers. Active/complete
  *  jobs are untouched. */
 export function refreshBoard(state: CampaignState, jobs: Job[], rng: RNG, tenday = 0, count = 4): Job[] {

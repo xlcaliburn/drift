@@ -9,8 +9,9 @@ import { downedActions } from "@/shared/death";
 import { usableConsumables, outOfCombatItemChips } from "@/shared/items";
 import { repairQuote } from "@/engine/market";
 import { patronHelp } from "@/shared/netWorth";
-import { acceptJob, abandonJob } from "@/shared/quests";
+import { acceptJob, abandonJob, generatePersonalJob } from "@/shared/quests";
 import { resolveJobsTurn } from "@/shared/jobsRuntime";
+import { personalJobAvailable, TRUST_THRESHOLD } from "@/shared/scene";
 import { liveRng } from "@/engine/rng";
 import { getSession, setSession, persistSession, loadReachableDossiers } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
@@ -136,6 +137,9 @@ export async function POST(req: NextRequest) {
   // Clicked job-board chips (QUESTS.md): accept an offered job / abandon an active one.
   const acceptJobId = typeof body.acceptJob === "string" && body.acceptJob ? body.acceptJob : undefined;
   const abandonJobId = typeof body.abandonJob === "string" && body.abandonJob ? body.abandonJob : undefined;
+  // A trusted NPC's personal-favor chip (RELATIONSHIPS.md): their npc id.
+  const acceptPersonalNpcId =
+    typeof body.acceptPersonalJob === "string" && body.acceptPersonalJob ? body.acceptPersonalJob : undefined;
   // A clicked full-pack swap chip: the gear to drop, or "__decline__" to leave it.
   const preSwap = Boolean(body.swapDecline)
     ? "__decline__"
@@ -371,15 +375,33 @@ export async function POST(req: NextRequest) {
         let jobsBoard = session.jobs ?? [];
         if (acceptJobId) jobsBoard = acceptJob(jobsBoard, acceptJobId);
         if (abandonJobId) jobsBoard = abandonJob(jobsBoard, abandonJobId);
+        // A trusted NPC's personal favor (RELATIONSHIPS.md): generate their personal
+        // job (their backstory want) straight to ACTIVE — it never lists on the public
+        // board — and mark the arc started so it isn't re-offered.
+        if (acceptPersonalNpcId && personalJobAvailable(session.npcRelations[acceptPersonalNpcId])) {
+          const giverNpc = result.state.npcs.find((n) => n.id === acceptPersonalNpcId);
+          const personal = giverNpc ? generatePersonalJob(giverNpc, result.state, liveRng, result.state.campaign.tendaysElapsed ?? 0) : null;
+          if (personal) {
+            jobsBoard = [...jobsBoard, personal];
+            session.npcRelations[acceptPersonalNpcId] = {
+              ...session.npcRelations[acceptPersonalNpcId],
+              arcStage: "active",
+            };
+          }
+        }
         const jobsRes = resolveJobsTurn({
           state: result.state,
           jobs: jobsBoard,
           events: result.events,
           combatResolvedAlive,
           rng: liveRng,
+          npcRelations: session.npcRelations,
         });
         result.state = jobsRes.state; // credits + faction rep for any job paid out
         result.events = [...result.events, ...jobsRes.events];
+        // Fold any personal-arc resolution back onto the live relations (mutated in
+        // place by the turn) so the deepened bond persists + rides the done payload.
+        session.npcRelations = jobsRes.npcRelations;
 
         // Bleeding Out is engine-owned end to end now (runDownedTurn resolves the
         // death saves), so the route only needs to detect the state for the chips:
@@ -438,6 +460,21 @@ export async function POST(req: NextRequest) {
                     const { patron, eligible } = patronHelp(result.state, session.sceneCard.presentNpcIds);
                     return eligible && patron
                       ? [{ label: `Rest up with ${patron.name} (free)`, patronRest: true } as ChoiceOption]
+                      : [];
+                  })(),
+                  // A trusted PRESENT NPC's personal favor (RELATIONSHIPS.md): the
+                  // narrator raises their want (npcTiers section) and this chip lets
+                  // the player take it on. One at a time; hidden once their arc starts.
+                  ...(() => {
+                    const giverId = session.sceneCard.presentNpcIds.find(
+                      (id) =>
+                        personalJobAvailable(session.npcRelations[id]) &&
+                        !jobsRes.jobs.some((j) => j.giver === id),
+                    );
+                    if (!giverId) return [] as ChoiceOption[];
+                    const npc = result.state.npcs.find((n) => n.id === giverId);
+                    return npc && (session.npcRelations[giverId]?.disposition ?? 0) >= TRUST_THRESHOLD
+                      ? [{ label: `Hear ${npc.name} out — take on their personal favor`, acceptPersonalJob: giverId } as ChoiceOption]
                       : [];
                   })(),
                   // Then the model's choices — or free next moves if it gave none

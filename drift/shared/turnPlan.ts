@@ -114,6 +114,9 @@ export const ChoiceOption = z.object({
   acceptJob: optionalNullable(z.string()),
   /** Set on a job-board chip: the job id to abandon (active → failed). */
   abandonJob: optionalNullable(z.string()),
+  /** Set on a trusted NPC's personal-favor chip: their npc id. The engine generates
+   *  their personal job (their backstory want) as an active job. RELATIONSHIPS.md. */
+  acceptPersonalJob: optionalNullable(z.string()),
 });
 export type ChoiceOption = z.infer<typeof ChoiceOption>;
 

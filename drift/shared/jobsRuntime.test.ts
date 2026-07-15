@@ -63,6 +63,37 @@ describe("resolveJobsTurn", () => {
   });
 });
 
+describe("personal-job arc resolution", () => {
+  const personalJob = (): Job => ({
+    id: "pj1", title: "Kessa — a personal favor", blurb: "wants a ship of her own", giver: "npc-gen-kessa",
+    playstyle: "commerce", archetype: "courier", tier: "T1",
+    objectives: [{ id: "o1", kind: "deliver", summary: "Haul it to Rook", done: false, locationId: "loc-b" }],
+    reward: { tier: "T1" }, status: "active", createdTenday: 0,
+  });
+
+  it("resolves the giver NPC's arc + bumps disposition when a personal job completes", () => {
+    const s = state({ currentLocationId: "loc-b" });
+    (s.npcs as { id: string; name: string }[]).push({ id: "npc-gen-kessa", name: "Kessa" });
+    const rels = { "npc-gen-kessa": { disposition: 2, arcStage: "active" as const } };
+    const r = resolveJobsTurn({
+      state: s, jobs: [personalJob()], events: [], combatResolvedAlive: false, rng: seededRng(9), npcRelations: rels,
+    });
+    const rel = r.npcRelations["npc-gen-kessa"];
+    expect(rel.arcStage).toBe("resolved");
+    expect(rel.arcNote).toBeTruthy();
+    expect(rel.disposition).toBe(3); // +2 → +3, clamped at ally
+    expect(r.lines.some((l) => /bond deepened/.test(l))).toBe(true);
+  });
+
+  it("leaves board-job completion relations untouched", () => {
+    const s = state({ currentLocationId: "loc-b" });
+    const rels = { "npc-gen-kessa": { disposition: 2 } };
+    const r = resolveJobsTurn({ state: s, jobs: [deliverJob()], events: [], combatResolvedAlive: false, rng: seededRng(1), npcRelations: rels });
+    expect(r.npcRelations["npc-gen-kessa"].disposition).toBe(2);
+    expect(r.npcRelations["npc-gen-kessa"].arcStage).toBeUndefined();
+  });
+});
+
 describe("applyJobClick", () => {
   it("accept moves an offered job to active and keeps the board full", () => {
     const board = applyJobClick(state(), [], {}, seededRng(4)); // seed a board

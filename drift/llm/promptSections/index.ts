@@ -8,6 +8,7 @@ import { pcSheet, vitals, ship } from "./pcSheet";
 import { threat, market, dock, patron, bodyMod } from "./economy";
 import { npcs, cameos, threads, worldStatus } from "./world";
 import { activeJobs } from "./quests";
+import { npcTiers } from "./npcTiers";
 import type { Job } from "@/shared/quests";
 
 /**
@@ -23,7 +24,7 @@ const SECTIONS: (Section | "")[] = [
   "",
   pcSheet, vitals, ship, threat, market, dock, patron, bodyMod,
   "",
-  npcs,
+  npcs, npcTiers,
   "",
   cameos, threads, activeJobs,
   "",

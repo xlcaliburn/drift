@@ -97,6 +97,9 @@ NPCs in play (proximity = how close; standing = their history; "plays:" = their 
   - Ilyana (id: npc-ilyana) [nearby]: Hollow Crown debt handler on Meridian; genuine ally, gateway to Crown contractor work. (plays: Cold and precise, wastes no words; never sits with their back to a door.)
   - Meridian broker (id: npc-broker) [immediate]: Gave Vess her first standing contract; pragmatic. (plays: Cautious, measures every word; flinches at loud noises, then covers it.) [trusted (+2) · your first standing contract · last: Fronted the cargo on trust; expects a clean Rook delivery.]
       history: [s1] Gave you the first standing contract. · [s3] Fronted the Rook cargo on trust.
+RELATIONSHIP CUES (how these people act toward you now — play them):
+  - Meridian broker TRUSTS you — have them open up and RAISE their personal stake in their own voice, then offer you help with it. Do NOT resolve it or hand over a reward; the engine tracks it once accepted.
+
 
 OTHER PLAYERS' CHARACTERS IN THE WORLD (real, canon — from other players' games; play TRUE to this, invent no mechanics; bring in at most ONE, only when natural):
   - Rax Dellow (Sable Chain, T2, HERE NOW): clipped, menacing — known for: torched a Crown depot; put a courier in the med-bay
@@ -240,6 +243,9 @@ NPCs in play (proximity = how close; standing = their history; "plays:" = their 
       history: [s1] Gave you the first standing contract. · [s3] Fronted the Rook cargo on trust.
   - Rook parts trader (id: npc-parts): Second standing contract; legitimate components. (plays: Twitchy and over-eager to please; never sits with their back to a door.)
   - Ilyana (id: npc-ilyana) [nearby]: Hollow Crown debt handler on Meridian; genuine ally, gateway to Crown contractor work. (plays: Cold and precise, wastes no words; never sits with their back to a door.)
+RELATIONSHIP CUES (how these people act toward you now — play them):
+  - Meridian broker TRUSTS you — have them open up and RAISE their personal stake in their own voice, then offer you help with it. Do NOT resolve it or hand over a reward; the engine tracks it once accepted.
+
 
 OTHER PLAYERS' CHARACTERS IN THE WORLD (real, canon — from other players' games; play TRUE to this, invent no mechanics; bring in at most ONE, only when natural):
   - Rax Dellow (Sable Chain, T2, HERE NOW): clipped, menacing — known for: torched a Crown depot; put a courier in the med-bay

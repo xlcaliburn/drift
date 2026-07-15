@@ -4,6 +4,7 @@ import type { EngineEvent } from "@/engine/events";
 import { seededRng, scriptedRng } from "@/engine/rng";
 import {
   generateJob,
+  generatePersonalJob,
   refreshBoard,
   acceptJob,
   abandonJob,
@@ -146,6 +147,19 @@ describe("advanceJobs — engine-owned completion detection", () => {
     const offered: Job = { ...travelJob, status: "offered" };
     const r = advanceJobs([offered], turnSignals("loc-b", [], false));
     expect(r.jobs[0].status).toBe("offered");
+  });
+});
+
+describe("generatePersonalJob", () => {
+  it("builds an ACTIVE, NPC-given score wrapped around their want (never on the public board)", () => {
+    const npc = { id: "npc-gen-kessa", name: "Kessa", factionId: "f-crown", backstory: "wants a ship of her own." };
+    const j = generatePersonalJob(npc, state({ credits: 400 }), seededRng(3), 0)!;
+    expect(j.giver).toBe("npc-gen-kessa"); // sourced from the NPC, not "board"
+    expect(j.status).toBe("active"); // enters active — skips the offered board
+    expect(j.expiresTenday).toBeUndefined(); // a personal favor doesn't lapse
+    expect(j.blurb).toContain("ship of her own"); // the want rides as the fiction hook
+    expect(j.reward.repFactionId).toBe("f-crown"); // pays standing with their faction
+    expect(j.objectives.length).toBeGreaterThan(0);
   });
 });
 

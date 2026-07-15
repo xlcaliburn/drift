@@ -66,6 +66,27 @@ export interface NpcRelation {
    *  shared even though the NPC entity is). Defaults to true for NPCs the player
    *  met by name; when false the UI shows the NPC's `role` handle instead. */
   nameKnown?: boolean;
+  /** RELATIONSHIPS.md — the campaign-side personal-arc stage with this NPC.
+   *  "active" = a personal job from them (their backstory want) is in progress;
+   *  "resolved" = it's done and their want paid off IN THIS campaign. Kept on the
+   *  per-player relation, NEVER on the universe-shared Npc, so one player helping
+   *  them doesn't rewrite them for everyone. */
+  arcStage?: "active" | "resolved";
+  /** Campaign-specific outcome of a resolved arc, layered over the shared oneBreath
+   *  for THIS player only ("got her ship with your help"). */
+  arcNote?: string;
+}
+
+/** Disposition at/above which an NPC opens up — offers their personal want as a job,
+ *  gives a standing discount, shares leads (RELATIONSHIPS.md tier "trusted"). */
+export const TRUST_THRESHOLD = 2;
+/** Disposition at/above which an NPC will take a real risk for the player ("ally"). */
+export const ALLY_THRESHOLD = 3;
+
+/** Is this NPC ready to offer their personal job? Trusted, and their arc hasn't
+ *  started or finished yet (one personal arc per NPC per campaign, Phase 1). */
+export function personalJobAvailable(rel: NpcRelation | undefined): boolean {
+  return !!rel && rel.disposition >= TRUST_THRESHOLD && !rel.arcStage;
 }
 
 export type NpcRelations = Record<string, NpcRelation>;

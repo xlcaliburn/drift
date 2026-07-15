@@ -1,6 +1,7 @@
 import type { CampaignState, FactionRep } from "./schemas";
 import type { EngineEvent } from "@/engine/events";
 import type { RNG } from "@/engine/rng";
+import { type NpcRelations, DISPOSITION_MAX } from "./scene";
 import {
   advanceJobs,
   turnSignals,
@@ -31,6 +32,10 @@ export interface JobsTurnResult {
   lines: string[];
   /** resource EngineEvents (credits/rep) so the dice log mirrors the payout. */
   events: EngineEvent[];
+  /** Relations after any personal-job arc resolution (RELATIONSHIPS.md) — the giver's
+   *  standing is bumped and their arc marked resolved. Unchanged if no personal job
+   *  paid out this turn. */
+  npcRelations: NpcRelations;
 }
 
 /** Bump a campaign's standing with a faction, creating the row if it's the first
@@ -57,9 +62,11 @@ export function resolveJobsTurn(input: {
   events: EngineEvent[];
   combatResolvedAlive: boolean;
   rng: RNG;
+  npcRelations?: NpcRelations;
 }): JobsTurnResult {
   const { events, combatResolvedAlive, rng } = input;
   let state = input.state;
+  let npcRelations = input.npcRelations ?? {};
   const tenday = state.campaign.tendaysElapsed ?? 0;
   const signals = turnSignals(state.campaign.currentLocationId, events, combatResolvedAlive);
 
@@ -97,13 +104,32 @@ export function resolveJobsTurn(input: {
         delta: job.reward.repDelta,
       });
     }
+    // A PERSONAL job (giver is an NPC, not the board) resolves that NPC's arc
+    // (RELATIONSHIPS.md): their want paid off in this campaign, so their standing
+    // deepens and the arc closes. Campaign-side only — the shared NPC is untouched.
+    if (job.giver !== "board") {
+      const rel = npcRelations[job.giver];
+      if (rel && rel.arcStage !== "resolved") {
+        const npcName = state.npcs.find((n) => n.id === job.giver)?.name ?? "them";
+        npcRelations = {
+          ...npcRelations,
+          [job.giver]: {
+            ...rel,
+            arcStage: "resolved",
+            arcNote: `You came through on what they needed most — ${job.blurb}`.slice(0, 160),
+            disposition: Math.min(DISPOSITION_MAX, rel.disposition + 1),
+          },
+        };
+        lines.push(`❤ ${npcName} won't forget this — your bond deepened.`);
+      }
+    }
   }
 
   // Keep the offered board topped up (drops expired offers too). Active/complete
   // jobs pass through untouched.
   const jobs = refreshBoard(state, progress.jobs, rng, tenday, BOARD_SIZE);
 
-  return { jobs, state, lines, events: payEvents };
+  return { jobs, state, lines, events: payEvents, npcRelations };
 }
 
 /** Apply an accept/abandon click, then top the board up so a freshly-accepted job
