@@ -127,6 +127,37 @@ export async function saveCampaignState(db: SupabaseClient, state: CampaignState
   await db.from("threads").upsert(state.threads.map((t) => toRow(t)));
 }
 
+// ── Admin editor: targeted deletes/clears an upsert-only persist can't express ─
+// (saveCampaignState only UPSERTs, and toRow drops null/undefined — so removing an
+// item from a state array or clearing a column leaves a stale row that resurrects
+// on the next cold load. The admin campaign editor runs these AFTER persistSession.)
+
+/** Hard-delete generated NPC rows from the universe cast (admin removal). Guarded
+ *  to `npc-gen-`/`npc-rel-` ids so seed canon can never be deleted. No-op if empty. */
+export async function deleteNpcsByIds(db: SupabaseClient, ids: string[]): Promise<void> {
+  const safe = ids.filter((id) => id.startsWith("npc-gen-") || id.startsWith("npc-rel-"));
+  if (!safe.length) return;
+  await db.from("npcs").delete().in("id", safe);
+}
+
+/** Delete threads the admin removed from a campaign's story. No-op if empty. */
+export async function deleteThreadsByIds(db: SupabaseClient, ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  await db.from("threads").delete().in("id", ids);
+}
+
+/** Delete clocks the admin removed from a campaign. No-op if empty. */
+export async function deleteClocksByIds(db: SupabaseClient, ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  await db.from("clocks").delete().in("id", ids);
+}
+
+/** Explicitly NULL a character's death_saves column (a revive) — an upsert with
+ *  `deathSaves: undefined` can't clear it because toRow drops the key. */
+export async function clearCharacterDeathSaves(db: SupabaseClient, characterId: string): Promise<void> {
+  await db.from("characters").update({ death_saves: null }).eq("id", characterId);
+}
+
 // ── Durable play-session runtime (M7) ────────────────────────────────────────
 
 /** The live-session slices that aren't part of the mechanical CampaignState:
