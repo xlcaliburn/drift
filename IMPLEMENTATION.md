@@ -3,8 +3,10 @@
 *Companion to ARCHITECTURE.md. This file now tracks only **unbuilt** work.
 Milestones M0–M8 (scaffold, schemas + DB, engine, save import, narrator loop,
 play UI, durability, retrieval/tuning, multiplayer seams), structured JSON turns,
-combat v1, items slices A + C, bounded-accuracy leveling, and continuity v1 are
-all DONE — see CLAUDE.md for the shipped-state summary.*
+combat v1 + net-worth enemy scaling, **all item slices**, bounded-accuracy leveling,
+continuity v1 + scene analyst, the procedural job board (QUESTS Phase 1), relationship
+tiers (RELATIONSHIPS Phase 1), and the faction patron safety net (STARTER) are all
+DONE — see CLAUDE.md for the shipped-state summary.*
 
 Engine purity rule (still governs everything below): `engine/` takes state in,
 returns new state + events out. No DB, no fetch, no randomness except through an
@@ -14,18 +16,11 @@ injected RNG (so tests can seed dice).
 
 ## What's left to build (rough order)
 
-### 1. Items — slices B / D / E
+### 1. Crew v1
 
-Slices A (consumables) and C (loot) shipped. Remaining slices per `ITEMS.md`:
-inventory slots, ammo spend, and shops (buy/sell). Build against
-`content/economy.json` and the existing `adjust_resource` tool path; the engine
-stays the only mutator.
+Recruitment + scaling upkeep per `CREW.md`. Nothing built yet — the next big slice.
 
-### 2. Crew v1
-
-Recruitment + scaling upkeep per `CREW.md`. Build after items.
-
-### 3. Multiplayer shared-world runtime
+### 2. Multiplayer shared-world runtime
 
 The schemas exist (`shared/multiplayer.ts`) and universe-shared NPCs +
 `log_world_event` already ship in solo play. What remains is the runtime that
@@ -35,9 +30,16 @@ cross-campaign reads into the prompt, the break-away-from-faction trigger,
 **seasons** with fixed end dates + a state-of-the-universe reckoning, and an
 optional canon review queue (`world_events.visibility` flag already exists).
 
-### 4. World systems — exploration / artifacts
+### 3. World systems — exploration / artifacts
 
 Exploration, artifacts, and the consequence-web per **WORLD_SYSTEMS.md**.
+
+### 4. Continuity v2
+
+A durable **facts ledger** + the scene-analyst **playstyle/facts inference** layer
+(the reasoning-model analyst infra shipped; the rolling playstyle read + relationship
+deltas + facts note accumulated on the campaign remain) + the history-window shrink
+(~10→6 exchanges) per **CONTINUITY.md**.
 
 ### 5. Small deferred items
 

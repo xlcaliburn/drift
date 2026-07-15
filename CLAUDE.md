@@ -94,14 +94,16 @@ pays the reward; offloads quest STRUCTURE off DeepSeek. Phase 1b backlog in the 
 - **World systems** (`WORLD_SYSTEMS.md`) — exploration / artifacts / consequence-web.
 - **Continuity v2** (`CONTINUITY.md`) — a durable facts ledger, and the history-
   window shrink (~10→6 exchanges) after a playtest cycle.
-- **Inferred playstyle + heavier scene analyst** (NEXT) — the explicit player
-  **directive** (`campaign.directive`, player-set "aim" fed to the narrator every
-  turn so the world bends toward what they enjoy instead of forcing a questline)
-  SHIPPED. Still TODO: upgrade the background summarizer into a reasoning-model
-  scene ANALYST (configurable `SCENE_ANALYST_MODEL`, default deepseek-reasoner)
-  that also INFERS a rolling playstyle read + relationship deltas + a facts note,
-  accumulated on the campaign and fed alongside the directive. (First slice of the
-  facts ledger above.)
+- **Scene-analyst inference layer** (NEXT) — the player **directive** SHIPPED, and
+  the reasoning-model scene ANALYST itself SHIPPED (`llm/summarizer.ts`, configurable
+  `SCENE_ANALYST_MODEL` default deepseek-reasoner, runs on scene close + mid-scene +
+  a manual re-sync; picks up/categorizes NPCs + items, refreshes relationship logs).
+  Still TODO: have it also INFER a rolling playstyle read + relationship deltas + a
+  facts note, accumulated on the campaign and fed alongside the directive (first
+  slice of the facts ledger above).
+- **Feature phase-backlogs** — QUESTS Phase 1b+ (model-signalled "report back" steps,
+  inventory-tracked cargo, NPC-given jobs, faction arcs) and RELATIONSHIPS Phase 2
+  (betrayable secrets, favor ledger, reputation-aware greetings, hostility escalation).
 - **Small deferred:** optimistic-lock guard on `campaign_runtime` (`updated_at` is
   written, not checked); the I-2 combat backstop (auto-START combat when the model
   narrates a fight but under-fires `combatStart` — the player-triggered gun-skill

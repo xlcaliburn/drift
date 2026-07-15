@@ -2,63 +2,26 @@
 
 *Multi-turn engine-owned combat is **shipped** at both scales (personal + ship),
 along with the **balance pass** (player base HP 18; uniform enemy HP per tier —
-T1 8 / T2 14 / T3 24; a `major` boss flag = 1.8× HP). This doc holds the remaining
-combat work and the design principles that still govern combat and the systems
-built on it (ITEMS, CREW).*
+T1 8 / T2 14 / T3 24; a `major` boss flag = 1.8× HP), **net-worth enemy scaling**
+(§1–§3 below), and **Bleeding Out death saves**. The ONLY remaining combat item is
+the I-2 model-side backstop. This doc holds that item and the design principles that
+still govern combat and the systems built on it (ITEMS, CREW).*
 
 ---
 
+## Shipped since (was §1–§3)
+
+**§1 Net-worth enemy scaling, §2 enemy-count enforcement, §3 shield standardization
+— all SHIPPED** as one body of work (`shared/netWorth.ts`; CLAUDE.md "net-worth enemy
+scaling"). `netWorth(state)` (credits + gear value + owned-ship, loaner = 0) →
+`maxThreatTier` (< 600 → T1, < 2500 → T2, else T3); `combatStart` + the gun-skill
+reroute clamp every group's tier to the band (a `major` boss may exceed it), the
+prompt feeds the current threat band, the narrated-foe-count backstop tops the spawn
+up to match the fiction (capped at 5), and shields are a T3/`major`-only defense.
+
 ## Remaining work
 
-### 1. Net-worth enemy scaling (approved design, not built)
-
-Enemy tier is gated by the player's **net worth**, not the model's whim — a fresh,
-under-equipped character faces weak opposition, and difficulty ramps as they arm
-up. This is the engine ceiling on what `combatStart` can spawn.
-
-**`netWorth(state)` — pure:**
-- credits at face value;
-- gear — catalog items (`content/items.json`) at `price × qty`; flavor gear (no
-  catalog id) via a heuristic: a weapon by its damage die (1d6 ≈ low … 2d8 ≈ high),
-  armor by `acBonus × ~150`;
-- owned ship value (a **loaner** counts 0 — it isn't theirs).
-- A fresh character lands ~400–500.
-
-**`maxThreatTier(netWorth)` — the spawn ceiling:**
-- **< 600 → T1 only** (fresh characters: winnable early fights)
-- **600–2500 → T2 unlocks**
-- **> 2500 → T3 unlocks**
-- a `major` boss may exceed the band as a flagged set-piece.
-
-**Net worth ALONE drives it** — no combat-skill floor (decided: a maxed fighter
-with no gear is still limited, and gear *is* the progression gate). Cutoffs are a
-starting point to tune in play.
-
-**Enforcement (engine-owned, not model trust):**
-- `combatStart` and the gun-skill reroute (`openFightFromSkill`) **clamp** each
-  enemy group's tier to ≤ `maxThreatTier(state)`.
-- the prompt feeds the player's current threat band so narration matches what will
-  actually spawn (no "hardened professional" when only a mook appears).
-
-This **subsumes** two earlier asks: "early = T1, slightly weaker than the player"
-(a band-0 character only ever sees T1), and shield standardization (shields become
-a T3/`major`-only defense under the same tiering — see below).
-
-### 2. Enemy count enforcement — "two wreckers, one spawned"
-
-The model narrates N foes but under-fills `combatStart.enemies` (count 1). The
-`enemies[]` array lets it spawn multiple groups, but it's unreliable. **Backstop:**
-on a `combatStart` turn, scan the narration for a stated foe count (a number-word
-or digit + a foe noun) and force the spawn total to match — at least the narrated
-count, capped at the total-of-5 clamp.
-
-### 3. Shield standardization
-
-Shields currently land on any T2+ enemy (first hit negated), making early fights
-harder and inconsistent. **Standardize:** no shields on T1/T2 mooks — a shield is a
-**T3/`major`-only** defense, deterministic (not a spawn roll).
-
-### 4. I-2 backstop — model under-fires `combatStart`
+### I-2 backstop — model under-fires `combatStart`
 
 The player-triggered half shipped: a combat/attack choice or clearly aggressive
 free text starts a fight engine-side (gun-skill reroute), and typed text during a

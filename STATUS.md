@@ -5,11 +5,15 @@ fast orientation, `CLAUDE.md`.*
 
 The app is built, playable, persistent, and multiplayer-seeded. Everything through
 the core platform is shipped (engine, character creation, structured JSON narrator
-turns, Supabase persistence + durable sessions, Google auth, admin panel, per-user
-budgets, retrieval tuning, multi-turn combat both scales, bounded-accuracy leveling,
-verb actions, items consumables + engine loot, scene-memory continuity v1 + NPC
-backstops, quest-gated relationships, bleed-out limit, universe-shared NPCs +
-backstory NPCs, People/Factions UI). This file tracks only what remains.
+turns, Supabase persistence + durable sessions, Google auth, admin panel + campaign
+editor, per-user budgets, retrieval tuning, multi-turn combat both scales +
+**net-worth enemy scaling**, bounded-accuracy leveling, verb actions, **items
+COMPLETE** (catalog, slots, ammo, shops, swap chips, dock repair/debt), scene-memory
+continuity v1 + the reasoning-model **scene analyst**, quest-gated relationships +
+**relationship tiers/personal jobs** (RELATIONSHIPS Phase 1), Bleeding Out death
+saves, universe-shared NPCs + backstory NPCs, People/Factions UI, the player
+**directive**, the **faction patron / early-game safety net** (STARTER), and the
+**procedural job board Phase 1** (QUESTS)). This file tracks only what remains.
 
 ## How to run / verify
 
@@ -19,7 +23,7 @@ npm install
 cp .env.example .env.local     # DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY; + Supabase vars for auth
 npm run dev                    # http://localhost:3000
 npx tsc --noEmit               # fast typecheck (never touches .next)
-npm test                       # 256 engine/llm tests, no keys needed
+npm test                       # ~525 engine/llm tests, no keys needed
 ```
 
 - **Keyless mode** (no Supabase vars): no login, stub dev admin, nothing persists.
@@ -34,27 +38,37 @@ npm test                       # 256 engine/llm tests, no keys needed
 
 ## What's left to build (rough order)
 
-1. **Items v1 — slices B / D / E** (`ITEMS.md`): inventory slots, ammo spend, shops.
-   (Slice A consumables + slice C loot are shipped.)
-2. **Crew v1** (`CREW.md`): recruitment + scaling upkeep. Nothing built yet.
-3. **Shared-world runtime** (`MULTIPLAYER.md`): dossiers (derive capability tier from
+1. **Crew v1** (`CREW.md`): recruitment + scaling upkeep. Nothing built yet.
+2. **Shared-world runtime** (`MULTIPLAYER.md`): dossiers (derive capability tier from
    stats, append deeds from `world_events`), relationship ledgers (who-knows-what),
    cross-campaign reads (pull another player's dossier + your ledger into the prompt
    so characters can meet, GM plays them gated by ledger knowledge), break-away-from-
    faction trigger, seasons with fixed end dates + a season-end "state of the
    universe" reckoning, optional canon review queue (`world_events.visibility` exists).
    Universe-shared NPCs are the first piece and are done (migration 014).
-4. **World systems** (`WORLD_SYSTEMS.md`): exploration / artifacts / consequence-web.
-5. **Continuity v2** (`CONTINUITY.md`): a durable facts ledger; history-window shrink
-   (~10→6 exchanges) after a playtest cycle.
+3. **World systems** (`WORLD_SYSTEMS.md`): exploration / artifacts / consequence-web.
+4. **Continuity v2** (`CONTINUITY.md`): a durable **facts ledger**; the scene-analyst
+   **playstyle/facts inference** layer (analyst infra shipped; the rolling playstyle
+   read + relationship deltas + facts note accumulated on the campaign remains);
+   history-window shrink (~10→6 exchanges) after a playtest cycle.
+
+## Feature-doc phase backlogs (next phases of shipped features)
+
+- **Quests Phase 1b+** (`QUESTS.md`): model-signalled "report back" steps,
+  inventory-tracked cargo, NPC-given jobs, faction arcs, board top-up tuning.
+- **Relationships Phase 2** (`RELATIONSHIPS.md`): betrayable secrets, favor ledger,
+  reputation-aware greetings, ally-tier mechanics, hostility escalation.
 
 ## Small deferred items
 
 - Optimistic-lock guard on `campaign_runtime` (`updated_at` is written but not checked).
-- I-2 combat backstop: auto-START combat when the model narrates a fight but doesn't
-  emit `combatStart` (the player-triggered gun-skill reroute half already ships).
+- I-2 combat backstop (`COMBAT.md` §4): auto-START combat when the model narrates a
+  fight but doesn't emit `combatStart` (the player-triggered gun-skill reroute half
+  already ships).
 - Summarizer bug: a few scene summaries persisted raw truncated JSON (`{\n "summary":
   "…`) instead of clean text — an output-parsing bug to fix.
+- ECONOMY E-4/E-5/E-6 (`ECONOMY.md`): retire per-job wage once crew upkeep lands,
+  cargo-capacity rules, a payout variance floor — all gated on unbuilt crew/trade.
 
 ## Design decisions locked (don't re-litigate)
 

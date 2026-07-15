@@ -88,7 +88,7 @@ check — or a quest reward). Players can't author their own items.
 
 ---
 
-## Remaining — B. Inventory space (activate the dormant `slots`/`maxSlots` fields)
+## Slice B (SHIPPED) — Inventory space (`slots`/`maxSlots`)
 
 - `maxSlots = 8 + might`, computed live by a helper (no DB backfill needed —
   the stored fields are ignored). *(Deviation from the original 6+might: a fresh
@@ -102,13 +102,13 @@ check — or a quest reward). Players can't author their own items.
   the field stays for back-compat but the catalog is the source of truth.
 - UI: Status tab inventory becomes slot-aware — `Inventory 7/9` + stack badges.
 
-## Remaining — D. Ammo spend / reload economy
+## Slice D (SHIPPED) — Ammo spend / reload economy
 
 - Missiles only (locked: no per-shot personal ammo). Firing debit + dry gating
   are SHIPPED; what's left is the purchase gate — **Missile reload +2** is
   bought at a market (price ~2× `missileCost`), part of slice E's stock.
 
-## Remaining — E. Shops / markets (the credit sink)
+## Slice E (SHIPPED) — Shops / markets (the credit sink)
 
 - Market tier from location tags: `blackmarket` → T3 shelves, `commerce` → T2,
   `hazard`/`hidden` → no market, anything else → T1 basics.
@@ -137,7 +137,7 @@ check — or a quest reward). Players can't author their own items.
   Throw grenade / Pop smoke) — no model involvement.
 - An effect never happens twice (idempotent per turn) and never narratively-only.
 
-## ⚠ Flags (governing the remaining slices)
+## ⚠ Flags (governed the slice rollout — kept for reference)
 
 - **IT-1 legacy gear mapping**: existing campaigns hold freeform gear names. Map
   by fuzzy name match where obvious (e.g. "Stimpack"), else leave as zero-effect
