@@ -77,7 +77,13 @@ backstop, shields T3/boss-only), and **items COMPLETE** (`ITEMS.md` — full
 weapon/armor catalog with legacy-gear mapping, inventory slots 8+might, engine-owned
 rotating markets (`purchase`/`sell`), deterministic out-of-combat item chips +
 name-resilient consumable resolution, full-pack drop-to-take swap chips, and dock
-hull repair + credit/debt payoff loop (ECONOMY E-3)).
+hull repair + credit/debt payoff loop (ECONOMY E-3)), and the **procedural job board
+Phase 1** (`QUESTS.md` — engine-owned, playstyle-weighted "scores" assembled from
+archetype parts; `shared/quests.ts` generator + tracker, `shared/jobsRuntime.ts`
+turn bridge, `campaign_runtime.jobs` jsonb slice (migration 019), a Jobs rail tab
+with accept/abandon, and an `activeJobs` narrator context section. The engine detects
+completion from real signals — arrival / won fight / matching skill success — and
+pays the reward; offloads quest STRUCTURE off DeepSeek. Phase 1b backlog in the doc).
 
 **What's LEFT to build** (rough order; each has a design doc):
 
@@ -158,6 +164,8 @@ Don't add prose rules for things the engine can enforce.
 - `ITEMS.md` — remaining item slices (slots / ammo / shops); `CREW.md` — crew
   recruitment + scaling upkeep (unbuilt); `COMBAT.md` — the one deferred combat item
   (I-2 auto-start backstop). Build order: items → crew.
+- `QUESTS.md` — the procedural job board (Phase 1 SHIPPED: engine-owned, playstyle-
+  weighted scores; `shared/quests.ts` + `shared/jobsRuntime.ts`; Jobs rail tab)
 - `IMPLEMENTATION.md` — what's left to build, in rough order
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
