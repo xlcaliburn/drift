@@ -2,6 +2,7 @@ import type { CampaignState } from "@/shared/schemas";
 import type { SceneCard, NpcRelations, SceneMemory } from "@/shared/scene";
 import type { Dossier } from "@/shared/multiplayer";
 import type { Job } from "@/shared/quests";
+import type { PlayerLedger } from "@/shared/ledger";
 
 /**
  * Shared input for every context section. The broadly-used derivations (pc, loc,
@@ -25,6 +26,9 @@ export interface SectionCtx {
   otherDossiers?: Dossier[];
   /** The job board (QUESTS.md) — the active-job section narrates the next step. */
   jobs?: Job[];
+  /** The owner's relationship ledger (MULTIPLAYER.md §2) — gates cross-player cameos
+   *  to what this character actually knows. */
+  ledger?: PlayerLedger;
   // ── derived once in buildSectionCtx ──
   pc?: CampaignState["characters"][number];
   loc?: CampaignState["locations"][number];

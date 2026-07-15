@@ -28,24 +28,24 @@ describe("deriveKnowledge", () => {
     expect(deriveKnowledge(led, dossier())).toBe("firsthand");
   });
 
-  it("secondhand from a NOTORIOUS deed even with an empty ledger", () => {
+  it("secondhand from a PUBLIC deed even with an empty ledger", () => {
     expect(deriveKnowledge({}, dossier())).toBe("secondhand");
   });
 
-  it("secondhand from a shared faction even with no notorious deed", () => {
-    const quiet = dossier({ deeds: [{ id: "d2", headline: "a quiet job", factionIds: [], notoriety: "known" }] });
+  it("secondhand from a shared faction even with only a rumored deed", () => {
+    const quiet = dossier({ deeds: [{ id: "d3", headline: "a whisper", factionIds: [], notoriety: "rumored" }] });
     expect(deriveKnowledge({}, quiet, "f-sable")).toBe("secondhand");
   });
 
-  it("unknown when no notoriety, no shared faction, no entry", () => {
-    const quiet = dossier({ factionId: "f-sable", deeds: [{ id: "d2", headline: "a quiet job", factionIds: [], notoriety: "known" }] });
+  it("unknown when only a rumored deed and no shared faction, no entry", () => {
+    const quiet = dossier({ factionId: "f-sable", deeds: [{ id: "d3", headline: "a whisper", factionIds: [], notoriety: "rumored" }] });
     expect(deriveKnowledge({}, quiet, "f-crown")).toBe("unknown");
   });
 });
 
 describe("visibleDeeds", () => {
-  it("secondhand sees only notorious deeds", () => {
-    expect(visibleDeeds(dossier(), "secondhand").map((d) => d.id)).toEqual(["d1"]);
+  it("secondhand sees public deeds (known + notorious), not rumors", () => {
+    expect(visibleDeeds(dossier(), "secondhand").map((d) => d.id)).toEqual(["d1", "d2"]);
   });
   it("firsthand sees notorious + known, but not unspread rumors", () => {
     expect(visibleDeeds(dossier(), "firsthand").map((d) => d.id)).toEqual(["d1", "d2"]);
@@ -68,12 +68,12 @@ describe("projectDossier", () => {
     expect(v.stance).toBe("rival");
     expect(v.deeds.map((d) => d.id)).toEqual(["d1", "d2"]);
   });
-  it("secondhand hides tier + voice, shows only notorious deeds", () => {
+  it("secondhand hides tier + voice, shows public deeds (not rumors)", () => {
     const v = projectDossier(dossier(), "secondhand")!;
     expect(v.capabilityTier).toBeUndefined();
     expect(v.voiceNotes).toBeUndefined();
     expect(v.standing).toBe("rising Sable enforcer"); // reputation still reaches you
-    expect(v.deeds.map((d) => d.id)).toEqual(["d1"]);
+    expect(v.deeds.map((d) => d.id)).toEqual(["d1", "d2"]);
   });
 });
 

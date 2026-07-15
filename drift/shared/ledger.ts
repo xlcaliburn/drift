@@ -30,18 +30,21 @@ export function deriveKnowledge(
 ): KnowledgeLevel {
   const stored = ledger[dossier.characterId]?.knowledge;
   if (stored === "firsthand") return "firsthand";
-  const notorious = dossier.deeds.some((d) => d.notoriety === "notorious");
+  // You've HEARD of them if they have any PUBLIC deed (known/notorious — it spread) or
+  // share your faction (word travels inside a faction). A character whose only mark is
+  // a whispered RUMOR, or who's done nothing public, stays a stranger — never cameo'd.
+  const publicDeed = dossier.deeds.some((d) => d.notoriety !== "rumored");
   const sharedFaction = !!ownerFactionId && !!dossier.factionId && dossier.factionId === ownerFactionId;
-  if (stored === "secondhand" || notorious || sharedFaction) return "secondhand";
+  if (stored === "secondhand" || publicDeed || sharedFaction) return "secondhand";
   return "unknown";
 }
 
 /** Which of a subject's deeds the owner has actually learned, at a knowledge level.
- *  Firsthand: everything but unspread rumors (unless personally learned). Secondhand:
- *  only what's NOTORIOUS (the stuff everyone's heard). */
+ *  Both firsthand and secondhand see the PUBLIC deeds (known/notorious); a RUMORED
+ *  deed reaches only a firsthand contact who personally learned it. */
 export function visibleDeeds(dossier: Dossier, knowledge: KnowledgeLevel, entry?: LedgerEntry): Deed[] {
   if (knowledge === "unknown") return [];
-  if (knowledge === "secondhand") return dossier.deeds.filter((d) => d.notoriety === "notorious");
+  if (knowledge === "secondhand") return dossier.deeds.filter((d) => d.notoriety !== "rumored");
   const known = new Set(entry?.knownDeedIds ?? []);
   return dossier.deeds.filter((d) => d.notoriety !== "rumored" || known.has(d.id));
 }
@@ -57,6 +60,7 @@ export interface DossierView {
   factionId?: string;
   capabilityTier?: CapabilityTier;
   standing?: string;
+  reputation?: string;
   voiceNotes?: string;
   deeds: Deed[];
   /** From the owner's stored entry (firsthand only). */
@@ -87,13 +91,14 @@ export function projectDossier(
       notes: entry?.notes,
     };
   }
-  // secondhand — rumor only: name, faction, reputation, the notorious deeds.
+  // secondhand — rumor only: name, faction, reputation, the public deeds.
   return {
     characterId: dossier.characterId,
     knowledge,
     name: dossier.name,
     factionId: dossier.factionId,
     standing: dossier.standing,
+    reputation: dossier.reputation,
     deeds,
   };
 }

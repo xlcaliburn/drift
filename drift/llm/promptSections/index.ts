@@ -10,6 +10,7 @@ import { npcs, cameos, threads, worldStatus } from "./world";
 import { activeJobs } from "./quests";
 import { npcTiers } from "./npcTiers";
 import type { Job } from "@/shared/quests";
+import type { PlayerLedger } from "@/shared/ledger";
 
 /**
  * The per-turn context slice, composed from ordered SECTIONS. The order IS the
@@ -49,10 +50,12 @@ export function buildContextSlice(
   otherDossiers?: Dossier[],
   /** The active job board (QUESTS.md) — feeds the active-jobs section. */
   jobs?: Job[],
+  /** The owner's relationship ledger (MULTIPLAYER.md §2) — gates cross-player cameos. */
+  ledger?: PlayerLedger,
 ): string {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
   const { npcs, threads } = retrieved ?? retrieveEntities(state, playerText, focusIds);
   const pc = state.characters.find((c) => c.kind === "pc");
-  const ctx: SectionCtx = { state, playerText, focusIds, jsonMode, npcs, threads, memory, otherDossiers, pc, loc, jobs };
+  const ctx: SectionCtx = { state, playerText, focusIds, jsonMode, npcs, threads, memory, otherDossiers, pc, loc, jobs, ledger };
   return SECTIONS.flatMap((s) => (s === "" ? [""] : s(ctx))).join("\n");
 }

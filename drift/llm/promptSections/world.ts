@@ -2,6 +2,7 @@ import { relationSuffix, relationHistory } from "@/shared/scene";
 import { generateQuirk } from "@/shared/npcFlavor";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import type { Dossier } from "@/shared/multiplayer";
+import { deriveKnowledge, projectDossier, type PlayerLedger } from "@/shared/ledger";
 import type { Section } from "./types";
 
 /**
@@ -40,33 +41,48 @@ export function reachableDossiers(
 }
 
 /**
- * Render the OTHER PLAYERS' CHARACTERS context block. Lean by design (token cost):
- * name, faction, tier, a voice/role line, here-now vs. elsewhere, and 1-2 deeds.
+ * Render the OTHER PLAYERS' CHARACTERS block, GATED by the owner's relationship
+ * ledger (MULTIPLAYER.md §2). Each reachable dossier is projected to what THIS
+ * player's character actually knows: a firsthand contact shows the real person
+ * (tier, voice, known deeds, your stance); someone they've only heard of shows
+ * rumor (name/faction/reputation + notorious deeds only); a stranger (unknown) is
+ * dropped entirely — the GM can't cameo someone the player has never heard of.
  */
 function otherCharactersBlock(
-  dossiers: Dossier[],
+  pool: Dossier[],
+  ledger: PlayerLedger,
+  ownerFactionId: string | undefined,
   factionName: (id?: string) => string,
   currentLocationId: string | undefined,
 ): string {
-  if (!dossiers.length) return "";
-  const lines = dossiers.map((d) => {
+  const rows: string[] = [];
+  for (const d of pool) {
+    const knowledge = deriveKnowledge(ledger, d, ownerFactionId);
+    const view = projectDossier(d, knowledge, ledger[d.characterId]);
+    if (!view) continue; // unknown — not in this player's world; never cameo'd
     const here = currentLocationId && d.locationId === currentLocationId ? "HERE NOW" : "elsewhere";
-    const faction = d.factionId ? factionName(d.factionId) : "unaligned";
-    const voice = d.voiceNotes?.trim() || d.role?.trim() || d.reputation?.trim() || "";
-    const deeds = d.deeds
-      .slice(-2)
-      .map((x) => x.headline)
-      .filter(Boolean);
-    const bits = [
-      `  - ${d.name} (${faction}, ${d.capabilityTier}, ${here})`,
-      voice ? `: ${voice}` : "",
-      deeds.length ? ` — known for: ${deeds.join("; ")}` : "",
-    ];
-    return bits.join("");
-  });
+    const faction = view.factionId ? factionName(view.factionId) : "unaligned";
+    const deeds = view.deeds.slice(-2).map((x) => x.headline).filter(Boolean);
+    if (view.knowledge === "firsthand") {
+      const stanceBit =
+        view.stance && view.stance !== "neutral"
+          ? ` [you know them — ${view.stance}${view.warmth ? `, warmth ${view.warmth > 0 ? "+" : ""}${view.warmth}` : ""}]`
+          : ` [you know them personally]`;
+      const voice = view.voiceNotes ? `: ${view.voiceNotes}` : "";
+      rows.push(
+        `  - ${view.name} (${faction}, ${view.capabilityTier}, ${here})${stanceBit}${voice}${deeds.length ? ` — known for: ${deeds.join("; ")}` : ""}`,
+      );
+    } else {
+      const rep = view.standing ?? view.reputation;
+      rows.push(
+        `  - ${view.name} (${faction}, ${here}) — you've only HEARD of them${rep ? `: ${rep}` : ""}${deeds.length ? ` (known for: ${deeds.join("; ")})` : ""}`,
+      );
+    }
+  }
+  if (!rows.length) return "";
   return (
-    `OTHER PLAYERS' CHARACTERS IN THE WORLD (real, canon — from other players' games; play TRUE to this, invent no mechanics; bring in at most ONE, only when natural):\n` +
-    lines.join("\n")
+    `OTHER PLAYERS' CHARACTERS IN THE WORLD (real, canon — from other players' games; play TRUE to this, invent no mechanics; bring in at most ONE, only when natural). REVEAL ONLY WHAT THE PLAYER KNOWS: a "you know them" contact can be met and named face-to-face; someone they've "only HEARD of" arrives through reputation/rumor first — the player does NOT recognize them on sight:\n` +
+    rows.join("\n")
   );
 }
 
@@ -95,10 +111,12 @@ export const npcs: Section = ({ npcs, memory, loc }) => {
 
 /** Cross-campaign cameo pool — other players' characters the narrator may bring in
  *  as an NPC this scene (same-location preferred). Includes its trailing spacer. */
-export const cameos: Section = ({ state, otherDossiers, loc }) => {
+export const cameos: Section = ({ state, otherDossiers, loc, ledger, pc }) => {
   const cameoPool = reachableDossiers(otherDossiers ?? [], loc?.id);
   const otherChars = otherCharactersBlock(
     cameoPool,
+    ledger ?? {},
+    pc?.parentFactionId,
     (id) => (id ? state.factions.find((f) => f.id === id)?.name ?? id : "unaligned"),
     loc?.id,
   );
