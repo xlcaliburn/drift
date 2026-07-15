@@ -611,23 +611,28 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   }
 
   let plan = await plannedCall(true);
-  // ── Anti-echo: DeepSeek sometimes reproduces the PREVIOUS turn's narration
-  //    verbatim, ignoring the player's new action (the "same answer 3 times" bug).
-  //    If it echoed the last beat, regenerate ONCE with an explicit advance-don't-
-  //    repeat instruction. Only fires on a detected echo, so normal turns pay nothing.
-  const prevNarration = [...input.history]
-    .reverse()
-    .find((m) => m.role === "assistant" && typeof m.content === "string")?.content as string | undefined;
-  if (prevNarration && isEchoOfPrevious(plan.narration, prevNarration)) {
+  // ── Anti-echo: DeepSeek sometimes reproduces a RECENT narration verbatim,
+  //    ignoring the player's new action (the "same answer 3 times" bug — and worse,
+  //    re-firing that beat's payout, so the player gets paid for a done job twice).
+  //    Check the last few turns, not just the immediately previous one (a repeat can
+  //    reach back several beats). On a detected echo, regenerate ONCE with an
+  //    advance-don't-repeat instruction. Only fires on a verbatim echo, so normal
+  //    turns pay nothing.
+  const recentNarrations = [...input.history]
+    .filter((m) => m.role === "assistant" && typeof m.content === "string")
+    .slice(-4)
+    .map((m) => m.content as string);
+  const echoes = (text: string) => recentNarrations.some((prev) => isEchoOfPrevious(text, prev));
+  if (echoes(plan.narration)) {
     toolCalls.push("anti_repeat");
     messages.push({ role: "assistant", content: JSON.stringify({ narration: plan.narration }) });
     messages.push({
       role: "user",
       content:
-        "You just repeated your PREVIOUS narration almost word-for-word. The player has taken a NEW action since then — react to what they JUST did and move the moment forward. Write a fresh beat; do NOT restate the previous one.",
+        "You just repeated an EARLIER narration almost word-for-word (a beat that already happened). The player has taken a NEW action since — react to what they JUST did and move the moment forward. Write a fresh beat; do NOT restate a previous one, and do NOT re-award a payout/reward for a job you already resolved.",
     });
     const retry = await plannedCall(false);
-    if (retry.narration.trim() && !isEchoOfPrevious(retry.narration, prevNarration)) {
+    if (retry.narration.trim() && !echoes(retry.narration)) {
       plan = retry;
     }
   }
