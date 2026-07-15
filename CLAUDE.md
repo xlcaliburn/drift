@@ -17,7 +17,14 @@ Every roll returns a full auditable breakdown (`d20(14) +8 = 22 vs DC 15 → suc
 - `drift/shared/schemas.ts` — Zod game state, single source of truth
 - `drift/shared/multiplayer.ts` — dossier / ledger / season schemas (not yet wired —
   shared NPCs are wired via the `npcs` table, but dossiers/ledgers/seasons aren't)
-- `drift/llm/{narrator,deepseek,tools,promptBuilder,engineBridge,summarizer}.ts`
+- `drift/llm/{deepseek,tools,engineBridge,summarizer}.ts` (the freeform `narrator.ts`
+  loop is RETIRED/deleted; `sanitizeHistory`+`trimToLastSentence` live in `llm/history.ts`)
+- `drift/llm/jsonTurn.ts` — the structured-turn orchestrator
+- `drift/llm/promptBuilder.ts` — FACADE re-exporting `jsonSystem.ts` (the JSON rules
+  contract), `retrieval.ts` (`retrieveEntities`), and `promptSections/` (the per-turn
+  context slice — an ordered SECTIONS registry over framing/pcSheet/economy/world
+  modules; a new context line = a new section export + one registry entry). Byte-
+  stability pinned by `llm/contextSlice.golden.test.ts`
 - `drift/lib/state.ts` — session store (in-memory cache backed by Supabase)
 - `drift/lib/auth.ts` — `getAuthedUser` / `requireApprovedUser` / `requireAdmin`
 - `drift/lib/{usage,pricing}.ts` — token metering + budget enforcement

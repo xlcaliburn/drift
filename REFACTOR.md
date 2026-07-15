@@ -1,5 +1,11 @@
 # REFACTOR.md — promptBuilder sections + jsonTurn plan handlers
 
+> **STATUS: Plan 1 SHIPPED** (golden test `contextSlice.golden.test.ts`;
+> `jsonSystem.ts` + `retrieval.ts` extracted, dead `DM_STYLE`/`buildSystem`
+> deleted; `promptSections/` registry — grouped 4-way framing/pcSheet/economy/
+> world rather than the 19 micro-files below, same additive benefit). Snapshots
+> byte-identical throughout. **Plan 2 (jsonTurn) is NEXT and not yet started.**
+
 Goal: multiple Claude windows editing in parallel with limited overlap. The two
 hottest files (`llm/promptBuilder.ts` — 53 edits/6wk, `llm/jsonTurn.ts` — 45)
 are hot because **every feature is a horizontal slice through them**: a new
