@@ -330,6 +330,11 @@ export const Campaign = z.object({
   narratorModel: z.string().optional(),
   /** One-line "current situation" headline, shown in the free opening recap. */
   situation: z.string().optional(),
+  /** The PLAYER's own stated aim for their character — what THEY want out of play
+   *  ("dig into people and build relationships", "get rich", "hunt the person who
+   *  burned me"). Player-set, free text. Fed to the narrator every turn so the
+   *  world bends toward it instead of forcing an unrelated questline. */
+  directive: z.string().max(400).optional(),
 });
 export type Campaign = z.infer<typeof Campaign>;
 

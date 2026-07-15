@@ -465,6 +465,14 @@ export function buildContextSlice(
       ? `PC identity — ${identityBits.join("; ").replace(/\.$/, "")}. Pull on this past and this drive when framing scenes, NPCs, and personal hooks; surface it naturally, don't recite it.`
       : "";
 
+  // The player's OWN stated aim (campaign.directive) — the single strongest signal
+  // of what THIS player wants out of play. The narrator bends the world toward it
+  // and, crucially, does NOT force an unrelated questline: if they want to build
+  // relationships, relationships ARE the game.
+  const directiveLine = state.campaign.directive?.trim()
+    ? `PLAYER'S OWN AIM (what THIS player wants from the game — weight this heavily): "${state.campaign.directive.trim()}". Bend the world toward it: offer NPCs, scenes, and hooks that serve it, and let it BE the throughline. Do NOT force an unrelated questline on a player who wants something else — if they lean toward people and talk, relationships and social play are the point, not a detour from "the real quest."`
+    : "";
+
   // ── Scene memory blocks (CONTINUITY.md) ──────────────────────────────────
   // PREVIOUSLY: the last few scene summaries — the rolling "story so far" —
   // plus up to 2 OLDER scenes retrieved because their people/places resurfaced.
@@ -524,6 +532,7 @@ export function buildContextSlice(
     // directive so it outranks the static style rules for this beat.
     ...(inTutorial(state) ? [jsonMode ? TUTORIAL_JSON_DIRECTIVE : TUTORIAL_CHOICE_DIRECTIVE, ``] : []),
     ...(previouslyBlock ? [previouslyBlock, ``] : []),
+    ...(directiveLine ? [directiveLine, ``] : []),
     `CURRENT SCENE`,
     `Location: ${loc ? `${loc.name} — ${loc.description}` : "unknown"}`,
     ...(seasonLine ? [seasonLine] : []),
