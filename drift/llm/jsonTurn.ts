@@ -20,6 +20,7 @@ import { dcForRisk, difficultyToRisk, type RiskTier } from "@/shared/risk";
 import type { Character } from "@/shared/schemas";
 import { extractDialogueNpcs, knownEntityNames, isPlausibleNpcName } from "@/shared/npcExtract";
 import { playerThreatTier, clampTier } from "@/shared/netWorth";
+import { payoutCeiling, clampPayoutTier, type PayoutTier } from "@/shared/payoutRamp";
 import type { CombatState } from "@/shared/combat";
 import type { Dossier } from "@/shared/multiplayer";
 import type { SpawnSpec, ShipClass } from "@/engine/combatEngine";
@@ -752,14 +753,19 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
         ? "high"
         : "low"
       : undefined;
+  // Progression ramp: a green, tendays-0 rookie shouldn't be handed professional
+  // (T2) or major-score (T3) money just because the narrator called the job "big".
+  // Clamp the model's tier DOWN to what the campaign's advancement has earned.
+  const rewardCeiling = payoutCeiling(input.state);
   if (plan.payout && pc) {
     toolCalls.push("award_payout");
+    const tier = clampPayoutTier(plan.payout.tier as PayoutTier, rewardCeiling);
     const res = runtime.execute("award_payout", {
-      tier: plan.payout.tier,
+      tier,
       reason: plan.payout.reason,
       mood: negotiationMood,
     }) as { amount?: number; tier?: string; error?: string };
-    if (res.amount) emit([`💰 Payment: +¢${res.amount} (${plan.payout.tier})`]);
+    if (res.amount) emit([`💰 Payment: +¢${res.amount} (${tier})`]);
   }
   // OFFERS: bids/quotes the model presented (a job's pay, a rival buyer's counter).
   // The model names a TIER; the engine rolls the bounded figure and shows it as a
@@ -767,7 +773,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   if (plan.offers?.length) {
     const offerLines: string[] = [];
     for (const offer of plan.offers.slice(0, 3)) {
-      const amount = runtime.quoteOffer(offer.tier, negotiationMood);
+      const amount = runtime.quoteOffer(clampPayoutTier(offer.tier as PayoutTier, rewardCeiling), negotiationMood);
       if (amount != null) offerLines.push(`💰 ${offer.from?.trim() || "Offer"}: ~¢${amount}`);
     }
     if (offerLines.length) {
