@@ -74,4 +74,21 @@ describe("relationship mechanic — a passed social check moves standing", () =>
     roll(rt, "negotiation"); // second roll same turn — no further move
     expect(rt.npcRelations["npc-sera"].disposition).toBe(2);
   });
+
+  it("a standing change appends a beat to the relationship history log", () => {
+    const rt = withSeraPresent(rngOf(15));
+    roll(rt, "negotiation");
+    const log = rt.npcRelations["npc-sera"].log ?? [];
+    expect(log.length).toBe(1);
+    expect(log[0].note).toMatch(/warmed to you/i);
+  });
+
+  it("model notes accumulate into the log (not overwrite), de-duping repeats", () => {
+    const rt = withSeraPresent(rngOf(15));
+    rt.updateNpcRelation("npc-sera", { note: "Met at the docks." });
+    rt.updateNpcRelation("npc-sera", { note: "Met at the docks." }); // dupe — ignored
+    rt.updateNpcRelation("npc-sera", { note: "She trusted you with the manifest." });
+    const log = rt.npcRelations["npc-sera"].log ?? [];
+    expect(log.map((e) => e.note)).toEqual(["Met at the docks.", "She trusted you with the manifest."]);
+  });
 });

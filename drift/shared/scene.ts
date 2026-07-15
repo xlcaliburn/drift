@@ -40,6 +40,15 @@ export interface SceneCard {
   pendingPickup?: { name: string; itemId?: string; note?: string };
 }
 
+/** One dated beat in a relationship's history — how it actually developed. */
+export interface RelationLogEntry {
+  note: string;
+  scene?: number;
+}
+
+/** How many history beats a relationship keeps (oldest trimmed first). */
+export const MAX_RELATION_LOG = 8;
+
 export interface NpcRelation {
   /** Who they are to the player: "estranged brother", "your handler". */
   relationship?: string;
@@ -47,6 +56,10 @@ export interface NpcRelation {
   disposition: number;
   /** Rolling one-line memory: what last happened between you (overwrite). */
   lastNote?: string;
+  /** Accumulating history of notable beats (oldest→newest, capped) — so the
+   *  relationship log shows how you MET and how things have gone since, not just
+   *  the single last thing. Each meaningful note/standing-change appends here. */
+  log?: RelationLogEntry[];
   /** Scene seq of the last interaction. */
   lastSceneSeq?: number;
   /** Does THIS player know the NPC by name yet? Per-player (name-knowledge is not

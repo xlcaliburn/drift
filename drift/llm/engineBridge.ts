@@ -40,8 +40,10 @@ import {
   MAX_SITUATION_CHARS,
   DISPOSITION_MIN,
   DISPOSITION_MAX,
+  MAX_RELATION_LOG,
   type SceneCard,
   type NpcRelations,
+  type NpcRelation,
 } from "@/shared/scene";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
@@ -1256,6 +1258,18 @@ export class TurnRuntime {
    * is ambiguous (0 or >1 NPCs present), already nudged this turn, or at the cap.
    * Returns a display line when standing actually moved.
    */
+  /** Append a beat to a relationship's history log (oldest→newest, capped), so the
+   *  People panel shows how things DEVELOPED, not just the last line. Skips a repeat
+   *  of the most recent note so a static situation doesn't spam identical entries. */
+  private pushRelationLog(rel: NpcRelation, note: string): void {
+    const trimmed = note.trim().slice(0, 160);
+    if (!trimmed) return;
+    const log = rel.log ?? [];
+    if (log.length && log[log.length - 1].note === trimmed) return; // no consecutive dupes
+    log.push({ note: trimmed, scene: this.sceneCard.seq });
+    rel.log = log.slice(-MAX_RELATION_LOG);
+  }
+
   private nudgeStandingFromCheck(
     outcome: string,
     critical: boolean,
@@ -1273,10 +1287,14 @@ export class TurnRuntime {
     if (to === before) return undefined; // already maxed/floored
     this.nudgedThisTurn.add(npcId);
     rel.disposition = to;
-    rel.lastNote = delta > 0 ? "Won over in conversation." : "Soured after a clumsy approach.";
-    rel.lastSceneSeq = this.sceneCard.seq;
-    this.npcRelations[npcId] = rel;
     const name = this.state.npcs.find((n) => n.id === npcId)?.name ?? npcId;
+    rel.lastNote =
+      delta > 0
+        ? `Warmed to you — now ${dispositionLabel(to)}.`
+        : `Cooled toward you — now ${dispositionLabel(to)}.`;
+    rel.lastSceneSeq = this.sceneCard.seq;
+    this.pushRelationLog(rel, rel.lastNote);
+    this.npcRelations[npcId] = rel;
     this.events.push({
       type: "note",
       breakdown: `${name} standing ${before}→${to} (social check)`,
@@ -1304,6 +1322,10 @@ export class TurnRuntime {
     if (upd.note?.trim()) {
       rel.lastNote = upd.note.trim().slice(0, 160);
       rel.lastSceneSeq = this.sceneCard.seq;
+      // Accumulate the history: each meaningful note becomes a dated beat, so the
+      // relationship log reads as a story ("met at the docks → she trusted you →
+      // …"), not just the single most recent line.
+      this.pushRelationLog(rel, rel.lastNote);
     }
     this.npcRelations[npcId] = rel;
     return { line };

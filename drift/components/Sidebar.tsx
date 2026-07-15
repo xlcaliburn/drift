@@ -920,6 +920,23 @@ function PeopleView({
                 )}
               </div>
 
+              {/* History: how the relationship has actually gone, oldest→newest. The
+                  newest beat is the headline above ("What you know"), so this shows
+                  the prior ones — the arc that led to now. */}
+              {sel.rel?.log && sel.rel.log.length > 1 && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-neutral-500">History</div>
+                  <ul className="mt-1 space-y-1">
+                    {sel.rel.log.slice(0, -1).map((e, i) => (
+                      <li key={i} className="leading-snug text-neutral-400">
+                        <span className="text-neutral-300">{e.note}</span>
+                        {e.scene ? <span className="text-neutral-600"> · scene {e.scene}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* Their manner is a read you can only take in person — shown once you've
                   actually dealt with them (a passing mention doesn't reveal it). */}
               {sel.rel?.lastNote && (
