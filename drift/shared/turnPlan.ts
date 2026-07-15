@@ -214,6 +214,24 @@ export const TurnPlan = z.object({
       factionIds: z.array(z.string()).default([]),
     }),
   ),
+  /** QUEST TRACKING (the fence-job-that-never-ended bug). OPEN a thread the moment
+   *  the player takes on a real objective (a job, a hunt, a goal) so it's tracked
+   *  and can't drift forgotten; RESOLVE it (by `id` from the thread list) the moment
+   *  it's done or abandoned. Without this a job lives only in prose and never ends.
+   *  The engine caps + dedupes; don't open a thread for trivial chatter. */
+  threads: optionalNullable(
+    z.array(
+      z.object({
+        op: z.enum(["open", "resolve"]),
+        /** Required to OPEN — a short objective title ("Fence the salvage via Yoren"). */
+        title: optionalNullable(z.string().max(80)),
+        /** One line on what/why (open only). */
+        body: optionalNullable(z.string().max(240)),
+        /** Required to RESOLVE — the thread id from the "Relevant threads" list. */
+        id: optionalNullable(z.string()),
+      }),
+    ).max(3),
+  ),
   /** Named NPCs introduced or used this turn — the engine persists new ones to the
    *  world's cast (at the current location) so they're REMEMBERED and recognized
    *  when the player returns. `disposition` nudges their standing with the player

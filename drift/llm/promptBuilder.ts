@@ -77,6 +77,7 @@ Respond with ONE json object and nothing else:
   "payout": {"tier": "T1", "reason": "courier run delivered"},
   "offers": [{"tier": "T2", "from": "the rival buyer"}],
   "worldEvent": {"headline": "..."},
+  "threads": [{"op": "open", "title": "Fence the salvage through Yoren", "body": "Sera set you on a Dock-14 broker moving Wrecker goods."}, {"op": "resolve", "id": "th-..."}],
   "items": [{"name": "vacuum-rated facemask", "action": "gain", "note": "looted from the maintenance locker"}],
   "npcs": [{"name": "Quartermaster Doyle", "oneBreath": "Gruff supply officer; keeps the manifests.", "disposition": 1, "note": "paid the player 200c", "relationship": "your supply contact"}],
   "scene": {"situation": "Doyle is verifying the seals", "beats": ["Doyle promised 200c on verification"], "place": "Rook Station — the Undertow bounty desk", "dangers": ["toxic coolant fog"]},
@@ -94,7 +95,7 @@ RULES:
    SHOPPING: the MARKET HERE line is the ONLY stock, at the ONLY prices — no market line, nothing's for sale. Player buys → "purchase":{"itemId","qty"}; sells carried gear → "sell":{"name"}. The ENGINE runs the till (validates credits/stock/pack space, prints the figures); you narrate the counter, the vendor, the haggle-FLAVOR — never the numbers, and never a deal the engine didn't confirm.
    DOCK REPAIR: only when a DOCK REPAIR HERE line is present. Player asks to patch the hull → "repair":{} (full) or "repair":{"hp":N} (partial); the ENGINE charges ¢12/HP, prints it, and runs a tab if they're short. If a DOCK DEBT line shows, weave in the pressure to take a payoff job.
 7. MONEY IS ENGINE-OWNED — inventing or inflating a credit figure is the #1 economy error. NEVER state an amount in DIGITS OR WORDS anywhere: not a job's pay, a buyer's bid, a bribe, a price. Emit a TIER; the ENGINE rolls and PRINTS the figure. "payout" when a deal is STRUCK (job done, bounty paid, sale closed): T0 errand / T1 standard / T2 professional / T3 major score (rare) — never pay twice. "offers" when you PRESENT a bid/quote the player HASN'T taken (a job's posted pay, a rival buyer's counter, a haggling number on the table): [{tier, from}] — a BETTER rival offer is a HIGHER tier; "from" names who's bidding. Keep the prose qualitative ("a solid cut", "a better offer on the table", "she names a fat sum") — the engine shows the real number on its own line.
-8. "worldEvent" when a faction's standing shifts. "sceneEnd" when the scene truly wraps. ITEMS are ENGINE-owned: LOOT comes from a loot/scavenge action's roll — when an ENGINE RESULT reports a scavenged haul, narrate finding EXACTLY that (never add or upgrade the prize; the player doesn't get to name it). You may use "items" ONLY to record a genuinely legitimate transfer — a purchase the player paid for, a reward an NPC hands them, a confiscation ("lose") — never loot the player merely claimed. The engine drops a gain that has no legitimate source, so don't narrate one landing. When an NPC HANDS/GIVES/LENDS/TOSSES the player an item (a stim, a keycard, a spare mag), you MUST fire items:[{name, action:"gain"}] THAT SAME beat — narrating the handover alone does NOT put it in their inventory, so a later "use it" will fail. Never offer a "take"/"use it now" choice for an item you didn't actually grant. The PC gear line shows what they already carry; don't re-gain it.
+8. "threads" = QUEST TRACKING (non-optional). The MOMENT the player takes on a real objective — a job, a hunt, a delivery, a goal — emit threads:[{op:"open", title, body}] so it's tracked and can't be forgotten. The MOMENT it's done or abandoned, emit threads:[{op:"resolve", id}] with the id from the "Relevant threads" list. A job must never just drift: if an open thread has been circling for a while, DRIVE it — offer a concrete beat/choice that moves it toward completion, and CLOSE it when the player delivers. Social play (flirting, drinking, banter) is welcome, but it NEVER replaces resolving the open objective — weave both, and always leave a visible path to finish the job. "worldEvent" when a faction's standing shifts. "sceneEnd" when the scene truly wraps. ITEMS are ENGINE-owned: LOOT comes from a loot/scavenge action's roll — when an ENGINE RESULT reports a scavenged haul, narrate finding EXACTLY that (never add or upgrade the prize; the player doesn't get to name it). You may use "items" ONLY to record a genuinely legitimate transfer — a purchase the player paid for, a reward an NPC hands them, a confiscation ("lose") — never loot the player merely claimed. The engine drops a gain that has no legitimate source, so don't narrate one landing. When an NPC HANDS/GIVES/LENDS/TOSSES the player an item (a stim, a keycard, a spare mag), you MUST fire items:[{name, action:"gain"}] THAT SAME beat — narrating the handover alone does NOT put it in their inventory, so a later "use it" will fail. Never offer a "take"/"use it now" choice for an item you didn't actually grant. The PC gear line shows what they already carry; don't re-gain it.
 9. "npcs" — CONTINUITY. List EVERY distinct figure now in the scene the player can see, speak to, or square off against — a boss, a contact, a new arrival, a bodyguard, a named foe — each with a one-line who-they-are. Give a short handle to anyone unnamed but present ("the wrecker woman" → name:"Wrecker woman" or invent "Kessa"). A GROUP is one entry ("Draven's enforcers"). The engine tracks who's present and they RECOGNIZE the player later — so a figure you narrate but omit here goes missing from the game. Only skip true background (a distant, faceless crowd). The one-line who-they-are ("oneBreath") is the NPC's TRUE identity for YOU the GM — it is canon the player has NOT necessarily learned. Same entry may update EVERY turn: "note" = what THE PLAYER now KNOWS about this figure from THEIR side — how they were introduced or what they've since found out ("the Ledger fixer vouched for Valerius as a trader"; later "learned he fronts for the Sable Chain"). Put ONLY player-known facts in "note", grow it as they learn more, and NEVER leak the NPC's hidden background the player hasn't earned. "relationship" = who they are to the player (first write sticks). STANDING is engine-owned and moves two ways: when the player PASSES a social check (persuade/negotiation) on someone present — winning them over on the roll — or when a job/quest completes; idle chat with NO check still moves nothing. So to deepen a bond, offer or make a SOCIAL ROLL — don't just narrate trust growing. GROW "note" every meaningful beat with what the player now knows/feels about this figure ("she opened up about the sister she lost on Talos"), so the relationship LOG reads as a story, not one stale line.
 10. "scene" — running memory. Overwrite "situation" (what's happening NOW) when it changes; append a beat when a promise/deal/threat/debt is made; set "place" when the player moves somewhere the location list can't name ("aboard the Dust Eater, in the black"). SCENE NOW and PREVIOUSLY in your context came from this — treat them as fact.
 11. Ground everything in CURRENT SCENE. NPCs listed there know the player — their standing tag ([trusted (+2) · your handler · last: …]) is history; play it. Never treat a known NPC as a stranger.
@@ -297,23 +298,22 @@ export function retrieveEntities(state: CampaignState, playerText: string, focus
   const starterThreadIds = new Set([`th-start-${state.campaign.id}`, shipThreadId(state.campaign.id)]);
 
   const active = state.threads.filter((t) => t.status === "active");
-  let threads = active
+  // Active threads are the player's OPEN OBJECTIVES — they must ALWAYS stay in
+  // context, or a job drifts out of view and is forgotten (the fence-job-that-ran-
+  // the-whole-game bug). So DON'T drop unmatched threads; rank every active thread
+  // by this turn's relevance and show them all up to the cap.
+  const threads = active
     .map((t) => {
-      let score = 0;
+      let score = 1; // every open objective has a floor — it never vanishes
       if (t.entityRefs.some((r) => selectedRefs.has(r))) score += 60;
       const overlap = tokenize(t.title).filter((w) => textTokens.has(w)).length;
       score += overlap * 25;
-      if (starterThreadIds.has(t.id)) score += 10; // current objective: low always-on floor
+      if (starterThreadIds.has(t.id)) score += 10;
       return { t, score };
     })
-    .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, MAX_THREADS)
     .map((x) => x.t);
-
-  // Never leave the narrator with zero plot: if nothing scored, fall back to the
-  // most recent active threads so the current objective is always in context.
-  if (threads.length === 0) threads = active.slice(0, 2);
 
   return { npcs, threads, namedNpcIds };
 }

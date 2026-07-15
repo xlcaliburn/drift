@@ -878,6 +878,28 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       factionIds: plan.worldEvent.factionIds,
     });
   }
+  // QUEST TRACKING: open a thread when the player takes on an objective, resolve
+  // it when done (the fence-job-that-never-ended bug — a job lived only in prose
+  // and never closed). Light dedup on OPEN so a re-narrated job doesn't spawn a
+  // second copy of the same thread.
+  if (plan.threads?.length) {
+    for (const t of plan.threads.slice(0, 3)) {
+      if (t.op === "open") {
+        const title = t.title?.trim();
+        if (!title) continue;
+        const norm = title.toLowerCase();
+        const dupe = runtime.state.threads.some(
+          (x) => x.status !== "resolved" && (x.title.toLowerCase().includes(norm) || norm.includes(x.title.toLowerCase())),
+        );
+        if (dupe) continue;
+        toolCalls.push("open_thread");
+        runtime.execute("update_thread", { op: "create", title, body: t.body?.trim() ?? "" });
+      } else if (t.op === "resolve" && t.id?.trim()) {
+        toolCalls.push("resolve_thread");
+        runtime.execute("update_thread", { op: "resolve", threadId: t.id.trim() });
+      }
+    }
+  }
   for (const adv of plan.clockAdvances) {
     toolCalls.push("advance_clock");
     runtime.execute("advance_clock", adv as unknown as Record<string, unknown>);
