@@ -67,6 +67,12 @@ const LOOT_BAND: Record<"T1" | "T2" | "T3", [number, number]> = {
  *  parent rep is +1, so this only fires after you turn hard on your own side. */
 const SHIP_SEIZE_REP = -2;
 
+/** Skills whose successful use ON a present NPC moves your STANDING with them — the
+ *  engine-owned relationship mechanic. A passed social check warms them (+1, +2 on a
+ *  crit); a fumble cools them (-1). Capped 1/NPC/turn. Standing no longer depends on
+ *  the model's whim or only quest completion — you win people over by rolling well. */
+const RAPPORT_SKILLS = new Set(["negotiation"]);
+
 /** Does a gained item's name read as real GEAR (a weapon or armor)? Such gains
  *  stay gated to a legit loot/quest source even when they don't match the catalog,
  *  so the model can't hand out a free "rocket launcher"; inert flavor props (a
@@ -352,6 +358,11 @@ export class TurnRuntime {
       this.events.push({ type: "note", breakdown: drop.line });
       loot = drop.line;
     }
+    // Relationship: a passed SOCIAL check on the present NPC moves your standing.
+    let standing: string | undefined;
+    if (RAPPORT_SKILLS.has(String(input.skill))) {
+      standing = this.nudgeStandingFromCheck(res.outcome, res.critical, res.criticalFailure);
+    }
     return {
       breakdown: res.breakdown,
       total: res.total,
@@ -361,6 +372,7 @@ export class TurnRuntime {
       tickEligible: res.tickEligible,
       ...(tick ? { tick } : {}),
       ...(tickCapped ? { tickCapped } : {}),
+      ...(standing ? { standing } : {}),
       ...(loot ? { loot } : {}),
       ...(harm && harm.taken > 0
         ? { damage: harm.taken, hpAfter: harm.hpAfter, downed: harm.downed, died: harm.died }
@@ -1236,6 +1248,42 @@ export class TurnRuntime {
    * (rolling last-interaction memory). Returns a display line when the standing
    * actually moved (D-4: visible, like ticks).
    */
+  /**
+   * Move standing toward the scene's sole present NPC from a social CHECK outcome:
+   * +1 on success (+2 on a crit), -1 on a fumble. Capped 1/NPC/turn. This is the
+   * engine-owned relationship mechanic — standing is EARNED by a rolled check, not
+   * granted on the model's whim or only on quest completion. Skips when the target
+   * is ambiguous (0 or >1 NPCs present), already nudged this turn, or at the cap.
+   * Returns a display line when standing actually moved.
+   */
+  private nudgeStandingFromCheck(
+    outcome: string,
+    critical: boolean,
+    criticalFailure: boolean,
+  ): string | undefined {
+    const present = this.sceneCard.presentNpcIds ?? [];
+    if (present.length !== 1) return undefined; // ambiguous or nobody in the room
+    const npcId = present[0];
+    if (this.nudgedThisTurn.has(npcId)) return undefined;
+    const delta = criticalFailure ? -1 : critical ? 2 : outcome === "success" ? 1 : 0;
+    if (delta === 0) return undefined;
+    const rel = this.npcRelations[npcId] ?? { disposition: 0 };
+    const before = rel.disposition;
+    const to = Math.max(DISPOSITION_MIN, Math.min(DISPOSITION_MAX, before + delta));
+    if (to === before) return undefined; // already maxed/floored
+    this.nudgedThisTurn.add(npcId);
+    rel.disposition = to;
+    rel.lastNote = delta > 0 ? "Won over in conversation." : "Soured after a clumsy approach.";
+    rel.lastSceneSeq = this.sceneCard.seq;
+    this.npcRelations[npcId] = rel;
+    const name = this.state.npcs.find((n) => n.id === npcId)?.name ?? npcId;
+    this.events.push({
+      type: "note",
+      breakdown: `${name} standing ${before}→${to} (social check)`,
+    });
+    return `👤 ${name}: ${dispositionLabel(before)} → ${dispositionLabel(to)}`;
+  }
+
   updateNpcRelation(
     npcId: string,
     upd: { disposition?: number; note?: string; relationship?: string },
