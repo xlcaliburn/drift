@@ -33,7 +33,7 @@ const memory: { sceneCard?: SceneCard; npcRelations?: NpcRelations; recentScenes
     beats: ["Broker promised the run pays on delivery to Rook"],
     dangers: ["a Sable Chain watcher two tables over"],
     presentNpcIds: ["npc-broker"],
-    startIndex: 0,
+    startTranscriptIdx: 0,
   },
   npcRelations: {
     "npc-broker": {
@@ -140,7 +140,7 @@ const CONFIGS: { label: string; run: () => string }[] = [
     run: () => {
       const s = patronEligible();
       return buildContextSlice(s, "rest up", [], undefined, true, {
-        sceneCard: { seq: 1, turnCount: 1, beats: [], presentNpcIds: ["npc-patron-camp-vess"], startIndex: 0 },
+        sceneCard: { seq: 1, turnCount: 1, situation: "", beats: [], presentNpcIds: ["npc-patron-camp-vess"], startTranscriptIdx: 0 },
       });
     },
   },
