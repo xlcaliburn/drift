@@ -3,6 +3,7 @@ import type { CampaignState } from "@/shared/schemas";
 import { liveRng, computeModifier, type RNG, type EngineEvent } from "@/engine";
 import { TurnRuntime } from "./engineBridge";
 import { applyPlan, type ApplyCtx } from "./applyPlan";
+import { openFightFromSkill, COMBAT_SKILLS } from "./openFight";
 import { buildJsonSystem, buildContextSlice, retrieveEntities } from "./promptBuilder";
 import { deepseekChat, deepseekChatStream, isDeepSeekModel, resolveModel } from "./deepseek";
 import { sanitizeHistory, trimToLastSentence } from "./history";
@@ -20,10 +21,8 @@ import { checkFromVerb, verbFromLabel, verbRolls, inferAttemptVerb } from "@/sha
 import { dcForRisk, difficultyToRisk, type RiskTier } from "@/shared/risk";
 import type { Character } from "@/shared/schemas";
 import { extractDialogueNpcs, knownEntityNames } from "@/shared/npcExtract";
-import { playerThreatTier, clampTier } from "@/shared/netWorth";
 import type { CombatState } from "@/shared/combat";
 import type { Dossier } from "@/shared/multiplayer";
-import type { SpawnSpec, ShipClass } from "@/engine/combatEngine";
 import { stripInlineMenu } from "@/shared/narration";
 import { graduatedTutorialThisTurn, inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
 
@@ -115,13 +114,6 @@ export interface JsonTurnResult {
  *  finish AND emit the JSON; flash output is cheap ($0.28/M → ~0.04¢ worst case). */
 const JSON_MAX_TOKENS = 1600;
 
-/** Default enemy ship class when the model gives only a tier for a ship fight. */
-const TIER_TO_CLASS: Record<"T1" | "T2" | "T3", string> = { T1: "scout", T2: "fighter", T3: "gunship" };
-
-/** Gun skills are acts of violence, not skill checks — invoking one opens a
- *  fight (see openFightFromSkill). smallArms → on-foot, gunnery → ship. */
-const COMBAT_SKILLS = new Set(["smallArms", "gunnery"]);
-
 /** The narrator produced nothing usable after retry + repair. The turn is
  *  ABORTED — the route surfaces a retryable error and persists NOTHING, so the
  *  player resumes exactly where they left off once the issue clears. */
@@ -131,11 +123,6 @@ export class TurnGenerationError extends Error {
     super(detail);
     this.name = "TurnGenerationError";
   }
-}
-
-/** A bare gun-skill check carries only a rough DC; read it as enemy toughness. */
-function dcToTier(dc: number): "T1" | "T2" | "T3" {
-  return dc >= 17 ? "T3" : dc >= 13 ? "T2" : "T1";
 }
 
 /**
@@ -364,36 +351,15 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   let combat: CombatState | null = null;
 
   // A gun skill (smallArms/gunnery) is an act of violence, not a skill check:
-  // reroute it into the combat engine — spawn the target (you drew first, so a
-  // surprise edge) and resolve the OPENING SHOT (roll-to-hit → damage), then the
-  // beat continues as normal multi-turn combat. This guarantees gun skills run
-  // through real attack/AC/damage math instead of a self-only roll_check.
-  function openFightFromSkill(skill: string, dc: number): CombatState | null {
-    // Net-worth ceiling: a gun-skill reroute never spawns tougher than the player's
-    // band (an under-equipped rookie faces T1, not a professional).
-    const tier = clampTier(dcToTier(dc), playerThreatTier(input.state));
-    const useShip = skill === "gunnery" && !!input.state.ship;
-    // Name the foe after the TARGET when the player named a present NPC ("shoot Yuri")
-    // — so the fight shows their name, not a generic "Thug".
-    const text = input.playerText.toLowerCase();
-    const target = runtime.sceneCard.presentNpcIds
-      .map((npcId) => runtime.state.npcs.find((n) => n.id === npcId))
-      .find((n) => n && n.name.length > 2 && text.includes(n.name.toLowerCase()));
-    const started = useShip
-      ? runtime.startShipCombat([{ shipClass: TIER_TO_CLASS[tier] as ShipClass, count: 1, tier }], "player")
-      : runtime.startCombat([{ tier, count: 1, name: target?.name }] as SpawnSpec[], "player");
-    const lines = [...started.lines];
-    let cbt = started.combat;
-    const firstEnemy = cbt.enemies.find((e) => e.hp > 0);
-    if (cbt.active && firstEnemy) {
-      const round = runtime.resolveCombatRound(cbt, { type: "attack", enemyId: firstEnemy.id });
-      lines.push(...round.lines);
-      cbt = round.combat;
-    }
-    engineLines.push(`ENGINE RESULT: ${lines.join(" · ")}`);
-    emit(lines);
-    return cbt.active ? cbt : null;
-  }
+  // reroute it into the combat engine (openFight.ts). Thin wrapper that owns the
+  // emit + engineLines side effects; the reroute logic itself is shared with the
+  // mid-turn `roll` path below.
+  const openFight = (skill: string, dc: number): CombatState | null => {
+    const r = openFightFromSkill(runtime, input.state, input.playerText, skill, dc);
+    engineLines.push(r.engineLine);
+    emit(r.lines);
+    return r.combat;
+  };
 
   // Typed-action check inference: the model too often forgets to set `roll` on a
   // custom action, so a TYPED action (not a clicked chip) that READS as an attempt
@@ -416,7 +382,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   if (preCheck && preSkill && pc) {
     if (COMBAT_SKILLS.has(preSkill)) {
       toolCalls.push("combat_start");
-      combat = openFightFromSkill(preSkill, preCheck.dc);
+      combat = openFight(preSkill, preCheck.dc);
     } else {
       toolCalls.push("roll_check");
       const res = runtime.execute("roll_check", {
@@ -670,7 +636,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   // plan.roll skill/reroute path is gated here.
   if (plan.roll && rollSkill && !preCheck && !input.fromChoice && pc && !combat && COMBAT_SKILLS.has(rollSkill)) {
     toolCalls.push("combat_start");
-    combat = openFightFromSkill(rollSkill, plan.roll.dc);
+    combat = openFight(rollSkill, plan.roll.dc);
     // The narration above described the player's INTENT and was written BEFORE the
     // engine resolved the opening exchange — which may have MISSED and hurt/downed
     // them. Re-narrate from the real result so the prose can't claim a kill the dice

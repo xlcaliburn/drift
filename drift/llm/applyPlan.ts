@@ -7,6 +7,7 @@ import { SCENE_TURN_CAP } from "@/shared/scene";
 import { playerThreatTier, clampTier } from "@/shared/netWorth";
 import { payoutCeiling, clampPayoutTier, type PayoutTier } from "@/shared/payoutRamp";
 import { knownEntityNames, isPlausibleNpcName } from "@/shared/npcExtract";
+import { TIER_TO_CLASS } from "./openFight";
 
 /**
  * Apply the plan's mechanical INTENTS through the engine (jsonTurn regions I + J).
@@ -38,9 +39,6 @@ export interface ApplyCtx {
   /** Combat spawned this turn — combatStart sets it; a reroute may have already. */
   combat: CombatState | null;
 }
-
-/** Default enemy ship class when the model gives only a tier for a ship fight. */
-const TIER_TO_CLASS: Record<"T1" | "T2" | "T3", string> = { T1: "scout", T2: "fighter", T3: "gunship" };
 
 const FOE_NOUNS =
   "wrecker|guard|enforcer|goon|thug|mook|raider|soldier|merc|mercenary|gunman|gunhand|pirate|hostile|" +
