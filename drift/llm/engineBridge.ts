@@ -1,9 +1,8 @@
-import type { CampaignState, Character, WorldEvent, Thread } from "@/shared/schemas";
+import type { CampaignState, Character, WorldEvent } from "@/shared/schemas";
 import {
   rollCheck,
   resolveShipAttack,
   resolvePersonalAttack,
-  advanceClock,
   runSceneEnd,
   computeModifier,
   liveRng,
@@ -15,7 +14,6 @@ import { enemyTiers, shipClasses, economy, isHazardSkill } from "@/content";
 import { awardTick } from "@/engine/progression";
 import { rollDamage, maxDice } from "@/engine/dice";
 import { generateScavengeLoot } from "@/engine/loot";
-import { generateQuirk, generateBackstory, generateNpcFlavor } from "@/shared/npcFlavor";
 import {
   spawnCombatEnemies,
   spawnCombatShips,
@@ -43,23 +41,25 @@ import {
   restWithPatron,
   syncDockDebt,
 } from "./runtimeEconomy";
-import { validateAttributes } from "@/shared/respec";
 import type { Attributes } from "@/shared/schemas";
 import {
-  freshSceneCard,
-  dispositionLabel,
-  isSceneMove,
-  MAX_BEATS,
-  MAX_BEAT_CHARS,
-  MAX_SITUATION_CHARS,
-  DISPOSITION_MIN,
-  DISPOSITION_MAX,
-  MAX_RELATION_LOG,
-  type SceneCard,
-  type NpcRelations,
-  type NpcRelation,
-} from "@/shared/scene";
-import { shipIsOwned, shipThreadId } from "@/shared/recap";
+  advanceClock,
+  adjustRep,
+  updateThread,
+  logWorldEvent,
+  endScene,
+  registerNpc,
+  setNpcOneBreath,
+  markPresent,
+  updateScene,
+  refreshSituation,
+  nudgeStandingFromCheck,
+  updateNpcRelation,
+  bodyMod,
+  respec,
+  setAppearance,
+} from "./runtimeNarrative";
+import { freshSceneCard, type SceneCard, type NpcRelations } from "@/shared/scene";
 import { inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
 import {
   freshDeathSaves,
@@ -74,11 +74,6 @@ const LOOT_BAND: Record<"T1" | "T2" | "T3", [number, number]> = {
   T2: [80, 200],
   T3: [350, 700],
 };
-
-/** Standing at or below this with your parent faction, while still flying their
- *  loaner, gets the ship repossessed (see adjustRep). A real betrayal — starting
- *  parent rep is +1, so this only fires after you turn hard on your own side. */
-const SHIP_SEIZE_REP = -2;
 
 /** Skills whose successful use ON a present NPC moves your STANDING with them — the
  *  engine-owned relationship mechanic. A passed social check warms them (+1, +2 on a
@@ -100,7 +95,9 @@ export class TurnRuntime {
   rng: RNG;
   events: EngineEvent[] = [];
   enemies = new Map<string, CombatTarget>();
-  private clockAdvances: { clockId: string; amount: number; reason: string }[] = [];
+  /** Clock advances previewed this turn; committed at end_scene. Public so
+   *  runtimeNarrative (advanceClock/endScene) can read+push. */
+  clockAdvances: { clockId: string; amount: number; reason: string }[] = [];
   worldEvents: WorldEvent[] = [];
   /** Suggested clickable actions offered by the narrator this turn. */
   choices: string[] = [];
@@ -116,8 +113,9 @@ export class TurnRuntime {
   sceneCard: SceneCard;
   /** Player↔NPC standing overlay — mutated in place, session-owned. */
   npcRelations: NpcRelations;
-  /** NPCs already disposition-nudged this turn (engine cap: ±1/NPC/turn). */
-  private nudgedThisTurn = new Set<string>();
+  /** NPCs already disposition-nudged this turn (engine cap: ±1/NPC/turn). Public so
+   *  runtimeNarrative's relationship functions can read+add. */
+  nudgedThisTurn = new Set<string>();
   /** True once a quest/job concluded THIS turn (a payout was awarded, or a thread
    *  resolved). Disposition only moves on such turns — standing is earned by
    *  completing work, not by chatting (built-in engine gate, not a prompt rule).
@@ -226,15 +224,15 @@ export class TurnRuntime {
       case "adjust_resource":
         return adjustResource(this, input);
       case "advance_clock":
-        return this.advanceClock(input);
+        return advanceClock(this, input);
       case "adjust_rep":
-        return this.adjustRep(input);
+        return adjustRep(this, input);
       case "update_thread":
-        return this.updateThread(input);
+        return updateThread(this, input);
       case "log_world_event":
-        return this.logWorldEvent(input);
+        return logWorldEvent(this, input);
       case "end_scene":
-        return this.endScene(input);
+        return endScene(this, input);
       case "award_payout":
         return awardPayout(this, input);
       case "use_item":
@@ -370,7 +368,7 @@ export class TurnRuntime {
     // Relationship: a passed SOCIAL check on the present NPC moves your standing.
     let standing: string | undefined;
     if (RAPPORT_SKILLS.has(String(input.skill))) {
-      standing = this.nudgeStandingFromCheck(res.outcome, res.critical, res.criticalFailure);
+      standing = nudgeStandingFromCheck(this, res.outcome, res.critical, res.criticalFailure);
     }
     return {
       breakdown: res.breakdown,
@@ -524,225 +522,21 @@ export class TurnRuntime {
     return quoteOffer(this, tier, mood);
   }
 
-  private advanceClock(input: Record<string, unknown>) {
-    const clockId = String(input.clockId);
-    const clock = this.state.clocks.find((c) => c.id === clockId);
-    if (!clock) return { error: `unknown clock ${clockId}` };
-    const amount = input.amount ? Number(input.amount) : 1;
-    const reason = String(input.reason ?? "");
-    // Preview the milestone effects now (authoritative apply happens at end_scene).
-    const res = advanceClock(clock, amount, reason);
-    this.clockAdvances.push({ clockId, amount, reason });
-    this.events.push(res.event);
-    return { breakdown: res.event.breakdown, crossedMilestones: res.crossedMilestones };
-  }
+  // ── World / narrative (clocks, rep, threads, world events, scene close, NPCs,
+  //    relations, character services) — runtimeNarrative.ts. advanceClock/adjustRep/
+  //    updateThread/logWorldEvent/endScene are dispatched by execute() as free fns;
+  //    the rest keep delegating methods for their external/applyPlan callers. ──
 
-  private adjustRep(input: Record<string, unknown>) {
-    const factionId = String(input.factionId);
-    const delta = Number(input.delta);
-    const rep = this.state.factionRep.find((r) => r.factionId === factionId);
-    if (!rep) return { error: `unknown faction ${factionId}` };
-    const from = rep.rep;
-    const to = Math.max(-5, Math.min(5, from + delta));
-    this.state = {
-      ...this.state,
-      factionRep: this.state.factionRep.map((r) =>
-        r.factionId === factionId
-          ? // Mark the faction as "encountered" the first time its rep is touched, so
-            // the sheet keeps showing it even if rep later swings back to neutral 0.
-            { ...r, rep: to, standing: r.standing ?? "Encountered" }
-          : r,
-      ),
-    };
-    this.events.push({ type: "rep", breakdown: `Rep ${factionId}: ${from}→${to}`, factionId, from, to });
-
-    // Loaner repossession: crater your standing with the faction whose ship you
-    // fly — before you've earned the title — and they pull it. Deterministic
-    // consequence (like a clock milestone); the narrator must narrate it.
-    const pc = this.state.characters.find((c) => c.kind === "pc");
-    if (
-      pc?.parentFactionId === factionId &&
-      to <= SHIP_SEIZE_REP &&
-      this.state.ship &&
-      !shipIsOwned(this.state)
-    ) {
-      const shipName = this.state.ship.name;
-      const factionName = this.state.factions.find((f) => f.id === factionId)?.name ?? "Your faction";
-      this.state = {
-        ...this.state,
-        ship: undefined,
-        threads: this.state.threads.map((t) =>
-          t.id === shipThreadId(this.state.campaign.id)
-            ? {
-                ...t,
-                title: "Earn a hull of your own",
-                body: `${factionName} repossessed ${shipName} when your standing with them cratered. You're grounded — beg and borrow passage until you can get a hull that answers to you alone.`,
-              }
-            : t,
-        ),
-      };
-      this.events.push({
-        type: "note",
-        breakdown: `${factionName} repossessed ${shipName} — standing cratered to ${to}. You are grounded.`,
-      });
-      return { factionId, from, to, shipSeized: { name: shipName, by: factionId } };
-    }
-
-    return { factionId, from, to };
-  }
-
-  private updateThread(input: Record<string, unknown>) {
-    const op = String(input.op);
-    if (op === "create") {
-      const thread: Thread = {
-        id: `th-${Date.now()}`,
-        campaignId: this.state.campaign.id,
-        title: String(input.title ?? "Untitled thread"),
-        body: String(input.body ?? ""),
-        status: "active",
-        entityRefs: (input.entityRefs as string[]) ?? [],
-      };
-      this.state = { ...this.state, threads: [...this.state.threads, thread] };
-      return { created: thread.id };
-    }
-    const threadId = String(input.threadId);
-    // Resolving a live thread is a quest completion — unlock disposition this turn.
-    if (op === "resolve" && this.state.threads.some((t) => t.id === threadId && t.status !== "resolved")) {
-      this.markQuestCompleted();
-    }
-    this.state = {
-      ...this.state,
-      threads: this.state.threads.map((t) =>
-        t.id === threadId
-          ? {
-              ...t,
-              body: input.body ? String(input.body) : t.body,
-              status: op === "resolve" ? "resolved" : t.status,
-            }
-          : t,
-      ),
-    };
-    return { updated: threadId, op };
-  }
-
-  private logWorldEvent(input: Record<string, unknown>) {
-    const ev: WorldEvent = {
-      id: `we-${Date.now()}`,
-      universeId: this.state.universe.id,
-      sourceCampaignId: this.state.campaign.id,
-      factionIds: (input.factionIds as string[]) ?? [],
-      locationId: input.locationId ? String(input.locationId) : undefined,
-      headline: String(input.headline),
-      detail: input.detail ? String(input.detail) : undefined,
-      visibility: "private", // universe owner promotes to 'canon' via review queue
-    };
-    this.worldEvents.push(ev);
-    this.events.push({ type: "note", breakdown: `World event logged: ${ev.headline}` });
-    return { logged: ev.id };
-  }
-
-  private endScene(input: Record<string, unknown>) {
-    const report = runSceneEnd(this.state, {
-      paying: Boolean(input.paying),
-      dockings: input.dockings ? Number(input.dockings) : 0,
-      arrivedAtLocationId: input.arrivedAtLocationId ? String(input.arrivedAtLocationId) : undefined,
-      // Ticks are awarded immediately in rollCheck now; nothing left to batch.
-      tickedRolls: [],
-      clockAdvances: this.clockAdvances,
-      combatEnded: Boolean(input.combatEnded),
-      tendaysDelta: input.tendaysDelta ? Number(input.tendaysDelta) : 0,
-    });
-    this.state = report.state;
-    // Stabilise the wounded between scenes: a Downed (but living) character is
-    // patched up — cleared of Downed and brought to at least 1 HP — so nobody
-    // carries a bleeding-out, 0-HP crisis (or a soft-lock) into the next scene.
-    this.state = {
-      ...this.state,
-      characters: this.state.characters.map((c) => {
-        if (TurnRuntime.isDead(c)) return c;
-        if (!(c.injuries ?? []).some((i) => i.name === "Downed")) return c;
-        return { ...c, hp: Math.max(1, c.hp), injuries: c.injuries.filter((i) => i.name !== "Downed") };
-      }),
-    };
-    this.sceneEndReport = report;
-    // New scene → the per-scene tick cap resets.
-    this.tickedThisScene.clear();
-    this.events.push(...report.events);
-    return {
-      title: input.title,
-      checklist: report.checklist,
-    };
-  }
-
-  /**
-   * Persist a named NPC the narrator introduced/used this turn, so the world
-   * REMEMBERS them (continuity — an NPC recognized on return). Deduped by name:
-   * a new NPC is added to the cast at the current location; an existing one is
-   * refreshed to "here now" and gets a description if it lacked one. Returns
-   * whether a new NPC was created.
-   */
+  /** Persist a named NPC the narrator introduced (runtimeNarrative.registerNpc). */
   registerNpc(name: string, oneBreath?: string, role?: string): { added: boolean; id: string } {
-    const trimmed = name.trim();
-    const here = this.state.campaign.currentLocationId;
-    const cleanRole = role?.trim() || undefined;
-    const existing = this.state.npcs.find((n) => n.name.toLowerCase() === trimmed.toLowerCase());
-    if (existing) {
-      this.state = {
-        ...this.state,
-        npcs: this.state.npcs.map((n) =>
-          n.id === existing.id
-            ? {
-                ...n,
-                locationId: here ?? n.locationId,
-                oneBreath: n.oneBreath || oneBreath || n.oneBreath,
-                // Fill a role only if we didn't already know one (set-once).
-                role: n.role ?? cleanRole,
-                // Backfill canonical flavor for NPCs that predate it (set-once,
-                // deterministic from id). A quirk is safe for anyone; a generated
-                // backstory only for GENERATED NPCs — a hand-seeded NPC's oneBreath
-                // is already its authored backstory, so we don't overwrite it.
-                quirk: n.quirk ?? generateQuirk(n.id),
-                backstory: n.backstory ?? (n.originCampaignId ? generateBackstory(n.id) : undefined),
-              }
-            : n,
-        ),
-      };
-      return { added: false, id: existing.id };
-    }
-    const slug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "npc";
-    const id = `npc-gen-${slug}-${this.state.npcs.length}`;
-    const npc = {
-      id,
-      universeId: this.state.universe.id,
-      name: trimmed,
-      oneBreath: (oneBreath ?? "").trim() || `Someone the player met${here ? " here" : ""}.`,
-      ...(here ? { locationId: here } : {}),
-      ...(cleanRole ? { role: cleanRole } : {}),
-      // Provenance so a promoted NPC (persistSession) traces back to this campaign.
-      originCampaignId: this.state.campaign.id,
-      // Canonical personality + backstory hook — engine-generated, shared, set once.
-      ...generateNpcFlavor(id),
-    };
-    this.state = { ...this.state, npcs: [...this.state.npcs, npc] };
-    return { added: true, id };
+    return registerNpc(this, name, oneBreath, role);
   }
 
-  /** Force-refresh a cast NPC's one-line identity (scene analyst upgrading a thin/
-   *  placeholder oneBreath). Unlike registerNpc this OVERWRITES — the caller gates
-   *  on isPlaceholderOneBreath so real, authored canon is never clobbered. */
+  /** Force-refresh a cast NPC's one-liner (runtimeNarrative.setNpcOneBreath). */
   setNpcOneBreath(id: string, oneBreath: string, role?: string) {
-    const text = oneBreath.trim();
-    if (!text) return;
-    this.state = {
-      ...this.state,
-      npcs: this.state.npcs.map((n) => (n.id === id ? { ...n, oneBreath: text, role: n.role ?? role?.trim() } : n)),
-    };
+    setNpcOneBreath(this, id, oneBreath, role);
   }
 
-  /** Grant a FLAVOR prop the scene analyst found the player came away with (a gift,
-   *  a keepsake, a document). The engine still OWNS gear: a catalog item or a
-   *  weapon/armor-ish name is ignored here (those only come from loot/purchase/
-   *  quest). Deduped by name; skipped silently if the pack is full. */
   /** A flavor scene item (a keepsake, a note) — runtimeEconomy.grantSceneItem. */
   grantSceneItem(name: string, note?: string): string | null {
     return grantSceneItem(this, name, note);
@@ -797,232 +591,43 @@ export class TurnRuntime {
    * Elective/cosmetic, so it's REFUSED when they can't afford it (unlike survival
    * dock repair). Gated to Rook; the engine owns the charge and the writes.
    */
+  /** Rook body-mod: reshape appearance + weave into story (runtimeNarrative.bodyMod). */
   bodyMod(input: { appearance?: string; story?: string }): { line?: string; error?: string } {
-    const pc = this.pc();
-    if (!pc) return { error: "no character" };
-    if (this.state.campaign.currentLocationId !== "loc-rook") {
-      return { error: "the body artist keeps a studio on Rook Station only" };
-    }
-    const cost = economy.constants.bodyModCost ?? 500;
-    if ((pc.credits ?? 0) < cost) return { error: `can't afford the work (¢${cost}, holding ¢${pc.credits ?? 0})` };
-    const appearance = input.appearance?.trim();
-    const story = input.story?.trim();
-    if (!appearance && !story) return { error: "no change described" };
-
-    const after = (pc.credits ?? 0) - cost;
-    const backstory = story ? `${pc.backstory ? `${pc.backstory}\n\n` : ""}${story}` : pc.backstory;
-    this.state = {
-      ...this.state,
-      characters: this.state.characters.map((c) =>
-        c.id === pc.id
-          ? { ...c, credits: after, ...(appearance ? { appearance } : {}), ...(backstory !== undefined ? { backstory } : {}) }
-          : c,
-      ),
-    };
-    this.events.push({ type: "cost", breakdown: `Body work at Chrome's — -¢${cost}`, amount: -cost });
-    return { line: `💉 Reshaped under Chrome's needles — ¢${cost}. You walk out someone new. ¢${after} left.` };
+    return bodyMod(this, input);
   }
 
-  /**
-   * Full character re-customization at Chrome's (Rook). For the flat ¢500 fee the
-   * player may RENAME, REALLOCATE attributes (within the creation budget — see
-   * shared/respec; the engine is the only thing that touches stats, so balance
-   * holds), and reshape APPEARANCE. Derived stats (maxHp from vitality, AC from
-   * reflex + best armor) recompute; current HP is CLAMPED to the new cap (no free
-   * heal). If the character's name changes and the campaign is named after them,
-   * the campaign name follows. Gated to Rook; refused when they can't afford it.
-   */
+  /** Full Rook remake — rename/reallocate/reshape (runtimeNarrative.respec). */
   respec(input: { name?: string; attributes?: Attributes; appearance?: string }): { line?: string; error?: string } {
-    const pc = this.pc();
-    if (!pc) return { error: "no character" };
-    if (this.state.campaign.currentLocationId !== "loc-rook") {
-      return { error: "Chrome's studio is on Rook Station only" };
-    }
-    const cost = economy.constants.bodyModCost ?? 500;
-    if ((pc.credits ?? 0) < cost) return { error: `can't afford the work (¢${cost}, holding ¢${pc.credits ?? 0})` };
-
-    const name = input.name?.trim();
-    const appearance = input.appearance?.trim();
-    const changingAttrs = !!input.attributes;
-    if (!name && !appearance && !changingAttrs) return { error: "no change made" };
-
-    let attributes = pc.attributes;
-    let maxHp = pc.maxHp;
-    let hp = pc.hp;
-    let ac = pc.ac;
-    if (input.attributes) {
-      const v = validateAttributes(input.attributes);
-      if (!v.ok) return { error: v.error };
-      attributes = input.attributes;
-      maxHp = Math.max(1, 18 + attributes.vitality);
-      hp = Math.min(pc.hp, maxHp); // remade, not healed — clamp to the new cap
-      ac = 10 + attributes.reflex + bestArmor(pc.gear);
-    }
-
-    const after = (pc.credits ?? 0) - cost;
-    const oldName = pc.name;
-    this.state = {
-      ...this.state,
-      characters: this.state.characters.map((c) =>
-        c.id === pc.id
-          ? { ...c, credits: after, attributes, maxHp, hp, ac, ...(name ? { name } : {}), ...(appearance ? { appearance } : {}) }
-          : c,
-      ),
-    };
-    // The campaign is named after the PC at creation — keep them in sync on rename.
-    if (name && this.state.campaign.name === oldName) {
-      this.state = { ...this.state, campaign: { ...this.state.campaign, name } };
-    }
-    this.events.push({ type: "cost", breakdown: `Remade at Chrome's — -¢${cost}`, amount: -cost });
-    const bits = [name && "a new name", changingAttrs && "a reworked build", appearance && "a new look"]
-      .filter(Boolean)
-      .join(", ");
-    return { line: `💉 Remade under Chrome's needles — ${bits}. ¢${cost}, ¢${after} left.` };
+    return respec(this, input);
   }
 
-  /** Set the PC's appearance text WITHOUT charging (the polished description the
-   *  respec endpoint generates after the remake is applied). */
+  /** Set the PC's appearance text without charging (runtimeNarrative.setAppearance). */
   setAppearance(text: string) {
-    const pc = this.pc();
-    if (!pc) return;
-    const appearance = text.trim();
-    if (!appearance) return;
-    this.state = {
-      ...this.state,
-      characters: this.state.characters.map((c) => (c.id === pc.id ? { ...c, appearance } : c)),
-    };
+    setAppearance(this, text);
   }
 
-  /** Mark an NPC as present in the current scene — they ride retrieval every
-   *  turn of the scene without needing to be re-named (CONTINUITY tier NOW). */
+  /** Mark an NPC present in the current scene (runtimeNarrative.markPresent). */
   markPresent(npcId: string) {
-    if (!this.sceneCard.presentNpcIds.includes(npcId)) this.sceneCard.presentNpcIds.push(npcId);
+    markPresent(this, npcId);
   }
 
-  /** Apply the model's scene-card proposal: `situation`/`place`/`dangers`
-   *  overwrite, `beats` append. Engine caps everything (F-2/F-4). */
+  /** Apply the model's scene-card proposal (runtimeNarrative.updateScene). */
   updateScene(situation?: string, beats?: string[], place?: string, dangers?: string[]) {
-    if (situation?.trim()) this.sceneCard.situation = situation.trim().slice(0, MAX_SITUATION_CHARS);
-    if (place?.trim()) {
-      const incoming = place.trim().slice(0, 120);
-      // A genuinely new place = the player moved on; the old crowd is left behind.
-      // Clear present NPCs so the new place's cast repopulates from this turn's
-      // narration. A reword/elaboration (isSceneMove's normalize+substring gate)
-      // must NOT wipe the cast.
-      if (this.sceneCard.place && isSceneMove(this.sceneCard.place, incoming, undefined, undefined)) {
-        this.sceneCard.presentNpcIds = [];
-      }
-      this.sceneCard.place = incoming;
-    }
-    // Overwrite semantics: [] explicitly CLEARS a dealt-with danger.
-    if (dangers) this.sceneCard.dangers = dangers.map((d) => d.trim().slice(0, 80)).filter(Boolean).slice(0, 3);
-    for (const b of beats ?? []) {
-      const beat = b.trim().slice(0, MAX_BEAT_CHARS);
-      if (!beat) continue;
-      if (this.sceneCard.beats.some((x) => x.toLowerCase() === beat.toLowerCase())) continue;
-      if (this.sceneCard.beats.length >= MAX_BEATS) this.sceneCard.beats.shift(); // oldest out
-      this.sceneCard.beats.push(beat);
-    }
+    updateScene(this, situation, beats, place, dangers);
   }
 
-  /** Keep Here & now LIVE: when the model didn't set a `situation` this turn, derive
-   *  it from the turn's narration (first sentence, capped) so the box reflects the
-   *  current beat instead of showing a stale line from turns ago. */
+  /** Derive Here & now from the narration when the model didn't set it
+   *  (runtimeNarrative.refreshSituation). */
   refreshSituation(narration: string) {
-    const text = narration.trim();
-    if (!text) return;
-    const first = text.match(/^[\s\S]*?[.!?](?=\s|$)/)?.[0] ?? text;
-    const s = first.trim().replace(/\s+/g, " ").slice(0, MAX_SITUATION_CHARS);
-    if (s) this.sceneCard.situation = s;
+    refreshSituation(this, narration);
   }
 
-  /**
-   * Update the player's standing with an NPC (CONTINUITY tier CANON). The model
-   * proposes; the engine owns the math: delta clamped to ±1, one nudge per NPC
-   * per turn, range −3..+3. `relationship` is set-once (first write wins — the
-   * creation-seeded tie can't be overwritten by a later whim); `note` overwrites
-   * (rolling last-interaction memory). Returns a display line when the standing
-   * actually moved (D-4: visible, like ticks).
-   */
-  /**
-   * Move standing toward the scene's sole present NPC from a social CHECK outcome:
-   * +1 on success (+2 on a crit), -1 on a fumble. Capped 1/NPC/turn. This is the
-   * engine-owned relationship mechanic — standing is EARNED by a rolled check, not
-   * granted on the model's whim or only on quest completion. Skips when the target
-   * is ambiguous (0 or >1 NPCs present), already nudged this turn, or at the cap.
-   * Returns a display line when standing actually moved.
-   */
-  /** Append a beat to a relationship's history log (oldest→newest, capped), so the
-   *  People panel shows how things DEVELOPED, not just the last line. Skips a repeat
-   *  of the most recent note so a static situation doesn't spam identical entries. */
-  private pushRelationLog(rel: NpcRelation, note: string): void {
-    const trimmed = note.trim().slice(0, 160);
-    if (!trimmed) return;
-    const log = rel.log ?? [];
-    if (log.length && log[log.length - 1].note === trimmed) return; // no consecutive dupes
-    log.push({ note: trimmed, scene: this.sceneCard.seq });
-    rel.log = log.slice(-MAX_RELATION_LOG);
-  }
-
-  private nudgeStandingFromCheck(
-    outcome: string,
-    critical: boolean,
-    criticalFailure: boolean,
-  ): string | undefined {
-    const present = this.sceneCard.presentNpcIds ?? [];
-    if (present.length !== 1) return undefined; // ambiguous or nobody in the room
-    const npcId = present[0];
-    if (this.nudgedThisTurn.has(npcId)) return undefined;
-    const delta = criticalFailure ? -1 : critical ? 2 : outcome === "success" ? 1 : 0;
-    if (delta === 0) return undefined;
-    const rel = this.npcRelations[npcId] ?? { disposition: 0 };
-    const before = rel.disposition;
-    const to = Math.max(DISPOSITION_MIN, Math.min(DISPOSITION_MAX, before + delta));
-    if (to === before) return undefined; // already maxed/floored
-    this.nudgedThisTurn.add(npcId);
-    rel.disposition = to;
-    const name = this.state.npcs.find((n) => n.id === npcId)?.name ?? npcId;
-    rel.lastNote =
-      delta > 0
-        ? `Warmed to you — now ${dispositionLabel(to)}.`
-        : `Cooled toward you — now ${dispositionLabel(to)}.`;
-    rel.lastSceneSeq = this.sceneCard.seq;
-    this.pushRelationLog(rel, rel.lastNote);
-    this.npcRelations[npcId] = rel;
-    this.events.push({
-      type: "note",
-      breakdown: `${name} standing ${before}→${to} (social check)`,
-    });
-    return `👤 ${name}: ${dispositionLabel(before)} → ${dispositionLabel(to)}`;
-  }
-
+  /** Update the player's standing with an NPC (runtimeNarrative.updateNpcRelation). */
   updateNpcRelation(
     npcId: string,
     upd: { disposition?: number; note?: string; relationship?: string },
   ): { line?: string } {
-    const rel = this.npcRelations[npcId] ?? { disposition: 0 };
-    let line: string | undefined;
-    if (upd.disposition && this.questCompletedThisTurn && !this.nudgedThisTurn.has(npcId)) {
-      this.nudgedThisTurn.add(npcId);
-      const delta = Math.max(-1, Math.min(1, Math.round(upd.disposition)));
-      const to = Math.max(DISPOSITION_MIN, Math.min(DISPOSITION_MAX, rel.disposition + delta));
-      if (to !== rel.disposition) {
-        const name = this.state.npcs.find((n) => n.id === npcId)?.name ?? npcId;
-        line = `👤 ${name}: ${dispositionLabel(rel.disposition)} → ${dispositionLabel(to)}`;
-        rel.disposition = to;
-      }
-    }
-    if (upd.relationship?.trim() && !rel.relationship) rel.relationship = upd.relationship.trim();
-    if (upd.note?.trim()) {
-      rel.lastNote = upd.note.trim().slice(0, 160);
-      rel.lastSceneSeq = this.sceneCard.seq;
-      // Accumulate the history: each meaningful note becomes a dated beat, so the
-      // relationship log reads as a story ("met at the docks → she trusted you →
-      // …"), not just the single most recent line.
-      this.pushRelationLog(rel, rel.lastNote);
-    }
-    this.npcRelations[npcId] = rel;
-    return { line };
+    return updateNpcRelation(this, npcId, upd);
   }
 
   // ── Multi-turn combat (COMBAT.md) ──────────────────────────────────────────
