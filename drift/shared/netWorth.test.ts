@@ -7,6 +7,10 @@ function stateWith(over: {
   gear?: { name: string; damage?: string; acBonus?: number; itemId?: string; qty?: number }[];
   currentLocationId?: string;
   npcs?: CampaignState["npcs"];
+  /** Default full/topped so patronHelp tests that don't care about needsHelp
+   *  aren't accidentally gated by it. */
+  hp?: number;
+  stims?: number;
 }): CampaignState {
   return {
     campaign: { id: "c", universeId: "u", currentLocationId: over.currentLocationId ?? "loc-1", tendaysElapsed: 0 },
@@ -17,10 +21,10 @@ function stateWith(over: {
         kind: "pc",
         name: "Test",
         attributes: { might: 0, reflex: 0, vitality: 0, intellect: 0, perception: 0, presence: 0 },
-        hp: 18,
+        hp: over.hp ?? 18,
         maxHp: 18,
         ac: 12,
-        stims: 0,
+        stims: over.stims ?? 2,
         fragile: false,
         skills: [],
         actionModifiers: {},
@@ -78,29 +82,59 @@ describe("netWorth — gear + credits (owned ship excluded when a loaner)", () =
 });
 
 describe("patronHelp — the free early-game safety net (STARTER.md)", () => {
-  it("is available to a struggling rookie WHEN they're at the patron's station", () => {
-    const s = stateWith({ credits: 50, currentLocationId: "loc-home", npcs: [patronNpc] });
-    const { patron, eligible } = patronHelp(s);
+  it("is eligible when the patron is PRESENT, under the cap, and the player needs help", () => {
+    const s = stateWith({ credits: 50, currentLocationId: "loc-home", npcs: [patronNpc], hp: 4 });
+    const { patron, present, underCap, needsHelp, eligible } = patronHelp(s, ["npc-patron-c"]);
     expect(patron?.name).toBe("Old Marn");
+    expect(present).toBe(true);
+    expect(underCap).toBe(true);
+    expect(needsHelp).toBe(true);
     expect(eligible).toBe(true);
   });
 
-  it("is available when the patron is PRESENT even if the player has moved on", () => {
-    const s = stateWith({ credits: 50, currentLocationId: "loc-elsewhere", npcs: [patronNpc] });
-    expect(patronHelp(s).eligible).toBe(false); // not here, not present
-    expect(patronHelp(s, ["npc-patron-c"]).eligible).toBe(true); // present overrides
+  it("is NOT eligible from merely sharing a STATION — presence is required (the reported bug)", () => {
+    // Same currentLocationId as the patron's home, but not actually in the scene.
+    // A station is coarse (covers the ship, the market, every bar on it), so
+    // matching on it alone offered the free-rest chip everywhere, for a patron the
+    // story might never have introduced yet.
+    const s = stateWith({ credits: 50, currentLocationId: "loc-home", npcs: [patronNpc], hp: 4 });
+    const info = patronHelp(s); // no presentNpcIds passed
+    expect(info.present).toBe(false);
+    expect(info.eligible).toBe(false);
   });
 
-  it("cuts off once the player is established (net worth ≥ the cutoff)", () => {
-    const s = stateWith({ credits: PATRON_HELP_MAX + 100, currentLocationId: "loc-home", npcs: [patronNpc] });
-    const { patron, eligible } = patronHelp(s);
+  it("is eligible when present even far from the patron's home station", () => {
+    const s = stateWith({ credits: 50, currentLocationId: "loc-elsewhere", npcs: [patronNpc], hp: 4 });
+    expect(patronHelp(s, ["npc-patron-c"]).eligible).toBe(true);
+  });
+
+  it("does NOT offer the chip when the player doesn't need it (full HP + stims)", () => {
+    const s = stateWith({ credits: 50, currentLocationId: "loc-home", npcs: [patronNpc], hp: 18, stims: 2 });
+    const { present, underCap, needsHelp, eligible } = patronHelp(s, ["npc-patron-c"]);
+    expect(present).toBe(true);
+    expect(underCap).toBe(true);
+    expect(needsHelp).toBe(false);
+    expect(eligible).toBe(false);
+  });
+
+  it("needs help when low on stims even at full HP", () => {
+    const s = stateWith({ credits: 50, currentLocationId: "loc-home", npcs: [patronNpc], hp: 18, stims: 1 });
+    expect(patronHelp(s, ["npc-patron-c"]).needsHelp).toBe(true);
+  });
+
+  it("cuts off once the player is established (net worth ≥ the cutoff), even present and hurt", () => {
+    const s = stateWith({ credits: PATRON_HELP_MAX + 100, currentLocationId: "loc-home", npcs: [patronNpc], hp: 4 });
+    const { patron, underCap, eligible } = patronHelp(s, ["npc-patron-c"]);
     expect(patron).toBeDefined(); // the person still exists…
+    expect(underCap).toBe(false);
     expect(eligible).toBe(false); // …but the freebies are done
   });
 
   it("returns no patron for a campaign that never seeded one", () => {
     const s = stateWith({ credits: 50, currentLocationId: "loc-home", npcs: [] });
-    expect(patronHelp(s)).toEqual({ eligible: false });
+    const info = patronHelp(s);
+    expect(info.patron).toBeUndefined();
+    expect(info.eligible).toBe(false);
   });
 });
 

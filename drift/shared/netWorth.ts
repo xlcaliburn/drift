@@ -11,7 +11,7 @@
 import type { z } from "zod";
 import type { CampaignState } from "./schemas";
 import { GearItem } from "./schemas";
-import { catalogItem } from "./items";
+import { catalogItem, itemCount } from "./items";
 import { shipIsOwned } from "./recap";
 
 type Gear = z.infer<typeof GearItem>;
@@ -90,15 +90,42 @@ export function clampTier(requested: ThreatTier, ceiling: ThreatTier): ThreatTie
  *  their feet and the help cuts off. */
 export const PATRON_HELP_MAX = THREAT_BANDS[0].max; // ¢600
 
-/** The campaign's patron NPC + whether their free help is available right now
- *  (net worth still under the cutoff AND the patron is here / present). Shared by
- *  the engine action, the "Rest up" chip, and the prompt. */
+/** Stims a free patron rest tops the player up to — also the "low on stims" half of
+ *  the needsHelp check (below this, there's something to rest up FOR). */
+export const PATRON_STIM_FLOOR = 2;
+
+export interface PatronHelpInfo {
+  patron?: CampaignState["npcs"][number];
+  /** The patron is actually in the CURRENT SCENE right now. Deliberately NOT "same
+   *  station as the player" — a station (e.g. "Rook") covers the ship, the market,
+   *  every bar on it, so matching on it alone offered the free-rest chip constantly
+   *  and out of context, for an NPC the story hadn't even introduced yet (the
+   *  reported "patron shows up randomly" bug). Presence is the only thing that
+   *  makes them "here". */
+  present: boolean;
+  /** Net worth is still in the early-game T1 band — the safety net hasn't cut off. */
+  underCap: boolean;
+  /** The PC is actually hurt or low on stims — there's something to rest up FOR.
+   *  Without this, the chip kept getting offered (and clicked out of curiosity) even
+   *  at full health, which is how the patron ended up randomly narrated in. */
+  needsHelp: boolean;
+  /** Offer the clickable "Rest up" chip: patron present + still early-game + the
+   *  player genuinely needs it. */
+  eligible: boolean;
+}
+
+/** The campaign's patron NPC + whether their free help applies right now. Shared by
+ *  the engine action, the "Rest up" chip, and the prompt — a single source of truth
+ *  so the three can't drift out of sync. */
 export function patronHelp(
   state: CampaignState,
   presentNpcIds: string[] = [],
-): { patron?: CampaignState["npcs"][number]; eligible: boolean } {
+): PatronHelpInfo {
   const patron = state.npcs.find((n) => n.id === `npc-patron-${state.campaign.id}`);
-  if (!patron) return { eligible: false };
-  const atPatron = patron.locationId === state.campaign.currentLocationId || presentNpcIds.includes(patron.id);
-  return { patron, eligible: atPatron && netWorth(state) < PATRON_HELP_MAX };
+  if (!patron) return { present: false, underCap: false, needsHelp: false, eligible: false };
+  const present = presentNpcIds.includes(patron.id);
+  const underCap = netWorth(state) < PATRON_HELP_MAX;
+  const pc = state.characters.find((c) => c.kind === "pc");
+  const needsHelp = !!pc && (pc.hp < pc.maxHp || itemCount(pc, "stim") < PATRON_STIM_FLOOR);
+  return { patron, present, underCap, needsHelp, eligible: present && underCap && needsHelp };
 }

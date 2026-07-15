@@ -401,9 +401,11 @@ export async function POST(req: NextRequest) {
                     const rq = repairQuote(result.state);
                     return rq ? [{ label: `Repair hull (¢${rq.cost})`, repairHull: true }] : [];
                   })(),
-                  // The faction PATRON's free safety net (STARTER.md) — offered while
-                  // the player is with their patron AND still a struggling rookie
-                  // (net worth < ¢600). It disappears once they've found their feet.
+                  // The faction PATRON's free safety net (STARTER.md) — offered ONLY
+                  // while the patron is actually PRESENT in the scene (not just
+                  // "somewhere on the same station"), the player is still a
+                  // struggling rookie (net worth < ¢600), AND they genuinely need it
+                  // (hurt or under 2 stims). All three gate `eligible` in patronHelp.
                   ...(() => {
                     const { patron, eligible } = patronHelp(result.state, session.sceneCard.presentNpcIds);
                     return eligible && patron

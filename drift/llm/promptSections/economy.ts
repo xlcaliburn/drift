@@ -61,18 +61,27 @@ export const dock: Section = ({ state, pc }) => {
 
 /** The faction PATRON safety net (STARTER.md) — a struggling rookie has a named
  *  ally at their home station who patches them up for free. The anti-dead-end;
- *  fades once they've found their footing (net worth ≥ ¢600). */
+ *  fades once they've found their footing (net worth ≥ ¢600). Framing is keyed on
+ *  `underCap` (still early-game), NOT `eligible` — eligible also requires the
+ *  patron to be PRESENT and the player to actually need help, which is exactly
+ *  when the model should be routing the player TO them, not when it should
+ *  conclude the relationship has "graduated". */
 export const patron: Section = ({ state, memory }) => {
-  const { patron: campaignPatron, eligible: patronEligible } = patronHelp(
+  const { patron: campaignPatron, present, underCap } = patronHelp(
     state,
     memory?.sceneCard?.presentNpcIds ?? [],
   );
   if (!campaignPatron) return [];
   const patronHome = state.locations.find((l) => l.id === campaignPatron.locationId)?.name ?? "their home station";
+  if (!underCap) {
+    return [
+      `YOUR PATRON — ${campaignPatron.name} at ${patronHome}: the player has outgrown the free hand-ups (they're established now). ${campaignPatron.name} is still a friendly contact and job-giver, but the freebies are done — treat them as a peer/broker, not a safety net.`,
+    ];
+  }
   return [
-    patronEligible
-      ? `YOUR PATRON — ${campaignPatron.name} (${campaignPatron.role ?? "your patron"}) at ${patronHome}: this early, they look out for the player. When the player is hurt, broke, out of stims, or stuck, ${campaignPatron.name} will rest them to full and stake them a little — FREE. Make them a warm, reliable anchor; route the player back to them when things go badly, and hand out small, playstyle-fitting starter jobs (matched to the player's aim: trade runs, salvage/scouting, muscle work, or people/errands) with clear, achievable T0/T1 payouts so nobody stalls out. Emit "patronRest":true when the player rests up with them. This support is EARLY-GAME only.`
-      : `YOUR PATRON — ${campaignPatron.name} at ${patronHome}: the player has outgrown the free hand-ups (they're established now). ${campaignPatron.name} is still a friendly contact and job-giver, but the freebies are done — treat them as a peer/broker, not a safety net.`,
+    present
+      ? `YOUR PATRON — ${campaignPatron.name} (${campaignPatron.role ?? "your patron"}) is HERE WITH THE PLAYER right now. This early, they look out for the player: if the player is hurt, out of stims, or broke, ${campaignPatron.name} will rest them to full and stake them a little — FREE. Emit "patronRest":true when the player actually rests up with them THIS turn. Also hand out small, playstyle-fitting starter jobs (matched to the player's aim: trade runs, salvage/scouting, muscle work, or people/errands) with clear, achievable T0/T1 payouts so nobody stalls out.`
+      : `YOUR PATRON — ${campaignPatron.name} (${campaignPatron.role ?? "your patron"}), based at ${patronHome}, is a warm early-game anchor — but is NOT in the current scene. Do NOT narrate them appearing, do NOT offer their free help, and do NOT emit "patronRest" unless the player actually travels to ${patronHome} (or the story genuinely brings ${campaignPatron.name} to the player). Reference them only when it fits — e.g. routing a badly hurt/broke/stuck player back to ${patronHome}, or a passing mention in conversation — never as a random aside or a chip-like offer out of nowhere. This support is EARLY-GAME only.`,
   ];
 };
 

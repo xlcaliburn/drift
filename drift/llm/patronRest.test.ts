@@ -6,8 +6,12 @@ import type { RNG } from "@/engine";
 
 const rng: RNG = { int: (_min, max) => max };
 
-/** A PC + patron NPC + ship, with control over hull, wallet, stims, and where
- *  everyone is (STARTER.md — the free early-game safety net). */
+/** A PC + patron NPC + ship, with control over hull, wallet, and stims. Presence is
+ *  the ONLY thing that makes the patron "here" (STARTER.md — the 2026-07-15 fix):
+ *  merely sharing a station is NOT enough, since a station covers the whole map and
+ *  offering/using the free rest anywhere on it was the reported bug. Use
+ *  `runtimeWithPatron` below to build a runtime where the patron is actually
+ *  present in the scene. */
 function state(
   over: {
     hp?: number;
@@ -15,15 +19,13 @@ function state(
     credits?: number;
     stims?: number;
     downed?: boolean;
-    pcLocation?: string;
-    patronLocation?: string;
     withPatron?: boolean;
     gear?: { name: string; damage?: string; acBonus?: number }[];
   } = {},
 ): CampaignState {
   const withPatron = over.withPatron ?? true;
   return {
-    campaign: { id: "c", universeId: "u", currentLocationId: over.pcLocation ?? "loc-home", tendaysElapsed: 0 },
+    campaign: { id: "c", universeId: "u", currentLocationId: "loc-home", tendaysElapsed: 0 },
     universe: { id: "u" },
     characters: [
       {
@@ -48,7 +50,7 @@ function state(
       { id: "loc-away", universeId: "u", name: "The Deep", tags: [] },
     ],
     npcs: withPatron
-      ? [{ id: "npc-patron-c", universeId: "u", name: "Old Marn", oneBreath: "Your patron.", role: "steward", locationId: over.patronLocation ?? "loc-home" }]
+      ? [{ id: "npc-patron-c", universeId: "u", name: "Old Marn", oneBreath: "Your patron.", role: "steward", locationId: "loc-home" }]
       : [],
     clocks: [],
     // A fresh player flies a LOANER (active ship-ownership thread) — so the hull's
@@ -61,9 +63,14 @@ function state(
 
 const pc = (rt: TurnRuntime) => rt.state.characters[0];
 
+/** A runtime with the patron marked PRESENT in the current scene — the only thing
+ *  restWithPatron (and the chip) treats as "here". */
+const runtimeWithPatron = (s: CampaignState) =>
+  new TurnRuntime(s, rng, { sceneCard: { ...freshSceneCard(), presentNpcIds: ["npc-patron-c"] } });
+
 describe("restWithPatron — the faction patron's free safety net (STARTER.md)", () => {
   it("rests a struggling rookie to full HP + hull, tops stims to the floor, and stakes them when broke", () => {
-    const rt = new TurnRuntime(state({ hp: 4, shipHp: 6, credits: 10, stims: 0 }), rng);
+    const rt = runtimeWithPatron(state({ hp: 4, shipHp: 6, credits: 10, stims: 0 }));
     const res = rt.restWithPatron();
     expect(res.error).toBeUndefined();
     expect(pc(rt).hp).toBe(18); // full HP
@@ -74,7 +81,7 @@ describe("restWithPatron — the faction patron's free safety net (STARTER.md)",
   });
 
   it("clears the Downed state and death-save track", () => {
-    const rt = new TurnRuntime(state({ downed: true, hp: 0 }), rng);
+    const rt = runtimeWithPatron(state({ downed: true, hp: 0 }));
     rt.restWithPatron();
     expect((pc(rt).injuries ?? []).some((i) => i.name === "Downed")).toBe(false);
     expect(pc(rt).deathSaves).toBeUndefined();
@@ -82,35 +89,40 @@ describe("restWithPatron — the faction patron's free safety net (STARTER.md)",
   });
 
   it("does NOT hand out a stipend to a rookie who isn't actually broke", () => {
-    const rt = new TurnRuntime(state({ hp: 4, credits: 200 }), rng); // still < ¢600 so eligible
+    const rt = runtimeWithPatron(state({ hp: 4, credits: 200 })); // still < ¢600 so eligible
     rt.restWithPatron();
     expect(pc(rt).credits).toBe(200); // untouched — not broke
   });
 
   it("won't top stims the player already has", () => {
-    const rt = new TurnRuntime(state({ hp: 4, stims: 3 }), rng);
+    const rt = runtimeWithPatron(state({ hp: 4, stims: 3 }));
     rt.restWithPatron();
     expect(pc(rt).stims).toBe(3); // already above the floor
   });
 
   it("refuses once the player is established (net worth ≥ ¢600)", () => {
-    const rt = new TurnRuntime(state({ hp: 4, credits: 700 }), rng);
+    const rt = runtimeWithPatron(state({ hp: 4, credits: 700 }));
     const res = rt.restWithPatron();
     expect(res.error).toMatch(/on your feet/);
     expect(pc(rt).hp).toBe(4); // nothing applied
   });
 
-  it("refuses when the patron isn't here and isn't present in the scene", () => {
-    const rt = new TurnRuntime(state({ pcLocation: "loc-away", patronLocation: "loc-home" }), rng);
+  it("refuses when the patron isn't present — sharing a STATION is not enough (the reported bug)", () => {
+    // Same currentLocationId as the patron's home ("loc-home" by default in
+    // state()), but NOT in sceneCard.presentNpcIds. This is exactly the "offered
+    // everywhere on the station" bug: being at the same station must not count as
+    // "with the patron".
+    const rt = new TurnRuntime(state({ hp: 4 }), rng); // default sceneCard: presentNpcIds []
     const res = rt.restWithPatron();
     expect(res.error).toMatch(/isn't here/);
+    expect(pc(rt).hp).toBe(4); // nothing applied
   });
 
-  it("works when the patron is PRESENT in the scene even away from their berth", () => {
+  it("still works when the player has physically moved elsewhere, as long as the patron is present", () => {
     const rt = new TurnRuntime(
-      state({ pcLocation: "loc-away", patronLocation: "loc-home", hp: 4 }),
+      state({ hp: 4 }),
       rng,
-      { sceneCard: { ...freshSceneCard(), presentNpcIds: ["npc-patron-c"] } },
+      { sceneCard: { ...freshSceneCard(), presentNpcIds: ["npc-patron-c"] }, },
     );
     const res = rt.restWithPatron();
     expect(res.error).toBeUndefined();
@@ -118,7 +130,7 @@ describe("restWithPatron — the faction patron's free safety net (STARTER.md)",
   });
 
   it("errors cleanly when the campaign has no patron", () => {
-    const rt = new TurnRuntime(state({ withPatron: false }), rng);
+    const rt = runtimeWithPatron(state({ withPatron: false }));
     expect(rt.restWithPatron().error).toMatch(/no patron/);
   });
 });

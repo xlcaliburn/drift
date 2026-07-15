@@ -31,7 +31,7 @@ import { applyHeal, consumeItem, useItem, resolveDeathSave } from "./runtimeHeal
 import { marketStock, repPriceFactor, localRep, SELL_RATE, marketTierFor } from "@/engine/market";
 import { gearValue } from "@/shared/netWorth";
 import { validateAttributes } from "@/shared/respec";
-import { patronHelp } from "@/shared/netWorth";
+import { patronHelp, PATRON_STIM_FLOOR } from "@/shared/netWorth";
 import type { Attributes } from "@/shared/schemas";
 import {
   freshSceneCard,
@@ -1137,15 +1137,17 @@ export class TurnRuntime {
   restWithPatron(): { line?: string; error?: string } {
     const pc = this.pc();
     if (!pc) return { error: "no character" };
-    const { patron, eligible } = patronHelp(this.state, this.sceneCard.presentNpcIds);
+    // `present` is the ONLY thing that makes the patron "here" — matching just the
+    // current STATION was the reported bug (a station covers the whole map, so the
+    // free-rest chip and this action fired everywhere on it, for a patron the story
+    // may never have introduced). `patronHelp` is the single source of truth shared
+    // with the chip + prompt, so all three agree on what "here" means.
+    const { patron, present, underCap } = patronHelp(this.state, this.sceneCard.presentNpcIds);
     if (!patron) return { error: "you have no patron to fall back on" };
-    if (patron.locationId !== this.state.campaign.currentLocationId && !this.sceneCard.presentNpcIds.includes(patron.id)) {
-      return { error: `${patron.name} isn't here — their berth is back at their station` };
-    }
-    if (!eligible) {
+    if (!present) return { error: `${patron.name} isn't here right now` };
+    if (!underCap) {
       return { error: `you're on your feet now — ${patron.name}'s free help is for those still scraping by` };
     }
-    const STIM_FLOOR = 2;
     const CREDIT_FLOOR = 40;
     const CREDIT_STIPEND = 120;
     const parts: string[] = [];
@@ -1154,7 +1156,7 @@ export class TurnRuntime {
     if (pc.hp < pc.maxHp) parts.push(`patched up (+${pc.maxHp - pc.hp} HP)`);
     // Top stims up to the floor.
     const haveStims = itemCount(pc, "stim");
-    const addStims = Math.max(0, STIM_FLOOR - haveStims);
+    const addStims = Math.max(0, PATRON_STIM_FLOOR - haveStims);
     if (addStims) parts.push(`+${addStims} stim${addStims > 1 ? "s" : ""}`);
     // A small stipend when genuinely broke.
     const broke = (pc.credits ?? 0) < CREDIT_FLOOR;
