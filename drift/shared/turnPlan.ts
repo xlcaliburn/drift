@@ -110,6 +110,10 @@ export const ChoiceOption = z.object({
   swapDrop: optionalNullable(z.string()),
   /** Set on the "leave it behind" chip that declines the pending pickup. */
   swapDecline: optionalNullable(z.boolean()),
+  /** Set on a job-board chip: the job id to accept (offered → active). QUESTS.md. */
+  acceptJob: optionalNullable(z.string()),
+  /** Set on a job-board chip: the job id to abandon (active → failed). */
+  abandonJob: optionalNullable(z.string()),
 });
 export type ChoiceOption = z.infer<typeof ChoiceOption>;
 

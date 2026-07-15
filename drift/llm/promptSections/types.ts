@@ -1,6 +1,7 @@
 import type { CampaignState } from "@/shared/schemas";
 import type { SceneCard, NpcRelations, SceneMemory } from "@/shared/scene";
 import type { Dossier } from "@/shared/multiplayer";
+import type { Job } from "@/shared/quests";
 
 /**
  * Shared input for every context section. The broadly-used derivations (pc, loc,
@@ -22,6 +23,8 @@ export interface SectionCtx {
   memory?: { sceneCard?: SceneCard; npcRelations?: NpcRelations; recentScenes?: SceneMemory[] };
   /** Reachable dossiers of OTHER players' characters (cross-campaign cameos). */
   otherDossiers?: Dossier[];
+  /** The job board (QUESTS.md) — the active-job section narrates the next step. */
+  jobs?: Job[];
   // ── derived once in buildSectionCtx ──
   pc?: CampaignState["characters"][number];
   loc?: CampaignState["locations"][number];

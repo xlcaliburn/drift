@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, setSession, persistSession, hasSupabase } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign } from "@/lib/auth";
+import { refreshBoard } from "@/shared/quests";
+import { liveRng } from "@/engine/rng";
 
 export const runtime = "nodejs";
 
@@ -23,6 +25,21 @@ export async function GET(req: NextRequest) {
   if (!canAccessCampaign(auth.user, session.state.campaign.playerId)) {
     return NextResponse.json({ error: "Not your campaign." }, { status: 403 });
   }
+
+  // Seed the job board on first read so the Jobs tab has offers before the player's
+  // first turn (QUESTS.md). Only when empty — an existing board is never disturbed.
+  // The turn loop keeps it topped up thereafter; this write mirrors the same safe
+  // getSession → mutate → persist path (a warm re-save won't clobber it).
+  if (!session.jobs?.length) {
+    const seeded = refreshBoard(session.state, session.jobs ?? [], liveRng, session.state.campaign.tendaysElapsed ?? 0);
+    if (seeded.length) {
+      const updated = { ...session, jobs: seeded };
+      setSession(campaignId, updated);
+      await persistSession(campaignId, updated);
+      session.jobs = seeded;
+    }
+  }
+
   return NextResponse.json({
     state: session.state,
     transcript: session.transcript,
@@ -34,6 +51,7 @@ export async function GET(req: NextRequest) {
     npcRelations: session.npcRelations,
     sceneCard: session.sceneCard,
     lastChoices: session.lastChoices,
+    jobs: session.jobs ?? [],
   });
 }
 

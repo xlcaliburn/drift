@@ -7,6 +7,8 @@ import { tutorial, previously, directive, sceneHeader, season, sceneNow } from "
 import { pcSheet, vitals, ship } from "./pcSheet";
 import { threat, market, dock, patron, bodyMod } from "./economy";
 import { npcs, cameos, threads, worldStatus } from "./world";
+import { activeJobs } from "./quests";
+import type { Job } from "@/shared/quests";
 
 /**
  * The per-turn context slice, composed from ordered SECTIONS. The order IS the
@@ -23,7 +25,7 @@ const SECTIONS: (Section | "")[] = [
   "",
   npcs,
   "",
-  cameos, threads,
+  cameos, threads, activeJobs,
   "",
   worldStatus,
 ];
@@ -44,10 +46,12 @@ export function buildContextSlice(
   memory?: { sceneCard?: SceneCard; npcRelations?: NpcRelations; recentScenes?: SceneMemory[] },
   /** Reachable dossiers of OTHER players' characters in this universe (cameos). */
   otherDossiers?: Dossier[],
+  /** The active job board (QUESTS.md) — feeds the active-jobs section. */
+  jobs?: Job[],
 ): string {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
   const { npcs, threads } = retrieved ?? retrieveEntities(state, playerText, focusIds);
   const pc = state.characters.find((c) => c.kind === "pc");
-  const ctx: SectionCtx = { state, playerText, focusIds, jsonMode, npcs, threads, memory, otherDossiers, pc, loc };
+  const ctx: SectionCtx = { state, playerText, focusIds, jsonMode, npcs, threads, memory, otherDossiers, pc, loc, jobs };
   return SECTIONS.flatMap((s) => (s === "" ? [""] : s(ctx))).join("\n");
 }

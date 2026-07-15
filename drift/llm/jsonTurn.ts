@@ -23,6 +23,7 @@ import type { Character } from "@/shared/schemas";
 import { extractDialogueNpcs, knownEntityNames } from "@/shared/npcExtract";
 import type { CombatState } from "@/shared/combat";
 import type { Dossier } from "@/shared/multiplayer";
+import type { Job } from "@/shared/quests";
 import { stripInlineMenu } from "@/shared/narration";
 import { graduatedTutorialThisTurn, inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
 
@@ -71,6 +72,8 @@ export interface JsonTurnInput {
   recentScenes?: SceneMemory[];
   /** Other players' reachable dossiers in this universe (cross-campaign cameos). */
   otherDossiers?: Dossier[];
+  /** The active job board (QUESTS.md) — the active-jobs prompt section reads it. */
+  jobs?: Job[];
   model?: string;
   rng?: RNG;
   apiKey?: string;
@@ -473,6 +476,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       recentScenes: input.recentScenes ?? [],
     },
     input.otherDossiers,
+    input.jobs,
   );
   const messages: Anthropic.MessageParam[] = [
     ...sanitizeHistory(input.history),

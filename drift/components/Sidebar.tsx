@@ -4,10 +4,13 @@ import { useState } from "react";
 import type { CampaignState } from "@/shared/schemas";
 import type { CombatState } from "@/shared/combat";
 import type { NpcRelations, SceneCard } from "@/shared/scene";
+import type { ChoiceOption } from "@/shared/turnPlan";
+import type { Job } from "@/shared/quests";
 import { StatusTab } from "./sidebar/StatusTab";
 import { TraitsTab } from "./sidebar/TraitsTab";
 import { MapTab } from "./sidebar/MapTab";
 import { ClocksTab } from "./sidebar/ClocksTab";
+import { JobsTab } from "./sidebar/JobsTab";
 import { DetailsModal, type DetailsTab } from "./sidebar/DetailsModal";
 
 /**
@@ -17,13 +20,15 @@ import { DetailsModal, type DetailsTab } from "./sidebar/DetailsModal";
  * sidebar/ui.tsx) so parallel work on different tabs never collides here.
  */
 
-type Tab = "status" | "traits" | "map" | "clocks";
+type Tab = "status" | "traits" | "map" | "clocks" | "jobs";
 
 export default function Sidebar({
   state,
   combat = null,
   npcRelations = {},
   sceneCard = null,
+  jobs = [],
+  onJobAction,
   onRefresh,
   mobileOpen = false,
   onClose,
@@ -34,6 +39,10 @@ export default function Sidebar({
   npcRelations?: NpcRelations;
   /** Current scene's working memory — feeds the Scene box. */
   sceneCard?: SceneCard | null;
+  /** The job board (QUESTS.md) — feeds the Jobs tab. */
+  jobs?: Job[];
+  /** Accept/abandon a job: fires a turn carrying the chip. Undefined while busy. */
+  onJobAction?: (choice: ChoiceOption) => void;
   /** Re-pull fresh server state; fired when the details modal opens so it never
    *  shows stale data. */
   onRefresh?: () => void;
@@ -54,7 +63,7 @@ export default function Sidebar({
   const body = (
     <>
       <div className="flex border-b border-edge text-xs">
-        {(["status", "traits", "map", "clocks"] as Tab[]).map((t) => (
+        {(["status", "traits", "map", "clocks", "jobs"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -82,6 +91,7 @@ export default function Sidebar({
         {tab === "traits" && <TraitsTab state={state} />}
         {tab === "map" && <MapTab state={state} />}
         {tab === "clocks" && <ClocksTab state={state} />}
+        {tab === "jobs" && <JobsTab state={state} jobs={jobs} onJobAction={onJobAction} />}
       </div>
 
       {detailsTab && pc && (

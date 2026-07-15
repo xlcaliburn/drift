@@ -347,6 +347,7 @@ export async function POST(req: NextRequest) {
                 npcRelations: session.npcRelations,
                 recentScenes: session.recentScenes,
                 otherDossiers,
+                jobs: session.jobs ?? [],
                 model: cinematic ? "claude-sonnet-5" : undefined,
               });
             })();
