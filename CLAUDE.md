@@ -166,6 +166,9 @@ Don't add prose rules for things the engine can enforce.
   (I-2 auto-start backstop). Build order: items → crew.
 - `QUESTS.md` — the procedural job board (Phase 1 SHIPPED: engine-owned, playstyle-
   weighted scores; `shared/quests.ts` + `shared/jobsRuntime.ts`; Jobs rail tab)
+- `RELATIONSHIPS.md` — NPC depth: relationship tiers (disposition → unlocks) + the
+  trusted-tier personal job (private diegetic offer, tracked execution, campaign-side
+  arc resolution). DESIGN, not yet built.
 - `IMPLEMENTATION.md` — what's left to build, in rough order
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
