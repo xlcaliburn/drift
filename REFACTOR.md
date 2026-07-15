@@ -298,6 +298,59 @@ per-feature diff entirely.
 
 ---
 
+---
+
+## Plan 3 — `engineBridge.ts` (TurnRuntime god-class, 2118→…)
+
+Different in kind from the pipeline files: a cohesive STATEFUL class with pervasive
+`this.state`/`this.events` mutation and cross-cutting method calls (execute()→all;
+rollCheck→nudgeStandingFromCheck; applyDamage↔applyShipDamage). An `extends` chain
+keeps bodies byte-identical but hits protected-visibility + static-`isDead` +
+circular-import gotchas. **Chosen approach: free functions over a NARROW surface +
+thin delegating methods.** The runtime's fields (`state`, `rng`, `events`,
+`enemies`, `sceneCard`, `npcRelations`, `worldEvents`) are already PUBLIC, so a
+module like `runtimeHeal.ts` takes `rt: { state; rng }`, inlines `char`/`pc` from
+`rt.state`, and the class keeps `useItem(...) { return useItem(this, ...) }`. Free
+functions call each other freely (no inheritance ordering). In-class callers of a
+moved private (e.g. combat rounds calling `this.consumeItem`) switch to the free
+form `consumeItem(this, …)`.
+
+### Slices (each its own commit; existing TurnRuntime tests are the guard)
+
+- ✅ **`runtimeHeal.ts`** — applyHeal, clearInjury, reviveDowned, consumeItem,
+  useItem, resolveDeathSave. Surface `{state, rng}`. (2118→1927)
+- ⬜ **`runtimeEconomy.ts`** — quoteOffer, awardPayout, adjustResource, setGear +
+  bestArmor(static), applyGearChange, resolveSwap, declineSwap, grantSceneItem,
+  currentPlace, acquiredDetail, buyItem, sellItem, repairShip, restWithPatron,
+  syncDockDebt (~450 lines). Wider surface: `{state, rng, events, sceneCard,
+  markQuestCompleted()}`; INLINE the 2-line `isShipTarget` into adjustResource.
+  Scattered (money handlers at ~521-604 sit ABOVE the narrative handlers; gear at
+  ~827-1010; shops at ~1013-1227) — multiple non-contiguous moves. Convert
+  execute()'s `this.awardPayout/adjustResource` dispatch + delegating methods for
+  buyItem/sellItem/repairShip/restWithPatron/applyGearChange/resolveSwap/
+  declineSwap/grantSceneItem/quoteOffer (all have external/execute callers).
+- ⬜ **`runtimeNarrative.ts`** — advanceClock, adjustRep, updateThread,
+  logWorldEvent, endScene, registerNpc, setNpcOneBreath, markPresent, updateScene,
+  refreshSituation, pushRelationLog, nudgeStandingFromCheck, updateNpcRelation,
+  bodyMod, respec, setAppearance (~350). Surface adds `npcRelations`,
+  `nudgedThisTurn`, `questCompletedThisTurn` (these two are PRIVATE — either expose
+  or pass in). endScene refs `TurnRuntime.isDead` (static) → use a module `isDead`.
+- ⬜ **`runtimeCombat.ts`** — rollCheck, attackModFor, resolveAttack,
+  spawnEncounter, defaultWeapon, personalCombatant, enemyVolley, beginCombat,
+  startCombat, startShipCombat, resolveCombatRound, resolvePersonalRound,
+  applyShipDamage, enemyShipVolley, resolveShipRound (~600). Surface: `{state, rng,
+  events, enemies, enemyCounter}`; rollCheck calls nudgeStandingFromCheck (narrative
+  — fine as a free fn). applyDamage (stays in class core) calls applyShipDamage →
+  switch to free form.
+- The class SHELL keeps: fields+constructor, char/pc/applyDamage/isShipTarget
+  primitives, execute() dispatcher, offerChoices, dmOverride, markQuestCompleted,
+  and the thin delegating methods.
+
+### Acceptance (per slice): tsc clean + full suite green (the many `llm/*.test.ts`
+that `new TurnRuntime(...)` cover every method). No behavior change.
+
+---
+
 ## Sequencing
 
 1. Plan 1 step 1 (golden test) → steps 2–4. Small, fast, high confidence.
