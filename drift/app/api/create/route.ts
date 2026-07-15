@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
     recentScenes: [],
     lastChoices: [],
     jobs: [], // the board seeds on first load (QUESTS.md)
+    playerLedger: {}, // no cross-player contacts met yet (MULTIPLAYER.md §2)
   };
   setSession(campaignId, session0);
   await persistSession(campaignId, session0);

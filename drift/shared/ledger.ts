@@ -110,6 +110,33 @@ export function projectDossier(
  * folds the subject's currently-known deeds into `knownDeedIds`. Returns a NEW ledger
  * (pure); the caller stamps `updatedAt`.
  */
+/**
+ * Promote to firsthand any reachable dossier that ACTUALLY appeared in this turn's
+ * scene — it's at the player's current location AND its name shows up in the
+ * narration ("you met them"). A rumor about someone elsewhere doesn't count. Returns
+ * a NEW ledger only when someone was newly met (same ref otherwise, so callers can
+ * skip a persist when nothing changed).
+ */
+export function advanceLedger(
+  ledger: PlayerLedger,
+  owner: { characterId: string },
+  dossiers: Dossier[],
+  narration: string,
+  currentLocationId: string | undefined,
+): PlayerLedger {
+  const text = (narration ?? "").toLowerCase();
+  let next = ledger;
+  for (const d of dossiers) {
+    if (next[d.characterId]?.knowledge === "firsthand") continue; // already met
+    const hereNow = !!currentLocationId && d.locationId === currentLocationId;
+    if (!hereNow) continue;
+    const name = d.name.trim().toLowerCase();
+    if (name.length < 3 || !text.includes(name)) continue;
+    next = recordEncounter(next, owner, d);
+  }
+  return next;
+}
+
 export function recordEncounter(
   ledger: PlayerLedger,
   owner: { characterId: string },

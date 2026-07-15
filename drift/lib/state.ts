@@ -11,6 +11,7 @@ import { mapLegacyGear } from "@/shared/items";
 import { ensureStartingGun, ensurePatronSeed } from "@/engine/creation";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Job } from "@/shared/quests";
+import type { PlayerLedger } from "@/shared/ledger";
 import type { Dossier } from "@/shared/multiplayer";
 
 /** Campaign-scoped NPCs (narrator-introduced or creation relations) carry these id
@@ -50,6 +51,9 @@ export interface SessionData {
   lastChoices: ChoiceOption[];
   /** The procedural job board (QUESTS.md) — offered + active + completed scores. */
   jobs: Job[];
+  /** The relationship ledger (MULTIPLAYER.md §2) — who this character has MET among
+   *  other players' characters; gates cross-player cameos. */
+  playerLedger: PlayerLedger;
 }
 
 const store = new Map<string, SessionData>();
@@ -119,6 +123,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               recentScenes,
               lastChoices: runtime.lastChoices ?? [],
               jobs: runtime.jobs ?? [],
+              playerLedger: runtime.playerLedger ?? {},
             }
           : {
               state,
@@ -134,6 +139,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               recentScenes,
               lastChoices: [],
               jobs: [],
+              playerLedger: {},
             };
       store.set(campaignId, session);
       return session;
@@ -207,6 +213,7 @@ export async function persistSession(campaignId: string, session: SessionData): 
       npcRelations: session.npcRelations,
       lastChoices: session.lastChoices,
       jobs: session.jobs ?? [],
+      playerLedger: session.playerLedger ?? {},
     });
     // Build this PC's PUBLIC dossier and promote it into the UNIVERSE-scoped
     // dossiers table so other campaigns in the same world can cameo the character

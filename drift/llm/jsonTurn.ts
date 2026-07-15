@@ -24,6 +24,7 @@ import { extractDialogueNpcs, knownEntityNames } from "@/shared/npcExtract";
 import type { CombatState } from "@/shared/combat";
 import type { Dossier } from "@/shared/multiplayer";
 import type { Job } from "@/shared/quests";
+import type { PlayerLedger } from "@/shared/ledger";
 import { stripInlineMenu } from "@/shared/narration";
 import { graduatedTutorialThisTurn, inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
 
@@ -74,6 +75,8 @@ export interface JsonTurnInput {
   otherDossiers?: Dossier[];
   /** The active job board (QUESTS.md) — the active-jobs prompt section reads it. */
   jobs?: Job[];
+  /** The owner's relationship ledger (MULTIPLAYER.md §2) — gates cross-player cameos. */
+  ledger?: PlayerLedger;
   model?: string;
   rng?: RNG;
   apiKey?: string;
@@ -477,6 +480,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     },
     input.otherDossiers,
     input.jobs,
+    input.ledger,
   );
   const messages: Anthropic.MessageParam[] = [
     ...sanitizeHistory(input.history),

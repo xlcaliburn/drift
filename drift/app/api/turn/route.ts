@@ -9,6 +9,8 @@ import { downedActions } from "@/shared/death";
 import { usableConsumables, outOfCombatItemChips } from "@/shared/items";
 import { repairQuote } from "@/engine/market";
 import { patronHelp } from "@/shared/netWorth";
+import { advanceLedger } from "@/shared/ledger";
+import type { Dossier } from "@/shared/multiplayer";
 import { acceptJob, abandonJob, generatePersonalJob } from "@/shared/quests";
 import { resolveJobsTurn } from "@/shared/jobsRuntime";
 import { personalJobAvailable, TRUST_THRESHOLD } from "@/shared/scene";
@@ -306,6 +308,9 @@ export async function POST(req: NextRequest) {
         // model there). While a fight is live, EVERY input runs the combat round —
         // a clicked chip or free text mapped to an action. This is the security
         // boundary: typing "I gun them all down" can't skip the rolls/return fire.
+        // Cross-player dossiers reachable this turn — hoisted out of the JSON branch
+        // below so the post-turn ledger advance can promote anyone the player met.
+        let reachedDossiers: Dossier[] = [];
         const result = pcDowned && !session.combat?.active
           ? await runDownedTurn({
               ...common,
@@ -336,6 +341,7 @@ export async function POST(req: NextRequest) {
                 session.state.universe.id,
                 campaignId,
               ).catch(() => []);
+              reachedDossiers = otherDossiers; // hoisted for the post-turn ledger advance
               return runJsonTurn({
                 ...common,
                 playerText,
@@ -352,6 +358,7 @@ export async function POST(req: NextRequest) {
                 recentScenes: session.recentScenes,
                 otherDossiers,
                 jobs: session.jobs ?? [],
+                ledger: session.playerLedger ?? {},
                 model: cinematic ? "claude-sonnet-5" : undefined,
               });
             })();
@@ -561,6 +568,18 @@ export async function POST(req: NextRequest) {
           lastChoices: choices,
           // The job board after this turn's advance/payout/top-up (QUESTS.md).
           jobs: jobsRes.jobs,
+          // Relationship ledger (MULTIPLAYER.md §2): promote to firsthand any reachable
+          // cross-player character the GM actually brought into this scene (here-now +
+          // named in the narration), so the cameo gate + Rolodex remember they've met.
+          playerLedger: resultPc
+            ? advanceLedger(
+                session.playerLedger ?? {},
+                { characterId: resultPc.id },
+                reachedDossiers,
+                result.narration ?? "",
+                persistedState.campaign.currentLocationId,
+              )
+            : session.playerLedger ?? {},
         };
         setSession(campaignId, updatedSession);
 

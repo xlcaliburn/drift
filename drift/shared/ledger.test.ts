@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Dossier } from "./multiplayer";
-import { deriveKnowledge, visibleDeeds, projectDossier, recordEncounter, type PlayerLedger } from "./ledger";
+import { deriveKnowledge, visibleDeeds, projectDossier, recordEncounter, advanceLedger, type PlayerLedger } from "./ledger";
 
 function dossier(over: Partial<Dossier> = {}): Dossier {
   return {
@@ -92,5 +92,33 @@ describe("recordEncounter", () => {
     expect(next.rax.knowledge).toBe("firsthand");
     expect(next.rax.stance).toBe("neutral");
     expect(next.rax.warmth).toBe(0);
+  });
+});
+
+describe("advanceLedger — promote on a real in-scene encounter", () => {
+  const here = dossier({ locationId: "loc-rook" });
+
+  it("promotes a here-now dossier named in the narration to firsthand", () => {
+    const next = advanceLedger({}, { characterId: "me" }, [here], "Rax Dellow leans on the bar, watching you.", "loc-rook");
+    expect(next.rax?.knowledge).toBe("firsthand");
+  });
+
+  it("does NOT promote when the dossier is at another location (a rumor)", () => {
+    const elsewhere = dossier({ locationId: "loc-meridian" });
+    const led: PlayerLedger = {};
+    const next = advanceLedger(led, { characterId: "me" }, [elsewhere], "You hear Rax Dellow torched a depot on Meridian.", "loc-rook");
+    expect(next).toBe(led); // unchanged, same ref
+  });
+
+  it("does NOT promote when the name isn't in the narration", () => {
+    const led: PlayerLedger = {};
+    const next = advanceLedger(led, { characterId: "me" }, [here], "The bar is quiet tonight.", "loc-rook");
+    expect(next).toBe(led);
+  });
+
+  it("leaves an already-firsthand contact untouched", () => {
+    const led: PlayerLedger = { rax: { ownerCharacterId: "me", subjectId: "rax", subjectName: "Rax Dellow", knowledge: "firsthand", stance: "ally", warmth: 2, knownDeedIds: [] } };
+    const next = advanceLedger(led, { characterId: "me" }, [here], "Rax Dellow nods at you.", "loc-rook");
+    expect(next).toBe(led); // no change → same ref
   });
 });

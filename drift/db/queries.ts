@@ -22,6 +22,7 @@ import type { SceneCard, NpcRelations, SceneMemory } from "@/shared/scene";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Job } from "@/shared/quests";
 import type { Dossier } from "@/shared/multiplayer";
+import type { PlayerLedger } from "@/shared/ledger";
 
 /**
  * Row mapping: DB columns are snake_case, app types are camelCase. We convert
@@ -186,6 +187,9 @@ export interface CampaignRuntime {
   /** The procedural job board — offered + active + recently-completed scores
    *  (QUESTS.md). Engine-owned; a session slice like npcs/sceneCard. */
   jobs: Job[];
+  /** The relationship ledger — who this character has MET among other players'
+   *  characters (MULTIPLAYER.md §2). A session slice like jobs/npcRelations. */
+  playerLedger: PlayerLedger;
   updatedAt?: string;
 }
 
@@ -196,7 +200,7 @@ export async function loadCampaignRuntime(
 ): Promise<CampaignRuntime | null> {
   const { data, error } = await db
     .from("campaign_runtime")
-    .select("transcript,history,log,focus_ids,ticked_this_scene,combat,npcs,scene_card,npc_relations,last_choices,jobs,updated_at")
+    .select("transcript,history,log,focus_ids,ticked_this_scene,combat,npcs,scene_card,npc_relations,last_choices,jobs,player_ledger,updated_at")
     .eq("campaign_id", campaignId)
     .maybeSingle();
   if (error || !data) return null;
@@ -212,6 +216,7 @@ export async function loadCampaignRuntime(
     npcRelations: (data.npc_relations as NpcRelations) ?? {},
     lastChoices: (data.last_choices as ChoiceOption[]) ?? [],
     jobs: (data.jobs as Job[]) ?? [],
+    playerLedger: (data.player_ledger as PlayerLedger) ?? {},
     updatedAt: data.updated_at ? String(data.updated_at) : undefined,
   };
 }
@@ -222,7 +227,7 @@ export async function saveCampaignRuntime(
   campaignId: string,
   rt: Pick<
     CampaignRuntime,
-    "transcript" | "history" | "log" | "focusIds" | "tickedThisScene" | "combat" | "npcs" | "sceneCard" | "npcRelations" | "lastChoices" | "jobs"
+    "transcript" | "history" | "log" | "focusIds" | "tickedThisScene" | "combat" | "npcs" | "sceneCard" | "npcRelations" | "lastChoices" | "jobs" | "playerLedger"
   >,
 ): Promise<void> {
   await db.from("campaign_runtime").upsert({
@@ -238,6 +243,7 @@ export async function saveCampaignRuntime(
     npc_relations: rt.npcRelations,
     last_choices: rt.lastChoices,
     jobs: rt.jobs,
+    player_ledger: rt.playerLedger,
     updated_at: new Date().toISOString(),
   });
 }
