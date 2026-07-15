@@ -2,6 +2,8 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { runJsonTurn, TurnGenerationError } from "@/llm/jsonTurn";
 import { runCombatTurn } from "@/llm/combatTurn";
 import { runDownedTurn } from "@/llm/downedTurn";
+import { runAppealTurn } from "@/llm/appealTurn";
+import { isAppeal, stripAppeal } from "@/shared/appeal";
 import { combatActions, interpretCombatText } from "@/shared/combat";
 import { downedActions } from "@/shared/death";
 import { usableConsumables, outOfCombatItemChips } from "@/shared/items";
@@ -14,7 +16,8 @@ import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { buildFallbackChoices } from "@/shared/recap";
 import { CheckSpec, CombatActionSpec, DownedActionSpec, type ChoiceOption } from "@/shared/turnPlan";
 import { carryScene, isSceneMove, type SceneCard, type SceneMemory } from "@/shared/scene";
-import { summarizeScene } from "@/llm/summarizer";
+import { analyzeScene, type NpcAnalysis } from "@/llm/summarizer";
+import { appendRelationLog, isPlaceholderOneBreath } from "@/shared/scene";
 import type { ChatEntry } from "@/shared/chat";
 import { hasSupabase } from "@/lib/state";
 
@@ -31,6 +34,7 @@ async function compressClosedScene(
   title: string,
   locationId: string | undefined,
   knownEntityIds: string[],
+  sceneNpcs: { id: string; name: string; oneBreath: string }[] = [],
 ): Promise<void> {
   const slice = transcript.slice(closedCard.startTranscriptIdx);
   if (slice.length === 0) return;
@@ -42,10 +46,12 @@ async function compressClosedScene(
 
   let summary = "";
   let entityRefs: string[] = [];
+  let npcUpdates: NpcAnalysis[] = [];
   try {
-    const res = await summarizeScene(text + beatsNote, knownEntityIds);
+    const res = await analyzeScene(text + beatsNote, sceneNpcs, knownEntityIds);
     summary = res.summary.trim();
     entityRefs = res.entityRefs;
+    npcUpdates = res.npcs;
   } catch {
     /* fall through to the deterministic fallback */
   }
@@ -65,21 +71,52 @@ async function compressClosedScene(
     locationId,
   };
 
+  // Which NPC identities the analyst wants to REFRESH — only genuine upgrades of a
+  // thin/placeholder oneBreath (never clobber real canon), keyed to a present NPC.
+  const oneBreathUpgrades = npcUpdates.filter((u) => {
+    if (!u.oneBreath) return false;
+    const cur = sceneNpcs.find((n) => n.id === u.id)?.oneBreath;
+    return isPlaceholderOneBreath(cur);
+  });
+
   if (hasSupabase()) {
     try {
-      const { getServiceClient, saveScene } = await import("@/db/queries");
-      await saveScene(getServiceClient(), campaignId, scene);
+      const { getServiceClient, saveScene, updateNpcOneBreath } = await import("@/db/queries");
+      const db = getServiceClient();
+      await saveScene(db, campaignId, scene);
+      // Refresh placeholder NPC identities in the shared cast (universe canon).
+      for (const u of oneBreathUpgrades) {
+        try {
+          await updateNpcOneBreath(db, u.id, u.oneBreath!);
+        } catch (e) {
+          console.error(`[analyst] oneBreath update failed for ${u.id}:`, e instanceof Error ? e.message : e);
+        }
+      }
     } catch (e) {
       console.error("[turn] failed to persist scene summary:", e instanceof Error ? e.message : e);
     }
   }
-  // Surface in the LIVE session (re-read: turns may have advanced meanwhile).
+  // Surface in the LIVE session (re-read: turns may have advanced meanwhile), and
+  // fold the analyst's continuity updates into the live cast + relationship logs.
   const live = await getSession(campaignId);
   if (live) {
     live.recentScenes = [...live.recentScenes.filter((s) => s.seq !== scene.seq), scene]
       .sort((a, b) => a.seq - b.seq)
       .slice(-20);
+    for (const u of npcUpdates) {
+      // Enrich the per-player relationship log with a real beat, and set who they
+      // are to the player if we don't have a label yet (never overwrite one).
+      const rel = live.npcRelations[u.id] ?? { disposition: 0 };
+      if (u.note) appendRelationLog(rel, u.note, closedCard.seq);
+      if (u.relationship && !rel.relationship) rel.relationship = u.relationship;
+      live.npcRelations[u.id] = rel;
+      // Mirror the oneBreath upgrade into the in-memory cast so it rides the very
+      // next prompt (the DB write above is for cold loads / other campaigns).
+      const npc = live.state.npcs.find((n) => n.id === u.id);
+      if (npc && u.oneBreath && isPlaceholderOneBreath(npc.oneBreath)) npc.oneBreath = u.oneBreath;
+    }
     setSession(campaignId, live);
+    if (npcUpdates.length) await persistSession(campaignId, live);
   }
 }
 
@@ -144,9 +181,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not your campaign." }, { status: 403 });
   }
 
-  // Death is permanent — a dead character can't act. Stakes are real.
+  // Death is permanent — a dead character can't act. Stakes are real. (An APPEAL is
+  // exempt: a player who believes they were wrongly killed can escalate it, and the
+  // judge may overturn the death.)
   const pcNow = session.state.characters.find((c) => c.kind === "pc");
-  if (pcNow && (pcNow.injuries ?? []).some((i) => i.name === "Dead")) {
+  if (pcNow && !isAppeal(playerText) && (pcNow.injuries ?? []).some((i) => i.name === "Dead")) {
     return NextResponse.json(
       { error: `${pcNow.name} is dead. This character's story has ended.` },
       { status: 409 },
@@ -192,6 +231,71 @@ export async function POST(req: NextRequest) {
       // Combat turns never change place — only compute `moved` on the JSON path.
       const wasCombatTurn = !!session.combat?.active;
       try {
+        // ── APPEAL: the player escalates a mechanical outcome to the strong judge
+        //    (Sonnet). It's a META correction — handled regardless of combat/downed
+        //    state — that applies engine-legal adjustments, then the player resumes
+        //    from where they were (keep the last choices). Every appeal is audited.
+        if (isAppeal(playerText)) {
+          const appeal = await runAppealTurn({
+            state: session.state,
+            transcript: session.transcript,
+            appealText: stripAppeal(playerText),
+            sceneCard: session.sceneCard,
+            npcRelations: session.npcRelations,
+          });
+          if (appeal.engineLines.length) send({ type: "engine", lines: appeal.engineLines });
+          const appealAdds = [
+            { role: "player" as const, text: playerText },
+            ...appeal.engineLines.map((text) => ({ role: "system" as const, text })),
+            { role: "dm" as const, text: appeal.ruling },
+          ];
+          const appealTranscript = [...session.transcript, ...appealAdds].slice(-400);
+          const appealSession = {
+            ...session,
+            state: appeal.state,
+            npcRelations: appeal.npcRelations,
+            transcript: appealTranscript,
+            history: [
+              ...session.history,
+              { role: "user" as const, content: `APPEAL: ${stripAppeal(playerText)}` },
+              { role: "assistant" as const, content: `[Appeal ${appeal.granted ? "granted" : "denied"}] ${appeal.ruling}` },
+            ].slice(-20),
+          };
+          setSession(campaignId, appealSession);
+          await persistSession(campaignId, appealSession);
+          await recordAiCall({
+            userId: isDevUser(auth.user) ? null : auth.user.id,
+            campaignId,
+            kind: "appeal",
+            model: appeal.model,
+            latencyMs: appeal.latencyMs,
+            usage: appeal.usage,
+            prompt: appeal.promptDump,
+            response: appeal.ruling,
+            exchange: appeal.exchangeDump,
+          });
+          if (!isDevUser(auth.user)) {
+            await recordTurnUsage({ userId: auth.user.id, campaignId, model: appeal.model, usage: appeal.usage });
+          }
+          send({
+            type: "done",
+            narration: appeal.ruling,
+            events: [],
+            state: appeal.state,
+            worldEvents: [],
+            choices: session.lastChoices ?? [],
+            combat: session.combat,
+            sceneEnded: false,
+            dead: false,
+            npcRelations: appealSession.npcRelations,
+            sceneCard: session.sceneCard,
+            tutorialGraduated: false,
+            model: appeal.model,
+            usage: appeal.usage,
+          });
+          return;
+        }
+
         // Shared per-scene tick-cap set — mutated in place by the engine bridge,
         // persisted back after the turn, reset when a scene ends.
         const tickedSet = new Set(session.tickedThisScene);
@@ -403,16 +507,20 @@ export async function POST(req: NextRequest) {
         // snapshot (transcript, history, dice log) so a refresh resumes this run.
         await persistSession(campaignId, updatedSession);
 
-        // Compress the closed scene in the background (never blocks the response).
+        // Compress + ANALYZE the closed scene in the background (never blocks the
+        // response). The analyst also refreshes NPC identities + relationship logs.
         if (closedCard) {
-          const knownIds = [
-            ...result.state.npcs.map((n) => n.id),
+          const entityIds = [
             ...result.state.factions.map((f) => f.id),
             ...result.state.locations.map((l) => l.id),
           ];
+          // NPCs that were actually present this scene — the analyst's roster.
+          const sceneNpcs = result.state.npcs
+            .filter((n) => closedCard.presentNpcIds.includes(n.id))
+            .map((n) => ({ id: n.id, name: n.name, oneBreath: n.oneBreath }));
           const locId = result.state.campaign.currentLocationId;
           const title = result.sceneTitle ?? `Scene ${closedCard.seq}`;
-          after(() => compressClosedScene(campaignId, closedCard, newTranscript, title, locId, knownIds));
+          after(() => compressClosedScene(campaignId, closedCard, newTranscript, title, locId, entityIds, sceneNpcs));
         }
 
         // Audit every call (dev included; dev logs with a null user id). Best-effort.
