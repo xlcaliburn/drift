@@ -102,6 +102,9 @@ export const ChoiceOption = z.object({
   /** Set on an engine-generated "Repair hull" dock chip — the engine repairs
    *  deterministically at ¢12/HP (ECONOMY E-3). */
   repairHull: optionalNullable(z.boolean()),
+  /** Set on an engine-generated "Rest up with <patron>" chip — the free early-game
+   *  safety net (STARTER.md). */
+  patronRest: optionalNullable(z.boolean()),
   /** Set on a full-pack SWAP chip: the carried gear name to drop to take the
    *  parked pending pickup (ITEMS.md slice B). */
   swapDrop: optionalNullable(z.string()),
@@ -176,6 +179,10 @@ export const TurnPlan = z.object({
    *  optional (full patch if omitted). The ENGINE charges ¢12/HP and prints the
    *  figure; never refused for lack of funds — the balance goes negative (debt). */
   repair: optionalNullable(z.object({ hp: optionalNullable(z.coerce.number().int().min(1).max(999)) })),
+  /** The player rests up with their faction PATRON (STARTER.md) — the ENGINE applies
+   *  the free early-game safety net (full HP/hull, stims to a floor, a stipend when
+   *  broke). Only when they're WITH the patron and still a struggling rookie. */
+  patronRest: optionalNullable(z.boolean()),
   /** Rook Station body-modification (Chrome's studio): the player pays ¢500 to
    *  reshape their APPEARANCE and (optionally) weave the change into their STORY.
    *  The ENGINE charges and applies it; refused if they can't afford it or aren't

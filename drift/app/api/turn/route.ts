@@ -8,6 +8,7 @@ import { combatActions, interpretCombatText } from "@/shared/combat";
 import { downedActions } from "@/shared/death";
 import { usableConsumables, outOfCombatItemChips } from "@/shared/items";
 import { repairQuote } from "@/engine/market";
+import { patronHelp } from "@/shared/netWorth";
 import { getSession, setSession, persistSession, loadReachableDossiers } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
@@ -127,6 +128,8 @@ export async function POST(req: NextRequest) {
   const useItemId = typeof body.useItemId === "string" && body.useItemId ? body.useItemId : undefined;
   // A clicked "Repair hull" dock chip (engine repairs deterministically).
   const preRepair = Boolean(body.repairHull);
+  // A clicked "Rest up with <patron>" chip — the free early-game safety net (STARTER).
+  const preRest = Boolean(body.patronRest);
   // A clicked full-pack swap chip: the gear to drop, or "__decline__" to leave it.
   const preSwap = Boolean(body.swapDecline)
     ? "__decline__"
@@ -330,6 +333,7 @@ export async function POST(req: NextRequest) {
                 preCheck,
                 preUseItem: useItemId,
                 preRepair,
+                preRest,
                 preSwap,
                 fromChoice,
                 // Scene memory (mutated in place by the runtime; session owns it).
@@ -396,6 +400,15 @@ export async function POST(req: NextRequest) {
                   ...(() => {
                     const rq = repairQuote(result.state);
                     return rq ? [{ label: `Repair hull (¢${rq.cost})`, repairHull: true }] : [];
+                  })(),
+                  // The faction PATRON's free safety net (STARTER.md) — offered while
+                  // the player is with their patron AND still a struggling rookie
+                  // (net worth < ¢600). It disappears once they've found their feet.
+                  ...(() => {
+                    const { patron, eligible } = patronHelp(result.state, session.sceneCard.presentNpcIds);
+                    return eligible && patron
+                      ? [{ label: `Rest up with ${patron.name} (free)`, patronRest: true } as ChoiceOption]
+                      : [];
                   })(),
                   // Then the model's choices — or free next moves if it gave none
                   // (incl. right after a scene ends) so there's never a dead end.

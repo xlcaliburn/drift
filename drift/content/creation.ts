@@ -449,6 +449,96 @@ const FACTION_STARTER_FLAVOR: Record<string, { gun: string; armor: string; tool:
 };
 const DEFAULT_STARTER = { gun: "Sidearm", armor: "Padded jacket", tool: "Multitool" };
 
+/** Where each faction plants a new recruit — the patron lives here too. Mirrors
+ *  FACTION_HOME in newCampaign (kept here so content owns the patron placement). */
+export const FACTION_HOME: Record<string, string> = {
+  "f-crown": "loc-meridian",
+  "f-meridian": "loc-meridian",
+  "f-sable": "loc-rook",
+  "f-ledger": "loc-rook",
+  "f-undertow": "loc-undertow",
+  "f-talos": "loc-talos",
+  "f-wreckers": "loc-nest",
+  "f-free": "loc-rook",
+  "f-reclaimers": "loc-rook",
+  "f-commons": "loc-meridian",
+  "f-rook": "loc-rook",
+};
+
+export interface PatronDef {
+  name: string;
+  role: string;
+  oneBreath: string;
+}
+
+/**
+ * The faction PATRON — a safe-harbor mentor who keeps a green recruit alive while
+ * they find their feet (STARTER.md): rests them to full, spots stims, floats a few
+ * credits when broke, and hands out safe starter work. Flavor per faction; the
+ * mechanics (the free safety net) are engine-owned and cut off at net worth ¢600.
+ */
+export const FACTION_PATRON: Record<string, PatronDef> = {
+  "f-crown": {
+    name: "Quartermaster Vane",
+    role: "Crown recruit-handler",
+    oneBreath: "The Hollow Crown's recruit-handler on Meridian — gruff, fair, keeps green contractors alive long enough to be useful. Patches you up and points you at safe work until you're on your feet.",
+  },
+  "f-meridian": {
+    name: "Steward Harrow",
+    role: "trade-house steward",
+    oneBreath: "A Meridian trade-house steward who takes in new hands — feeds you, mends you, and lines up honest cargo runs while you learn the lanes.",
+  },
+  "f-sable": {
+    name: "Handler Sereda",
+    role: "Sable Chain handler",
+    oneBreath: "A Sable Chain handler working Rook's back rooms — cold but invested in her recruits; keeps you patched, armed, and pointed at the Chain's easy money until you prove out.",
+  },
+  "f-ledger": {
+    name: "Old Marn",
+    role: "Ledger steward",
+    oneBreath: "A Ledger network steward on Rook — no-questions, no-judgment; gives couriers a berth, a meal, and a safe first run while they earn their marks.",
+  },
+  "f-undertow": {
+    name: "Collector Roan",
+    role: "Undertow desk-boss",
+    oneBreath: "The Undertow's desk-boss at the outpost — grim but loyal to his own; keeps new collectors alive and fed, and starts them on small, safe debts to work.",
+  },
+  "f-talos": {
+    name: "Sergeant Daccett",
+    role: "Talos security quartermaster",
+    oneBreath: "Talos security's quartermaster — hard-line but looks after the frontier's rookies; a bunk, a medbay, and safe patrol work until you can hold the line yourself.",
+  },
+  "f-wreckers": {
+    name: "Boneyard Ma",
+    role: "Wrecker den-mother",
+    oneBreath: "The Nest's den-mother — the closest thing the Wreckers have to law; patches up the young raiders, shares the pot, and sends them on the safer salvage until they've got teeth.",
+  },
+  "f-free": {
+    name: "Old Pell",
+    role: "Free Drift fixer",
+    oneBreath: "A Free Drift fixer on Rook, all mutual-aid and no-questions — spots a struggling independent a meal, a mend, and a milk run until they can stand on their own.",
+  },
+  "f-reclaimers": {
+    name: "Archivist Sund",
+    role: "Reclaimer steward",
+    oneBreath: "A Reclaimer collective steward on Rook — patient, careful; keeps new salvagers whole and starts them on safe derelict work while they learn what the wrecks hold.",
+  },
+  "f-commons": {
+    name: "Deacon Iyer",
+    role: "Commons organizer",
+    oneBreath: "A Commons organizer moving quietly through Meridian's dock levels — shelters the hunted, mends the hurt, and puts new hands to safe, useful work against the debt.",
+  },
+};
+const DEFAULT_PATRON: PatronDef = {
+  name: "The Harbor-keeper",
+  role: "dockside fixer",
+  oneBreath: "A dockside fixer who looks after green newcomers — a berth, a mend, a few creds, and a safe first job until they can stand on their own.",
+};
+
+export function patronFor(factionId?: string): PatronDef {
+  return FACTION_PATRON[factionId ?? ""] ?? DEFAULT_PATRON;
+}
+
 /** The standardized starting gear for a faction — identical stats for everyone
  *  (a sidearm, +1 armor, a tool), faction-flavored names. Catalog ids attach the
  *  mechanics (net worth, shops, combat). */

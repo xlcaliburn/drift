@@ -52,6 +52,9 @@ export interface JsonTurnInput {
   preUseItem?: string;
   /** A clicked "Repair hull" dock chip — the engine repairs before narrating. */
   preRepair?: boolean;
+  /** A clicked "Rest up with <patron>" chip — the engine applies the free safety
+   *  net (rest/stims/stipend/repair) before narrating (STARTER.md). */
+  preRest?: boolean;
   /** A clicked full-pack SWAP chip: drop this carried item to take the pending
    *  pickup. `"__decline__"` leaves the pending item behind (ITEMS.md slice B). */
   preSwap?: string;
@@ -488,6 +491,17 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       emit([`⚠ ${res.error}`]);
     }
   }
+  // A clicked "Rest up with <patron>" chip — the free early-game safety net (STARTER).
+  if (input.preRest && pc) {
+    toolCalls.push("rest_patron");
+    const res = runtime.restWithPatron();
+    if (res.line) {
+      engineLines.push(`ENGINE RESULT: ${res.line}`);
+      emit([res.line]);
+    } else if (res.error) {
+      emit([`⚠ ${res.error}`]);
+    }
+  }
   // A clicked full-pack SWAP chip — drop-to-take (or leave it), engine-owned.
   if (input.preSwap && pc) {
     toolCalls.push("swap_item");
@@ -815,6 +829,13 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   if (plan.repair && pc) {
     toolCalls.push("repair_ship");
     const res = runtime.repairShip(plan.repair.hp ?? undefined);
+    if (res.line) emit([res.line]);
+    else if (res.error) emit([`⚠ ${res.error}`]);
+  }
+  // Patron safety net (STARTER.md) — model-initiated ("rest up with your patron").
+  if (plan.patronRest && pc) {
+    toolCalls.push("rest_patron");
+    const res = runtime.restWithPatron();
     if (res.line) emit([res.line]);
     else if (res.error) emit([`⚠ ${res.error}`]);
   }

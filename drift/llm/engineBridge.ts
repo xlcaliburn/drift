@@ -30,6 +30,7 @@ import { catalogItem, itemCount, allItems, slotsUsed, maxSlotsFor, resolveGearIt
 import { marketStock, repPriceFactor, localRep, SELL_RATE, marketTierFor } from "@/engine/market";
 import { gearValue } from "@/shared/netWorth";
 import { validateAttributes } from "@/shared/respec";
+import { patronHelp } from "@/shared/netWorth";
 import type { Attributes } from "@/shared/schemas";
 import {
   freshSceneCard,
@@ -1126,6 +1127,67 @@ export class TurnRuntime {
     this.syncDockDebt();
     const tail = after < 0 ? ` The dock runs a tab — you're ¢${-after} in the hole.` : ` ¢${after} left.`;
     return { line: `🔧 Hull patched +${hp} (${s.hp}→${s.hp + hp}) — ¢${cost}.${tail}` };
+  }
+
+  /**
+   * The faction PATRON's free safety net (STARTER.md) — keeps a struggling rookie
+   * afloat: rest to full HP, repair the hull, top stims to a floor, and float a
+   * small credit stipend when broke. Gated to net worth still in the T1 band AND
+   * being with the patron; it cuts off once the player is established. Idempotent-
+   * ish (only touches what's actually depleted).
+   */
+  restWithPatron(): { line?: string; error?: string } {
+    const pc = this.pc();
+    if (!pc) return { error: "no character" };
+    const { patron, eligible } = patronHelp(this.state, this.sceneCard.presentNpcIds);
+    if (!patron) return { error: "you have no patron to fall back on" };
+    if (patron.locationId !== this.state.campaign.currentLocationId && !this.sceneCard.presentNpcIds.includes(patron.id)) {
+      return { error: `${patron.name} isn't here — their berth is back at their station` };
+    }
+    if (!eligible) {
+      return { error: `you're on your feet now — ${patron.name}'s free help is for those still scraping by` };
+    }
+    const STIM_FLOOR = 2;
+    const CREDIT_FLOOR = 40;
+    const CREDIT_STIPEND = 120;
+    const parts: string[] = [];
+
+    // Rest to full HP (and clear Downed) — free.
+    if (pc.hp < pc.maxHp) parts.push(`patched up (+${pc.maxHp - pc.hp} HP)`);
+    // Top stims up to the floor.
+    const haveStims = itemCount(pc, "stim");
+    const addStims = Math.max(0, STIM_FLOOR - haveStims);
+    if (addStims) parts.push(`+${addStims} stim${addStims > 1 ? "s" : ""}`);
+    // A small stipend when genuinely broke.
+    const broke = (pc.credits ?? 0) < CREDIT_FLOOR;
+    if (broke) parts.push(`spotted you ¢${CREDIT_STIPEND - (pc.credits ?? 0)}`);
+
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((c) =>
+        c.id === pc.id
+          ? {
+              ...c,
+              hp: c.maxHp,
+              injuries: (c.injuries ?? []).filter((i) => i.name !== "Downed"),
+              deathSaves: undefined,
+              stims: (c.stims ?? 0) + addStims,
+              credits: broke ? CREDIT_STIPEND : c.credits,
+            }
+          : c,
+      ),
+    };
+
+    // Free hull repair too.
+    const s = this.state.ship;
+    if (s && s.hp < s.maxHp) {
+      parts.push(`hull mended (+${s.maxHp - s.hp})`);
+      this.state = { ...this.state, ship: { ...s, hp: s.maxHp } };
+    }
+
+    if (!parts.length) return { line: `🛟 ${patron.name} looks you over — you're already squared away.` };
+    this.events.push({ type: "note", breakdown: `${patron.name} helped: ${parts.join(", ")}` });
+    return { line: `🛟 ${patron.name} sets you right — ${parts.join(", ")}. Get back out there.` };
   }
 
   /**

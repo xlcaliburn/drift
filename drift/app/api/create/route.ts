@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { CreationInput } from "@/shared/multiplayer";
-import { buildCharacterFromCreation, buildBackstoryNpcs } from "@/engine";
+import { buildCharacterFromCreation, buildBackstoryNpcs, buildPatronNpc } from "@/engine";
 import { finalizeCreation, quickCreationNotes } from "@/llm/creationFinalize";
 import { buildNewCampaignState } from "@/lib/newCampaign";
 import { getSession, setSession, persistSession, hasSupabase } from "@/lib/state";
@@ -68,6 +68,11 @@ export async function POST(req: NextRequest) {
   // Build state on the STATIC faction opening (generated opening arrives later).
   // Own the campaign. The keyless-dev stub id never reaches the DB.
   const state = buildNewCampaignState(base, playerId, undefined);
+  // Seed the faction PATRON (STARTER.md) — a safe-harbor helper at the home
+  // location who keeps a struggling rookie afloat (rest, stims, stipend) and hands
+  // out safe starter work until they climb out of the T1 net-worth band.
+  const patron = buildPatronNpc({ campaignId, universeId: state.universe.id, factionId: base.parentFactionId });
+  state.npcs = [...state.npcs, patron.npc];
   // Seed the opening beat into history at creation so the player's first action
   // is grounded (prevents the narrator re-offering the just-accepted opening job).
   const session0 = {
@@ -80,7 +85,7 @@ export async function POST(req: NextRequest) {
     tickedThisScene: [],
     combat: null,
     sceneCard: freshSceneCard(),
-    npcRelations: {},
+    npcRelations: { [patron.id]: patron.relation },
     recentScenes: [],
     lastChoices: [],
   };
@@ -122,6 +127,11 @@ export async function POST(req: NextRequest) {
         // transcript instead): safe to rebuild from scratch with the enriched
         // character + personalized opening, and re-seed history from it.
         session.state = buildNewCampaignState(enriched, playerId, finalize.opening);
+        // Rebuild dropped the patron (added in the sync path above) — re-seed it so
+        // the safe-harbor helper survives the background flesh-out.
+        const p = buildPatronNpc({ campaignId, universeId: session.state.universe.id, factionId: enriched.parentFactionId });
+        if (!session.state.npcs.some((n) => n.id === p.id)) session.state.npcs = [...session.state.npcs, p.npc];
+        session.npcRelations[p.id] = session.npcRelations[p.id] ?? p.relation;
         session.history = buildOpeningHistory(session.state);
       } else {
         // Play already in motion: patch only the character's narrative fields so

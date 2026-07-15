@@ -8,7 +8,7 @@ import { verbReference, freeVerbReference } from "@/shared/actions";
 import { relationSuffix, relationHistory, RECENT_SCENES_IN_PROMPT, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import { generateQuirk } from "@/shared/npcFlavor";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
-import { playerThreatTier } from "@/shared/netWorth";
+import { playerThreatTier, patronHelp } from "@/shared/netWorth";
 import { marketStock, repPriceFactor, localRep, repairQuote } from "@/engine/market";
 import { inTutorial, TUTORIAL_CHOICE_DIRECTIVE, TUTORIAL_JSON_DIRECTIVE } from "@/shared/tutorial";
 import type { Dossier } from "@/shared/multiplayer";
@@ -423,6 +423,23 @@ export function buildContextSlice(
     ? `DOCK DEBT: the player owes the dock (balance is negative). Steer them toward a quick T0/T1 payoff job — any payout comes off the debt first. Keep the pressure light but present.`
     : "";
 
+  // The faction PATRON safety net (STARTER.md) — a struggling rookie has a named
+  // ally at their home station who patches them up for free (the engine applies it
+  // via the "Rest up with <patron>" chip / a "patronRest":true field). This is the
+  // anti-dead-end: a player who's broke, out of stims, and knocked around can
+  // ALWAYS get back on their feet. It fades once they've found their footing
+  // (net worth ≥ ¢600), so lean on it early and let it go later.
+  const { patron: campaignPatron, eligible: patronEligible } = patronHelp(state, memory?.sceneCard?.presentNpcIds ?? []);
+  const patronHome = campaignPatron
+    ? state.locations.find((l) => l.id === campaignPatron.locationId)?.name ?? "their home station"
+    : "";
+  const patronLine =
+    campaignPatron && patronEligible
+      ? `YOUR PATRON — ${campaignPatron.name} (${campaignPatron.role ?? "your patron"}) at ${patronHome}: this early, they look out for the player. When the player is hurt, broke, out of stims, or stuck, ${campaignPatron.name} will rest them to full and stake them a little — FREE. Make them a warm, reliable anchor; route the player back to them when things go badly, and hand out small, playstyle-fitting starter jobs (matched to the player's aim: trade runs, salvage/scouting, muscle work, or people/errands) with clear, achievable T0/T1 payouts so nobody stalls out. Emit "patronRest":true when the player rests up with them. This support is EARLY-GAME only.`
+      : campaignPatron
+        ? `YOUR PATRON — ${campaignPatron.name} at ${patronHome}: the player has outgrown the free hand-ups (they're established now). ${campaignPatron.name} is still a friendly contact and job-giver, but the freebies are done — treat them as a peer/broker, not a safety net.`
+        : "";
+
   // Body-modification studio — a Rook-only service (the NPC Chrome). Lets a player
   // re-customize their look and weave it into their story for a flat fee.
   const bodyModLine =
@@ -552,6 +569,7 @@ export function buildContextSlice(
     marketLine,
     ...(dockLine ? [dockLine] : []),
     ...(debtLine ? [debtLine] : []),
+    ...(patronLine ? [patronLine] : []),
     ...(bodyModLine ? [bodyModLine] : []),
     ``,
     npcs.length

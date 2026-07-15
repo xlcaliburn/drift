@@ -1,8 +1,8 @@
-import { Character, type Attributes, type Skill, type Npc } from "@/shared/schemas";
+import { Character, type Attributes, type Skill, type Npc, type CampaignState } from "@/shared/schemas";
 import type { CreationInput } from "@/shared/multiplayer";
 import type { NpcRelation } from "@/shared/scene";
 import { seededRng, type RNG } from "@/engine/rng";
-import { backgrounds, biasSkills, biasAttribute, attributeBaseline, factionStarterGear } from "@/content/creation";
+import { backgrounds, biasSkills, biasAttribute, attributeBaseline, factionStarterGear, patronFor, FACTION_HOME } from "@/content/creation";
 import { mapLegacyGear } from "@/shared/items";
 import { weaponSkill } from "@/shared/combat";
 
@@ -105,6 +105,64 @@ export function ensureStartingGun(c: Character): Character {
     ...c,
     gear: [...(c.gear ?? []), { name: gun.name, itemId: gun.itemId, damage: gun.damage, detail: "faction-issue sidearm" }],
   };
+}
+
+// ── Faction patron (safe-harbor helper, seeded at creation) ──────────────────
+
+/** Stable id of a campaign's patron NPC (STARTER.md). */
+export function patronNpcId(campaignId: string): string {
+  return `npc-patron-${campaignId}`;
+}
+
+/**
+ * Build the campaign's PATRON — a faction-flavored safe-harbor mentor placed at the
+ * recruit's home location, with a pre-filled warm standing. The engine (restWithPatron)
+ * owns the free safety net; this just puts the person in the world. Deterministic.
+ */
+export function buildPatronNpc(opts: {
+  campaignId: string;
+  universeId: string;
+  factionId?: string;
+}): BackstoryNpcSeed {
+  const def = patronFor(opts.factionId);
+  const id = patronNpcId(opts.campaignId);
+  const locationId = FACTION_HOME[opts.factionId ?? ""] ?? "loc-meridian";
+  const npc: Npc = {
+    id,
+    universeId: opts.universeId,
+    name: def.name,
+    oneBreath: def.oneBreath,
+    role: def.role,
+    originCampaignId: opts.campaignId,
+    locationId,
+  };
+  const relation: NpcRelation = {
+    relationship: "your patron",
+    disposition: 1,
+    nameKnown: true,
+    lastNote: `Took you in — a berth, a mend, and safe work while you find your feet.`,
+    log: [{ note: `${def.name} took you under their wing: a safe berth, patch-ups, and steady starter work.`, scene: 1 }],
+  };
+  return { npc, id, relation };
+}
+
+/**
+ * Load-time BACKSTOP (STARTER.md): a campaign created before patrons existed has no
+ * `npc-patron-<id>`. Given the campaign state, synthesize its patron seed so the free
+ * safety net is available to legacy players too — mirrors ensureStartingGun. Returns
+ * null when a patron already exists (idempotent) or there's no PC to anchor it to.
+ * The caller folds the npc into state.npcs and the relation into npcRelations.
+ */
+export function ensurePatronSeed(state: CampaignState): BackstoryNpcSeed | null {
+  const id = patronNpcId(state.campaign.id);
+  if (state.npcs.some((n) => n.id === id)) return null;
+  const pc = state.characters.find((c) => c.kind === "pc");
+  if (!pc) return null;
+  return buildPatronNpc({
+    campaignId: state.campaign.id,
+    universeId: state.universe.id,
+    factionId: pc.parentFactionId,
+  });
 }
 
 // ── Backstory NPCs (universe-shared, seeded at creation) ─────────────────────

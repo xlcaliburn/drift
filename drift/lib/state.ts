@@ -8,14 +8,14 @@ import { freshSceneCard, type SceneCard, type NpcRelations, type SceneMemory } f
 import { mergeNpcs } from "@/shared/npcMerge";
 import { isShareableNpcName, isPlausibleNpcName } from "@/shared/npcExtract";
 import { mapLegacyGear } from "@/shared/items";
-import { ensureStartingGun } from "@/engine/creation";
+import { ensureStartingGun, ensurePatronSeed } from "@/engine/creation";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Dossier } from "@/shared/multiplayer";
 
 /** Campaign-scoped NPCs (narrator-introduced or creation relations) carry these id
  *  prefixes; universe-seed NPCs do not. Used to split the two for persistence. */
 function isCampaignNpc(id: string): boolean {
-  return id.startsWith("npc-gen-") || id.startsWith("npc-rel-");
+  return id.startsWith("npc-gen-") || id.startsWith("npc-rel-") || id.startsWith("npc-patron-");
 }
 
 /**
@@ -85,6 +85,11 @@ export async function getSession(campaignId: string): Promise<SessionData | null
       // gets their faction sidearm. Both idempotent (mapped gear + already-armed PCs
       // pass through); they persist on the next save.
       state.characters = state.characters.map((c) => ensureStartingGun(mapLegacyGear(c)));
+      // Backstop the faction PATRON (STARTER.md) for campaigns created before patrons
+      // existed — so the free early-game safety net reaches legacy players too. The
+      // relation is seeded onto the restored npcRelations below (once it's resolved).
+      const patronSeed = ensurePatronSeed(state);
+      if (patronSeed) state.npcs = [...state.npcs, patronSeed.npc];
       const session: SessionData =
         runtime && runtime.history.length
           ? {
@@ -100,7 +105,14 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               // transcript tail so the first summarized scene isn't the whole log.
               sceneCard:
                 runtime.sceneCard ?? freshSceneCard(recentScenes.length + 1, runtime.transcript.length),
-              npcRelations: runtime.npcRelations ?? {},
+              npcRelations: {
+                ...(runtime.npcRelations ?? {}),
+                // Seed the backstopped patron's warm standing, but never clobber an
+                // existing one (a campaign that already has the relation keeps it).
+                ...(patronSeed && !runtime.npcRelations?.[patronSeed.id]
+                  ? { [patronSeed.id]: patronSeed.relation }
+                  : {}),
+              },
               recentScenes,
               lastChoices: runtime.lastChoices ?? [],
             }
@@ -114,7 +126,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               tickedThisScene: [],
               combat: null,
               sceneCard: freshSceneCard(),
-              npcRelations: {},
+              npcRelations: patronSeed ? { [patronSeed.id]: patronSeed.relation } : {},
               recentScenes,
               lastChoices: [],
             };

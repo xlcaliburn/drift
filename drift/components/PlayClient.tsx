@@ -212,6 +212,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
           downedAction: action?.downedAction,
           useItemId: action?.useItemId,
           repairHull: action?.repairHull,
+          patronRest: action?.patronRest,
           swapDrop: action?.swapDrop,
           swapDecline: action?.swapDecline,
           fromChoice: !!action,
@@ -649,7 +650,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                         disabled={!hasApiKey}
                         className={
                           "flex items-center gap-2 rounded-full border px-4 py-2 text-left text-[15px] transition hover:border-accent hover:text-accent disabled:opacity-40 " +
-                          (c.useItemId || c.repairHull || c.swapDrop || c.swapDecline
+                          (c.useItemId || c.repairHull || c.patronRest || c.swapDrop || c.swapDecline
                             ? "border-good/40 bg-good/5 text-neutral-200"
                             : "border-edge bg-panel text-neutral-200")
                         }
@@ -663,10 +664,12 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                               ? "Use this item — the engine applies it immediately."
                               : c.repairHull
                                 ? "Repair the hull at the dock — the engine charges ¢12/HP (credit extended if short)."
-                                : undefined
+                                : c.patronRest
+                                  ? "Your patron patches you up for free — full HP & hull, a stim or two, a small stipend if you're broke. Offered while you're still finding your feet."
+                                  : undefined
                         }
                       >
-                        <span>{c.useItemId || c.swapDrop || c.swapDecline ? "🎒 " : c.repairHull ? "🔧 " : ""}{c.label}</span>
+                        <span>{c.useItemId || c.swapDrop || c.swapDecline ? "🎒 " : c.repairHull ? "🔧 " : c.patronRest ? "🛟 " : ""}{c.label}</span>
                         {c.check && (
                           <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium capitalize text-accent">
                             🎲 {c.check.skill ?? c.verb}

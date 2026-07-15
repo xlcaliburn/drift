@@ -84,3 +84,21 @@ export function playerThreatTier(state: CampaignState): ThreatTier {
 export function clampTier(requested: ThreatTier, ceiling: ThreatTier): ThreatTier {
   return TIER_ORDER[requested] > TIER_ORDER[ceiling] ? ceiling : requested;
 }
+
+/** The patron's free safety net (STARTER.md) is offered while net worth is still in
+ *  the T1 band — below this the player is a struggling rookie; at/above they've found
+ *  their feet and the help cuts off. */
+export const PATRON_HELP_MAX = THREAT_BANDS[0].max; // ¢600
+
+/** The campaign's patron NPC + whether their free help is available right now
+ *  (net worth still under the cutoff AND the patron is here / present). Shared by
+ *  the engine action, the "Rest up" chip, and the prompt. */
+export function patronHelp(
+  state: CampaignState,
+  presentNpcIds: string[] = [],
+): { patron?: CampaignState["npcs"][number]; eligible: boolean } {
+  const patron = state.npcs.find((n) => n.id === `npc-patron-${state.campaign.id}`);
+  if (!patron) return { eligible: false };
+  const atPatron = patron.locationId === state.campaign.currentLocationId || presentNpcIds.includes(patron.id);
+  return { patron, eligible: atPatron && netWorth(state) < PATRON_HELP_MAX };
+}
