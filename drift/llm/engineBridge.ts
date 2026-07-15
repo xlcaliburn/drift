@@ -29,6 +29,8 @@ import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerComba
 import { catalogItem, itemCount, allItems, slotsUsed, maxSlotsFor, resolveGearItemId } from "@/shared/items";
 import { marketStock, repPriceFactor, localRep, SELL_RATE, marketTierFor } from "@/engine/market";
 import { gearValue } from "@/shared/netWorth";
+import { validateAttributes } from "@/shared/respec";
+import type { Attributes } from "@/shared/schemas";
 import {
   freshSceneCard,
   dispositionLabel,
@@ -1111,6 +1113,76 @@ export class TurnRuntime {
     };
     this.events.push({ type: "cost", breakdown: `Body work at Chrome's — -¢${cost}`, amount: -cost });
     return { line: `💉 Reshaped under Chrome's needles — ¢${cost}. You walk out someone new. ¢${after} left.` };
+  }
+
+  /**
+   * Full character re-customization at Chrome's (Rook). For the flat ¢500 fee the
+   * player may RENAME, REALLOCATE attributes (within the creation budget — see
+   * shared/respec; the engine is the only thing that touches stats, so balance
+   * holds), and reshape APPEARANCE. Derived stats (maxHp from vitality, AC from
+   * reflex + best armor) recompute; current HP is CLAMPED to the new cap (no free
+   * heal). If the character's name changes and the campaign is named after them,
+   * the campaign name follows. Gated to Rook; refused when they can't afford it.
+   */
+  respec(input: { name?: string; attributes?: Attributes; appearance?: string }): { line?: string; error?: string } {
+    const pc = this.pc();
+    if (!pc) return { error: "no character" };
+    if (this.state.campaign.currentLocationId !== "loc-rook") {
+      return { error: "Chrome's studio is on Rook Station only" };
+    }
+    const cost = economy.constants.bodyModCost ?? 500;
+    if ((pc.credits ?? 0) < cost) return { error: `can't afford the work (¢${cost}, holding ¢${pc.credits ?? 0})` };
+
+    const name = input.name?.trim();
+    const appearance = input.appearance?.trim();
+    const changingAttrs = !!input.attributes;
+    if (!name && !appearance && !changingAttrs) return { error: "no change made" };
+
+    let attributes = pc.attributes;
+    let maxHp = pc.maxHp;
+    let hp = pc.hp;
+    let ac = pc.ac;
+    if (input.attributes) {
+      const v = validateAttributes(input.attributes);
+      if (!v.ok) return { error: v.error };
+      attributes = input.attributes;
+      maxHp = Math.max(1, 18 + attributes.vitality);
+      hp = Math.min(pc.hp, maxHp); // remade, not healed — clamp to the new cap
+      ac = 10 + attributes.reflex + TurnRuntime.bestArmor(pc.gear);
+    }
+
+    const after = (pc.credits ?? 0) - cost;
+    const oldName = pc.name;
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((c) =>
+        c.id === pc.id
+          ? { ...c, credits: after, attributes, maxHp, hp, ac, ...(name ? { name } : {}), ...(appearance ? { appearance } : {}) }
+          : c,
+      ),
+    };
+    // The campaign is named after the PC at creation — keep them in sync on rename.
+    if (name && this.state.campaign.name === oldName) {
+      this.state = { ...this.state, campaign: { ...this.state.campaign, name } };
+    }
+    this.events.push({ type: "cost", breakdown: `Remade at Chrome's — -¢${cost}`, amount: -cost });
+    const bits = [name && "a new name", changingAttrs && "a reworked build", appearance && "a new look"]
+      .filter(Boolean)
+      .join(", ");
+    return { line: `💉 Remade under Chrome's needles — ${bits}. ¢${cost}, ¢${after} left.` };
+  }
+
+  /** Set the PC's appearance text WITHOUT charging (the polished description the
+   *  respec endpoint generates after the remake is applied). */
+  setAppearance(text: string) {
+    const pc = this.pc();
+    if (!pc) return;
+    const appearance = text.trim();
+    if (!appearance) return;
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((c) => (c.id === pc.id ? { ...c, appearance } : c)),
+    };
   }
 
   /** Mark an NPC as present in the current scene — they ride retrieval every

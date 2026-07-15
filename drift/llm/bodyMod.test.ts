@@ -8,7 +8,7 @@ const rng: RNG = { int: (_min, max) => max };
 /** A PC at a location with a given wallet + backstory. */
 function state(over: { locationId?: string; credits?: number; backstory?: string } = {}): CampaignState {
   return {
-    campaign: { id: "c", universeId: "u", currentLocationId: over.locationId ?? "loc-rook", tendaysElapsed: 0 },
+    campaign: { id: "c", universeId: "u", name: "Vess", currentLocationId: over.locationId ?? "loc-rook", tendaysElapsed: 0 },
     universe: { id: "u" },
     characters: [
       {
@@ -59,5 +59,60 @@ describe("bodyMod — Rook body-modification service (¢500)", () => {
     const rt = new TurnRuntime(state({ credits: 800 }), rng);
     expect(rt.bodyMod({}).error).toMatch(/no change/);
     expect(pc(rt).credits).toBe(800); // nothing charged
+  });
+});
+
+describe("respec — full remake (name + balanced attributes + look) at Chrome's", () => {
+  it("renames, reallocates within budget, recomputes HP/AC, charges ¢500", () => {
+    const rt = new TurnRuntime(state({ credits: 800 }), rng);
+    const res = rt.respec({
+      name: "Wren",
+      attributes: { might: 0, reflex: 3, vitality: 2, intellect: 0, perception: 0, presence: -2 },
+    });
+    expect(res.line).toContain("Remade");
+    const p = pc(rt);
+    expect(p.name).toBe("Wren");
+    expect(p.credits).toBe(300);
+    expect(p.maxHp).toBe(20); // 18 + vitality 2
+    expect(p.ac).toBe(13); // 10 + reflex 3 + no armor
+    expect(rt.state.campaign.name).toBe("Wren"); // campaign follows the rename
+  });
+
+  it("clamps current HP to the new cap — a remake is not a free heal", () => {
+    const s = state({ credits: 800 });
+    s.characters[0].hp = 18;
+    s.characters[0].maxHp = 18;
+    const rt = new TurnRuntime(s, rng);
+    rt.respec({ attributes: { might: 3, reflex: 0, vitality: -1, intellect: 1, perception: 0, presence: 0 } });
+    expect(pc(rt).maxHp).toBe(17); // 18 - 1
+    expect(pc(rt).hp).toBe(17); // clamped down, not healed
+  });
+
+  it("REJECTS an out-of-balance spread and charges nothing", () => {
+    const rt = new TurnRuntime(state({ credits: 800 }), rng);
+    const res = rt.respec({ attributes: { might: 3, reflex: 3, vitality: 0, intellect: 0, perception: 0, presence: 0 } });
+    expect(res.error).toBeTruthy();
+    expect(pc(rt).credits).toBe(800); // untouched
+    expect(pc(rt).name).toBe("Vess");
+  });
+
+  it("is gated to Rook and refused when broke", () => {
+    expect(new TurnRuntime(state({ locationId: "loc-meridian", credits: 800 }), rng).respec({ name: "X" }).error).toMatch(/Rook/);
+    expect(new TurnRuntime(state({ credits: 100 }), rng).respec({ name: "X" }).error).toMatch(/afford/);
+  });
+
+  it("a name-only remake leaves the (already-balanced) attributes intact", () => {
+    const rt = new TurnRuntime(state({ credits: 800 }), rng);
+    const before = { ...pc(rt).attributes };
+    rt.respec({ name: "Kestrel" });
+    expect(pc(rt).name).toBe("Kestrel");
+    expect(pc(rt).attributes).toEqual(before);
+  });
+
+  it("setAppearance writes the look without charging", () => {
+    const rt = new TurnRuntime(state({ credits: 800 }), rng);
+    rt.setAppearance("Shaved head, a harder jaw, chrome laced down one arm.");
+    expect(pc(rt).appearance).toContain("chrome");
+    expect(pc(rt).credits).toBe(800); // no charge
   });
 });

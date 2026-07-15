@@ -17,8 +17,13 @@ COMPLETE.*
 *Rook body-modification service SHIPPED: the NPC **Chrome** (loc-rook) reshapes a
 character's `appearance` and folds the change into their `backstory` for a flat
 ¢500 — engine-owned `bodyMod` (refused off-Rook / when broke), a Rook-only prompt
-directive, and the new `appearance` Character field shown on the sheet + fed to the
-narrator. A diegetic re-customization path.*
+directive, and the `appearance` Character field shown on the sheet + fed to the
+narrator. Now expanded into a FULL REMAKE (`respec` + the Story-tab RemakeEditor,
+Rook-gated): rename, REALLOCATE attributes within the creation budget (engine-
+validated via `shared/respec` — sum==3, per-stat caps, so balance can't be gamed;
+HP/AC recompute, current HP clamped so it's not a free heal), and reshape the look,
+after which a physical DESCRIPTION is generated (`llm/appearanceGen`) and shown in
+the Story tab. `POST /api/respec`. A diegetic re-customization path.*
 
 ## Locked decisions (2026-07-14)
 
