@@ -157,6 +157,17 @@ describe("narrative gear changes", () => {
     expect(rt.applyGearChange("Stim", "lose")).toContain("Lost");
     expect(rt.state.characters[0].gear.some((g) => g.itemId === "stim")).toBe(false);
   });
+
+  it("a FLAVOR prop (a gift) is granted WITHOUT loot/quest; gear-ish names still gated", () => {
+    const rt = new TurnRuntime(baseState(), rng); // no loot, no quest this turn
+    // The rose-bouquet bug: an NPC hands the player flowers in plain dialogue.
+    expect(rt.applyGearChange("rose bouquet", "gain", "a gift from Agnes")).toContain("Gained");
+    expect(rt.state.characters[0].gear.some((g) => g.name.toLowerCase() === "rose bouquet")).toBe(true);
+    // But real GEAR still needs a legit source, even by a non-catalog name.
+    expect(rt.applyGearChange("a plasma rifle", "gain")).toBeNull();
+    expect(rt.applyGearChange("Combat armor", "gain")).toBeNull(); // catalog gear
+    expect(rt.state.characters[0].gear.some((g) => /rifle|armor/i.test(g.name))).toBe(false);
+  });
 });
 
 describe("npc relations (tier CANON)", () => {

@@ -65,6 +65,16 @@ const LOOT_BAND: Record<"T1" | "T2" | "T3", [number, number]> = {
  *  parent rep is +1, so this only fires after you turn hard on your own side. */
 const SHIP_SEIZE_REP = -2;
 
+/** Does a gained item's name read as real GEAR (a weapon or armor)? Such gains
+ *  stay gated to a legit loot/quest source even when they don't match the catalog,
+ *  so the model can't hand out a free "rocket launcher"; inert flavor props (a
+ *  keepsake, a rose bouquet) fall through and are always allowed. */
+function looksLikeGear(norm: string): boolean {
+  return /\b(rifle|pistol|gun|launcher|cannon|blaster|carbine|shotgun|revolver|sidearm|sword|blade|knife|baton|axe|spear|armou?r|vest|plate|carapace|shield|grenade|explosive|rocket|missile|ammo|rounds?|magazine|mag|scope|silencer|holster)\b/i.test(
+    norm,
+  );
+}
+
 /**
  * Bridges narrator tool calls to deterministic engine functions, accumulating
  * the scene bookkeeping (tick-eligible rolls, clock advances, costs, world
@@ -814,12 +824,6 @@ export class TurnRuntime {
     if (!pc) return null;
     const trimmed = name.trim();
     if (!trimmed) return null;
-    // Item GAINS are engine-authored, not player-authored: the model may only hand
-    // over gear on a turn the engine recognises a legitimate source — a successful
-    // scavenge/loot roll (lootedThisTurn) or a quest reward (questCompletedThisTurn).
-    // Otherwise "I find a rocket launcher" grants nothing. Losses stay open (a
-    // confiscation — or dropping something to make room — is valid any time).
-    if (action === "gain" && !this.lootedThisTurn && !this.questCompletedThisTurn) return null;
     // A gained item that IS a catalog item (a looted "medkit") must become the
     // MECHANICAL item — with itemId — or useItem's possession check will fail
     // and the model will narrate heals that never happen (the medkit bug).
@@ -828,6 +832,16 @@ export class TurnRuntime {
       action === "gain"
         ? allItems().find((it) => it.name.toLowerCase() === norm || it.id.toLowerCase() === norm)
         : undefined;
+    // GEAR gains are engine-authored, not player-authored: real gear (a catalog
+    // item, or anything with a weapon/armor-ish name) may only be handed over on a
+    // turn with a legit source — a scavenge/loot roll (lootedThisTurn) or a quest
+    // reward (questCompletedThisTurn) — so the model can't grant a free rifle.
+    // FLAVOR props (a gift, a keepsake, a rose bouquet — no catalog match, no
+    // weapon/armor name, mechanically inert) are ALWAYS allowed: blocking them was
+    // dropping legitimate story items an NPC handed the player. Losses stay open.
+    if (action === "gain" && (cat || looksLikeGear(norm)) && !this.lootedThisTurn && !this.questCompletedThisTurn) {
+      return null;
+    }
     const existing = pc.gear.find((g) =>
       cat ? g.itemId === cat.id : g.name.toLowerCase() === trimmed.toLowerCase(),
     );
