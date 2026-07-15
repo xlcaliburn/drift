@@ -396,9 +396,15 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     // band (an under-equipped rookie faces T1, not a professional).
     const tier = clampTier(dcToTier(dc), playerThreatTier(input.state));
     const useShip = skill === "gunnery" && !!input.state.ship;
+    // Name the foe after the TARGET when the player named a present NPC ("shoot Yuri")
+    // — so the fight shows their name, not a generic "Thug".
+    const text = input.playerText.toLowerCase();
+    const target = runtime.sceneCard.presentNpcIds
+      .map((npcId) => runtime.state.npcs.find((n) => n.id === npcId))
+      .find((n) => n && n.name.length > 2 && text.includes(n.name.toLowerCase()));
     const started = useShip
       ? runtime.startShipCombat([{ shipClass: TIER_TO_CLASS[tier] as ShipClass, count: 1, tier }], "player")
-      : runtime.startCombat([{ tier, count: 1 }] as SpawnSpec[], "player");
+      : runtime.startCombat([{ tier, count: 1, name: target?.name }] as SpawnSpec[], "player");
     const lines = [...started.lines];
     let cbt = started.combat;
     const firstEnemy = cbt.enemies.find((e) => e.hp > 0);

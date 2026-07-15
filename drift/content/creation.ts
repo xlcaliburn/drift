@@ -426,3 +426,39 @@ export const attributeBaseline: Record<AttributeKey, number> = {
   perception: 0,
   presence: 0,
 };
+
+/**
+ * Starting loadout FLAVOR by faction (names only). Every recruit ships with the
+ * SAME statline — a sidearm (1d8), light armor (+1 AC), and a utility tool — so no
+ * build ever starts gunless or under-equipped; only the outfit's flavor differs by
+ * faction (the user's "same stat-wise, different outfit" rule). Stats live in
+ * `factionStarterGear`, not here, so they can't drift apart.
+ */
+const FACTION_STARTER_FLAVOR: Record<string, { gun: string; armor: string; tool: string }> = {
+  "f-crown": { gun: "Crown service pistol", armor: "Crown-issue vest", tool: "Crown ledger-chit" },
+  "f-meridian": { gun: "Bonded sidearm", armor: "Broker's lined coat", tool: "Trade credentials" },
+  "f-sable": { gun: "Back-alley snub pistol", armor: "Reinforced jacket", tool: "Burner comm" },
+  "f-ledger": { gun: "Holdout pistol", armor: "Courier's vest", tool: "Cipher slate" },
+  "f-undertow": { gun: "Collector's sidearm", armor: "Enforcer's padded coat", tool: "Debt ledger" },
+  "f-talos": { gun: "Security sidearm", armor: "Frontier plate-vest", tool: "Checkpoint scanner" },
+  "f-wreckers": { gun: "Salvaged slugthrower", armor: "Scrap-plate harness", tool: "Cutting torch" },
+  "f-free": { gun: "Worn sidearm", armor: "Patched flak jacket", tool: "Multitool" },
+  "f-reclaimers": { gun: "Reclaimer bolt pistol", armor: "Salvager's vac-vest", tool: "Salvage scanner" },
+  "f-commons": { gun: "Homemade pistol", armor: "Dockworker's padding", tool: "Worn multitool" },
+  "f-rook": { gun: "Street sidearm", armor: "Padded jacket", tool: "Multitool" },
+};
+const DEFAULT_STARTER = { gun: "Sidearm", armor: "Padded jacket", tool: "Multitool" };
+
+/** The standardized starting gear for a faction — identical stats for everyone
+ *  (a sidearm, +1 armor, a tool), faction-flavored names. Catalog ids attach the
+ *  mechanics (net worth, shops, combat). */
+export function factionStarterGear(
+  factionId?: string,
+): { name: string; itemId?: string; damage?: string; acBonus?: number; detail?: string }[] {
+  const f = FACTION_STARTER_FLAVOR[factionId ?? ""] ?? DEFAULT_STARTER;
+  return [
+    { name: f.gun, itemId: "sidearm", damage: "1d8", detail: "faction-issue sidearm" },
+    { name: f.armor, itemId: "paddedJacket", acBonus: 1, detail: "+1 AC" },
+    { name: f.tool, detail: "part of your starting kit" },
+  ];
+}

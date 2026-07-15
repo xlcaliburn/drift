@@ -830,7 +830,7 @@ export class TurnRuntime {
     const norm = trimmed.toLowerCase().replace(/^(a|an|the)\s+/, "");
     if (resolveGearItemId({ name: trimmed }) || looksLikeGear(norm)) return null; // engine owns real gear
     if (pc.gear.some((g) => g.name.toLowerCase() === trimmed.toLowerCase())) return null; // already carried
-    const gear = [...pc.gear, { name: trimmed, ...(note?.trim() ? { detail: note.trim() } : {}) }];
+    const gear = [...pc.gear, { name: trimmed, detail: this.acquiredDetail(note?.trim() || `picked up at ${this.currentPlace()}`) }];
     if (slotsUsed({ ...pc, gear }) > maxSlotsFor(pc)) return null; // no room — drop silently (background)
     this.setGear(pc.id, gear, false);
     return `🎒 ${trimmed}`;
@@ -862,6 +862,23 @@ export class TurnRuntime {
         return { ...c, gear, ac };
       }),
     };
+  }
+
+  /** Where the player is right now — the scene's free-text place, else the fixed
+   *  location name — for stamping onto an acquired item's description. */
+  private currentPlace(): string {
+    const place = this.sceneCard.place?.trim();
+    if (place) return place;
+    const loc = this.state.locations.find((l) => l.id === this.state.campaign.currentLocationId);
+    return loc?.name ?? "the lanes";
+  }
+
+  /** An acquisition description: how it was got + WHEN (the in-game tenday), so the
+   *  inventory records the story of each item (the user's "items should say when/how
+   *  they were acquired"). Starting kit is exempt (spawned in, no line). */
+  private acquiredDetail(how: string): string {
+    const t = this.state.campaign.tendaysElapsed ?? 0;
+    return `${how} · tenday ${t}`;
   }
 
   applyGearChange(name: string, action: "gain" | "lose", note?: string): string | null {
@@ -901,6 +918,10 @@ export class TurnRuntime {
     if (action === "gain") {
       let gear: Character["gear"];
       let label: string;
+      // Every ADDED item carries a description of how/when it was acquired (the
+      // model's note, else a generic "acquired at <place>, tenday N") — starting
+      // gear is the only kit that's just "spawned in" with no acquisition line.
+      const gainDetail = this.acquiredDetail(note?.trim() || `acquired at ${this.currentPlace()}`);
       if (cat) {
         // Catalog item: stack it (a second medkit is +1, not a no-op). The entry
         // carries the catalog's damage/AC so combat + the sheet see the mechanics.
@@ -912,6 +933,7 @@ export class TurnRuntime {
                 name: cat.name,
                 itemId: cat.id,
                 qty: 1,
+                detail: gainDetail,
                 ...(cat.damage ? { damage: cat.damage } : {}),
                 ...(cat.acBonus ? { acBonus: cat.acBonus } : {}),
               },
@@ -920,7 +942,7 @@ export class TurnRuntime {
         label = `${cat.name}${n > 1 ? ` (×${n})` : ""}`;
       } else {
         if (existing) return null; // flavor item already carried — nothing to do
-        gear = [...pc.gear, { name: trimmed, ...(note?.trim() ? { detail: note.trim() } : {}) }];
+        gear = [...pc.gear, { name: trimmed, detail: gainDetail }];
         label = trimmed;
       }
       // Inventory capacity (ITEMS.md slice B): a gain that doesn't fit is NOT lost
@@ -1024,6 +1046,7 @@ export class TurnRuntime {
             name: cat.name,
             itemId: cat.id,
             qty: n,
+            detail: this.acquiredDetail(`bought at ${loc.name}`),
             ...(cat.damage ? { damage: cat.damage } : {}),
             ...(cat.acBonus ? { acBonus: cat.acBonus } : {}),
           },

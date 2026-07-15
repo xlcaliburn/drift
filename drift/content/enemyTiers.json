@@ -3,11 +3,11 @@
   "note": "Tier sets the budget. Never spawn below the party's weight class. Solo T1s do not appear.",
   "tiers": {
     "T1": {
-      "label": "Mook",
+      "label": "Thug",
       "hpRange": [8, 8],
       "ac": 13,
       "atk": 3,
-      "damage": "1d8",
+      "damage": "1d6",
       "notes": "Fixed 8 HP — general T1s are uniform. Only as fodder alongside higher tiers now"
     },
     "T2": {

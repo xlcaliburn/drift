@@ -163,7 +163,10 @@ describe("narrative gear changes", () => {
     const rt = new TurnRuntime(baseState(), rng); // no loot, no quest this turn
     // The rose-bouquet bug: an NPC hands the player flowers in plain dialogue.
     expect(rt.applyGearChange("rose bouquet", "gain", "a gift from Agnes")).toContain("Gained");
-    expect(rt.state.characters[0].gear.some((g) => g.name.toLowerCase() === "rose bouquet")).toBe(true);
+    const bouquet = rt.state.characters[0].gear.find((g) => g.name.toLowerCase() === "rose bouquet");
+    expect(bouquet).toBeTruthy();
+    // Every added item records how + when it was acquired (the note + the tenday).
+    expect(bouquet!.detail).toMatch(/gift from Agnes.*tenday/);
     // But real GEAR still needs a legit source, even by a non-catalog name.
     expect(rt.applyGearChange("a plasma rifle", "gain")).toBeNull();
     expect(rt.applyGearChange("Combat armor", "gain")).toBeNull(); // catalog gear

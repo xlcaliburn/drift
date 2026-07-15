@@ -47,9 +47,22 @@ describe("buildCharacterFromCreation", () => {
 
   it("derives vitals and keeps parity credits", () => {
     expect(c.maxHp).toBe(18); // 18 + vitality(0)
-    expect(c.ac).toBe(13); // 10 + reflex(3) + no armor
+    expect(c.ac).toBe(14); // 10 + reflex(3) + faction kit armor (+1)
     expect(c.credits).toBe(120); // thin, equal-footing "minion" pocket
     expect(c.kind).toBe("pc");
+  });
+
+  it("EVERY starting character ships with a gun + light armor (faction kit, standardized stats)", () => {
+    // Crown flavor names, but the STATS are the standard sidearm (1d8) + padded (+1).
+    const gun = c.gear.find((g) => g.itemId === "sidearm");
+    const armor = c.gear.find((g) => g.itemId === "paddedJacket");
+    expect(gun?.damage).toBe("1d8");
+    expect(armor?.acBonus).toBe(1);
+    // A different faction gets the SAME stats, a different outfit name.
+    const sable = buildCharacterFromCreation({ ...base, parentFactionId: "f-sable" }, { id: "p2", campaignId: "c2" });
+    expect(sable.gear.find((g) => g.itemId === "sidearm")?.damage).toBe("1d8");
+    expect(sable.gear.find((g) => g.itemId === "sidearm")?.name).not.toBe(gun?.name); // flavor differs
+    expect(sable.ac).toBe(c.ac); // same stat-wise
   });
 
   it("carries creation metadata for dossier/story", () => {

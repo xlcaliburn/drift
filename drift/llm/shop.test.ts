@@ -86,6 +86,14 @@ describe("buyItem — the engine owns the whole transaction", () => {
     expect(rt.state.characters[0].gear.some((g) => g.itemId === "combatRifle")).toBe(true);
   });
 
+  it("a bought item records HOW + WHEN it was acquired", () => {
+    const rt = new TurnRuntime(atLocation(["blackmarket"], { credits: 2000 }), maxRng);
+    rt.buyItem("combatRifle");
+    const rifle = rt.state.characters[0].gear.find((g) => g.itemId === "combatRifle");
+    expect(rifle?.detail).toMatch(/bought at Rook/);
+    expect(rifle?.detail).toMatch(/tenday/);
+  });
+
   it("still refuses gear ABOVE the market's tier", () => {
     const rt = new TurnRuntime(atLocation(["hostile"], { credits: 2000 }), maxRng); // backwater → T1 market
     expect(rt.buyItem("plasmaCarbine").error).toMatch(/above/); // T3 gun, not at a T1 dock

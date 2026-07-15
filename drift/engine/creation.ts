@@ -2,7 +2,7 @@ import { Character, type Attributes, type Skill, type Npc } from "@/shared/schem
 import type { CreationInput } from "@/shared/multiplayer";
 import type { NpcRelation } from "@/shared/scene";
 import { seededRng, type RNG } from "@/engine/rng";
-import { backgrounds, biasSkills, biasAttribute, attributeBaseline } from "@/content/creation";
+import { backgrounds, biasSkills, biasAttribute, attributeBaseline, factionStarterGear } from "@/content/creation";
 import { mapLegacyGear } from "@/shared/items";
 
 /**
@@ -38,13 +38,16 @@ export function buildCharacterFromCreation(
   // one-shot. (Deliberate rebalance — hazard-damage numbers are unchanged; HP is
   // the lever, so a fight lasts a handful of rounds instead of ending in one volley.)
   const maxHp = Math.max(1, 18 + attributes.vitality);
-  // Armor = the BEST single piece, not a sum — the same rule the engine applies
-  // when armor is bought/sold later (no vest-stacking). Loadouts carry one piece,
-  // so this matches the old sum for every background.
-  const armorBonus = Math.max(0, ...bg.gear.map((g) => g.acBonus ?? 0));
+  // Starting gear is FACTION-issued and standardized (a sidearm, +1 armor, a tool) —
+  // the SAME statline for everyone so no build starts gunless, only the flavor differs
+  // by faction. The background sets attributes/skills/hook, not the loadout.
+  const startGear = factionStarterGear(input.parentFactionId);
+  // Armor = the BEST single piece, not a sum — the rule the engine applies when
+  // armor is bought/sold later (no vest-stacking).
+  const armorBonus = Math.max(0, ...startGear.map((g) => g.acBonus ?? 0));
   const ac = 10 + attributes.reflex + armorBonus;
   // Attach catalog ids to the loadout (price/slot data ride the id; names stay).
-  const gear = mapLegacyGear({ gear: bg.gear.map((g) => ({ ...g })) }).gear;
+  const gear = mapLegacyGear({ gear: startGear.map((g) => ({ ...g })) }).gear;
 
   return Character.parse({
     id: ids.id,

@@ -34,6 +34,10 @@ describe("spawnCombatEnemies", () => {
     expect(es[0].name).toBe("Thug");
   });
 
+  it("a T1 enemy hits for 1d6 (softened from 1d8)", () => {
+    expect(spawnCombatEnemies([{ tier: "T1", count: 1 }], maxRng)[0].damage).toBe("1d6");
+  });
+
   it("spawns MULTIPLE named groups — a boss plus a numbered goon pack", () => {
     // "Calvo and his two heavies" → one boss (count 1) + one goon group (count 2).
     const es = spawnCombatEnemies(
