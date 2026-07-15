@@ -848,14 +848,22 @@ export class TurnRuntime {
       action === "gain"
         ? allItems().find((it) => it.name.toLowerCase() === norm || it.id.toLowerCase() === norm)
         : undefined;
-    // GEAR gains are engine-authored, not player-authored: real gear (a catalog
-    // item, or anything with a weapon/armor-ish name) may only be handed over on a
-    // turn with a legit source — a scavenge/loot roll (lootedThisTurn) or a quest
-    // reward (questCompletedThisTurn) — so the model can't grant a free rifle.
-    // FLAVOR props (a gift, a keepsake, a rose bouquet — no catalog match, no
-    // weapon/armor name, mechanically inert) are ALWAYS allowed: blocking them was
-    // dropping legitimate story items an NPC handed the player. Losses stay open.
-    if (action === "gain" && (cat || looksLikeGear(norm)) && !this.lootedThisTurn && !this.questCompletedThisTurn) {
+    // GEAR gains are engine-authored, not player-authored: real WEAPONS/ARMOR (a
+    // catalog item with damage/AC, or a weapon/armor-ish name) may only be handed
+    // over on a turn with a legit source — a scavenge/loot roll (lootedThisTurn) or a
+    // quest reward (questCompletedThisTurn) — so the model can't grant a free rifle.
+    // CONSUMABLES (a stim, a medkit — low value, no damage/AC) are legitimate, common
+    // NPC GIFTS ("Draven tosses you a stim"), so they pass freely — blocking them left
+    // the player unable to use a stim the fiction just handed them. FLAVOR props (no
+    // catalog match, no weapon/armor name, inert) are always allowed too. Losses stay open.
+    const isConsumableGift = !!cat && !cat.damage && !cat.acBonus;
+    if (
+      action === "gain" &&
+      !isConsumableGift &&
+      (cat || looksLikeGear(norm)) &&
+      !this.lootedThisTurn &&
+      !this.questCompletedThisTurn
+    ) {
       return null;
     }
     const existing = pc.gear.find((g) =>
