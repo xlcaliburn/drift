@@ -14,6 +14,12 @@ over-cap, which just blocks the next auto-pickup — the IT-2 grandfather rule).
 Dock repair + credit/debt (ECONOMY E-3) SHIPPED (see below). Items work is
 COMPLETE.*
 
+*Rook body-modification service SHIPPED: the NPC **Chrome** (loc-rook) reshapes a
+character's `appearance` and folds the change into their `backstory` for a flat
+¢500 — engine-owned `bodyMod` (refused off-Rook / when broke), a Rook-only prompt
+directive, and the new `appearance` Character field shown on the sheet + fed to the
+narrator. A diegetic re-customization path.*
+
 ## Locked decisions (2026-07-14)
 
 - **No per-shot personal ammo.** The `rounds` field stays dormant; missiles are
