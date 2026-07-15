@@ -4,7 +4,7 @@ import { liveRng, computeModifier, type RNG, type EngineEvent } from "@/engine";
 import { TurnRuntime } from "./engineBridge";
 import { buildJsonSystem, buildContextSlice, retrieveEntities } from "./promptBuilder";
 import { deepseekChat, deepseekChatStream, isDeepSeekModel, resolveModel } from "./deepseek";
-import { sanitizeHistory, trimToLastSentence } from "./narrator";
+import { sanitizeHistory, trimToLastSentence } from "./history";
 import { NarrationExtractor } from "./jsonStream";
 import {
   parseTurnPlan,

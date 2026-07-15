@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
-import { sanitizeHistory } from "./narrator";
+import { sanitizeHistory } from "./history";
 
 /**
  * The invariant every case asserts: no assistant tool_use is left without a

@@ -5,7 +5,7 @@ import { usableConsumables } from "@/shared/items";
 import { downedActions, interpretDownedText, type DownedAction } from "@/shared/death";
 import { TurnRuntime } from "./engineBridge";
 import { deepseekChat, deepseekChatStream, isDeepSeekModel, resolveModel } from "./deepseek";
-import { sanitizeHistory } from "./narrator";
+import { sanitizeHistory } from "./history";
 import { stripInlineMenu } from "@/shared/narration";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import { graduatedTutorialThisTurn } from "@/shared/tutorial";
