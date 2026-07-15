@@ -326,7 +326,18 @@ form `consumeItem(this, …)`.
   lootedThisTurn, questCompletedThisTurn, markQuestCompleted()}` (the two flags
   went public); `isShipTarget` inlined. execute() calls awardPayout/adjustResource
   as free fns; the rest keep delegating methods. (1927→1493)
-- ⬜ **`runtimeNarrative.ts`** — advanceClock, adjustRep, updateThread,
+- ✅ **`runtimeNarrative.ts`** — clocks, rep, threads, world events, endScene, NPC
+  registration/presence, scene card, relationships, bodyMod/respec/setAppearance.
+  Surface `NarrativeRT` (+ a narrow `RelationRT` subset for the rapport helpers).
+  isDead→module isDeadChar; clockAdvances + nudgedThisTurn went public. (1493→1098)
+- ✅ **`runtimeCombat.ts`** — applyDamage/applyShipDamage, rollCheck, resolveAttack,
+  spawnEncounter, the personal + ship combat rounds. Surface `CombatRT` (satisfies
+  `RelationRT` for rollCheck→nudgeStandingFromCheck). enemyCounter public; dead
+  char()/pc() removed. (1098→353) **TurnRuntime is now a 353-line shell.**
+
+<details><summary>original narrative plan (done)</summary>
+
+- **`runtimeNarrative.ts`** — advanceClock, adjustRep, updateThread,
   logWorldEvent, endScene, registerNpc, setNpcOneBreath, markPresent, updateScene,
   refreshSituation, pushRelationLog, nudgeStandingFromCheck, updateNpcRelation,
   bodyMod, respec, setAppearance (~350). Surface adds `npcRelations`,
@@ -339,12 +350,13 @@ form `consumeItem(this, …)`.
   events, enemies, enemyCounter}`; rollCheck calls nudgeStandingFromCheck (narrative
   — fine as a free fn). applyDamage (stays in class core) calls applyShipDamage →
   switch to free form.
-- The class SHELL keeps: fields+constructor, char/pc/applyDamage/isShipTarget
-  primitives, execute() dispatcher, offerChoices, dmOverride, markQuestCompleted,
-  and the thin delegating methods.
+- The class SHELL keeps: fields+constructor, isDead, execute() dispatcher,
+  offerChoices, dmOverride, markQuestCompleted, and the thin delegating methods.
 
 ### Acceptance (per slice): tsc clean + full suite green (the many `llm/*.test.ts`
 that `new TurnRuntime(...)` cover every method). No behavior change.
+
+</details>
 
 ---
 
