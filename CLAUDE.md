@@ -19,7 +19,10 @@ Every roll returns a full auditable breakdown (`d20(14) +8 = 22 vs DC 15 → suc
   shared NPCs are wired via the `npcs` table, but dossiers/ledgers/seasons aren't)
 - `drift/llm/{deepseek,tools,engineBridge,summarizer}.ts` (the freeform `narrator.ts`
   loop is RETIRED/deleted; `sanitizeHistory`+`trimToLastSentence` live in `llm/history.ts`)
-- `drift/llm/jsonTurn.ts` — the structured-turn orchestrator
+- `drift/llm/jsonTurn.ts` — the structured-turn ORCHESTRATOR (model call + retries +
+  pre-roll). Applying the plan's mechanical intents lives in `llm/applyPlan/` (an
+  ordered handler registry — new mechanic = new handler file + one registry line;
+  tested model-free by `applyPlan.test.ts`). Gun-skill→combat reroute in `openFight.ts`
 - `drift/llm/promptBuilder.ts` — FACADE re-exporting `jsonSystem.ts` (the JSON rules
   contract), `retrieval.ts` (`retrieveEntities`), and `promptSections/` (the per-turn
   context slice — an ordered SECTIONS registry over framing/pcSheet/economy/world

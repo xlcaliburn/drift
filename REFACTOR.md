@@ -1,10 +1,18 @@
 # REFACTOR.md — promptBuilder sections + jsonTurn plan handlers
 
-> **STATUS: Plan 1 SHIPPED** (golden test `contextSlice.golden.test.ts`;
-> `jsonSystem.ts` + `retrieval.ts` extracted, dead `DM_STYLE`/`buildSystem`
-> deleted; `promptSections/` registry — grouped 4-way framing/pcSheet/economy/
-> world rather than the 19 micro-files below, same additive benefit). Snapshots
-> byte-identical throughout. **Plan 2 (jsonTurn) is NEXT and not yet started.**
+> **STATUS: Plan 1 + Plan 2 SHIPPED.**
+> - **Plan 1**: golden test `contextSlice.golden.test.ts`; `jsonSystem.ts` +
+>   `retrieval.ts` extracted, dead `DM_STYLE`/`buildSystem` deleted;
+>   `promptSections/` registry (grouped 4-way framing/pcSheet/economy/world vs the
+>   19 micro-files below — same additive benefit). Snapshots byte-identical.
+> - **Plan 2**: seam test `applyPlan.test.ts` (plan application tested WITHOUT a
+>   model call); regions I+J extracted to `applyPlan/` — an ordered handler
+>   registry (money/trade/gearItems/services/npcs/continuity/quests/sceneEnd/
+>   combatStart). `openFight.ts` (gun-skill reroute) extracted + unit-tested.
+>   `jsonTurn.ts`: 1118 → 819 lines. Region C (pre-roll handlers) DELIBERATELY
+>   left in the orchestrator — stable model-call plumbing, not a collision hotspot,
+>   no full-turn golden test to guard it. Steps 3's narrationBackstops/engineLines
+>   extraction skipped for the same reason.
 
 Goal: multiple Claude windows editing in parallel with limited overlap. The two
 hottest files (`llm/promptBuilder.ts` — 53 edits/6wk, `llm/jsonTurn.ts` — 45)
