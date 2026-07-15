@@ -208,6 +208,20 @@ function resolveChoiceChecks(choices: TurnPlan["choices"], pc?: Character): Turn
   });
 }
 
+/** DeepSeek sometimes reproduces the PREVIOUS turn's narration verbatim, ignoring
+ *  the player's new action (the "same answer 3 times" bug). Detect an echo: exact
+ *  normalized match, or an identical long opening (a verbatim copy starts the same).
+ *  Normalized to alphanumerics so punctuation/whitespace drift doesn't hide it. */
+export function isEchoOfPrevious(current: string, previous: string): boolean {
+  const norm = (s: string) => (s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const a = norm(current);
+  const b = norm(previous);
+  if (a.length < 40 || b.length < 40) return false; // too short to judge
+  if (a === b) return true;
+  const head = 120;
+  return a.length >= head && b.length >= head && a.slice(0, head) === b.slice(0, head);
+}
+
 function defaultModel(): string {
   // Routine turns fill a JSON template — a fast CHAT model, not a reasoning one.
   // v4-pro burned its whole token budget on hidden reasoning and hit max_tokens
@@ -583,6 +597,26 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   }
 
   let plan = await plannedCall(true);
+  // ── Anti-echo: DeepSeek sometimes reproduces the PREVIOUS turn's narration
+  //    verbatim, ignoring the player's new action (the "same answer 3 times" bug).
+  //    If it echoed the last beat, regenerate ONCE with an explicit advance-don't-
+  //    repeat instruction. Only fires on a detected echo, so normal turns pay nothing.
+  const prevNarration = [...input.history]
+    .reverse()
+    .find((m) => m.role === "assistant" && typeof m.content === "string")?.content as string | undefined;
+  if (prevNarration && isEchoOfPrevious(plan.narration, prevNarration)) {
+    toolCalls.push("anti_repeat");
+    messages.push({ role: "assistant", content: JSON.stringify({ narration: plan.narration }) });
+    messages.push({
+      role: "user",
+      content:
+        "You just repeated your PREVIOUS narration almost word-for-word. The player has taken a NEW action since then — react to what they JUST did and move the moment forward. Write a fresh beat; do NOT restate the previous one.",
+    });
+    const retry = await plannedCall(false);
+    if (retry.narration.trim() && !isEchoOfPrevious(retry.narration, prevNarration)) {
+      plan = retry;
+    }
+  }
   // Resolve every choice's check up front — the model's verb tag, or a verb
   // INFERRED from the label ("Search the lockers" → loot) when it forgot to tag.
   plan = { ...plan, choices: resolveChoiceChecks(plan.choices, pc) };
