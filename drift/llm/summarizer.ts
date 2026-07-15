@@ -6,23 +6,40 @@ export interface SceneSummary {
   entityRefs: string[];
 }
 
-/** Per-NPC continuity update the analyst extracts from a closed scene. */
+/** A character the analyst found in a closed scene — KNOWN (matches a roster id) or
+ *  NEW (name only, to be registered). This is how the analyst PICKS UP figures the
+ *  live turn missed (e.g. Yuri, attributed by an action beat the model never listed
+ *  in npcs[]) instead of a brittle regex. */
 export interface NpcAnalysis {
-  /** Must match a known NPC id from the provided list. */
-  id: string;
-  /** A refreshed one-line "who they REALLY are" — upgrades a thin/placeholder
-   *  oneBreath once the scene has revealed the character. */
+  /** A KNOWN NPC id if this matches one from the roster; omitted for a NEW figure. */
+  id?: string;
+  /** The character's name — always present (a new figure is registered under it). */
+  name?: string;
+  /** Where they stand in the scene: "present" = physically in the immediate area
+   *  (Yuri the dockmaster you're talking to); "mentioned" = referenced/off-screen
+   *  (Calvo, talked ABOUT but elsewhere). Only "present" figures are marked in the
+   *  scene's Here-&-now; both are tracked in the cast. */
+  presence?: "present" | "mentioned";
+  /** Occupational handle ("dockmaster", "fixer") when the scene shows one. */
+  role?: string;
+  /** A one-line "who they REALLY are" (refreshes a placeholder / seeds a new one). */
   oneBreath?: string;
-  /** One concrete beat of what passed between this NPC and the PLAYER this scene
-   *  (→ the relationship log), from the player's side. */
+  /** One concrete beat of what passed between them and the PLAYER this scene. */
   note?: string;
-  /** A short label for who they are to the player if the scene makes it clear
-   *  ("partner", "fixer contact", "romantic interest"). */
+  /** A short label for who they are to the player, when the scene makes it clear. */
   relationship?: string;
+}
+
+/** A prop the player legitimately came away with this scene (a gift, a keepsake) —
+ *  flavor only; the engine still owns weapons/armor/valuables. */
+export interface ItemAnalysis {
+  name: string;
+  note?: string;
 }
 
 export interface SceneAnalysis extends SceneSummary {
   npcs: NpcAnalysis[];
+  items: ItemAnalysis[];
 }
 
 const SYSTEM =
@@ -39,8 +56,9 @@ const ANALYST_SYSTEM =
   'You are a TTRPG continuity analyst. Read the scene and reply ONLY with JSON:\n' +
   '{"summary": string (2-3 sentences, past tense, concrete outcomes),\n' +
   ' "entityRefs": string[] (ids from the KNOWN list that appeared),\n' +
-  ' "npcs": [{"id": string (a KNOWN id), "oneBreath": string (one vivid line — who this person REALLY is, as the scene revealed them; refresh a vague/placeholder description), "note": string (ONE concrete beat of what passed between THEM and the PLAYER this scene, from the player\'s side, past tense), "relationship": string (a SHORT label for who they are to the player now — "partner", "fixer contact", "romantic interest" — only if the scene makes it clear)}]}\n' +
-  'Only include an NPC in "npcs" if they genuinely took part. Ground every field in what actually happened — never invent. Omit a field you cannot fill.';
+  ' "npcs": [ EVERY distinct CHARACTER who figured in the scene — whether or not they are in the KNOWN list, and whether they were PRESENT or only TALKED ABOUT. For each: {"name": string (their name or a short handle if unnamed — REQUIRED), "id": string (the KNOWN id ONLY if this is clearly that same person; OMIT for anyone new), "presence": "present" (physically in the immediate area — someone the player spoke to or faced) or "mentioned" (referenced/off-screen — talked ABOUT but not here, e.g. a target named by a contact), "role": string (their job/handle — "dockmaster", "fixer" — if shown), "oneBreath": string (one vivid line: who this person REALLY is, as the scene revealed them), "note": string (ONE concrete beat of what passed between THEM and the PLAYER this scene — omit for a merely-mentioned figure), "relationship": string (a SHORT label for who they are to the player — only if clear)} ],\n' +
+  ' "items": [ props the PLAYER clearly came away with this scene — a gift, a token, a keepsake, a document: {"name": string, "note": string}. Do NOT list weapons, armor, ammo, or valuable gear (the game grants those separately); do NOT list things the player merely saw or wanted. Usually empty. ]}\n' +
+  'Ground EVERY field in what actually happened — never invent a person, item, or fact. Do NOT list the player\'s own character. Omit any field you cannot fill.';
 
 function defaultSummarizerModel() {
   return (
@@ -186,26 +204,38 @@ export async function analyzeScene(
   }
 
   const knownIds = new Set(npcs.map((n) => n.id));
+  const str = (v: unknown, n: number) => (v ? String(v).trim().slice(0, n) : undefined);
   try {
     const match = raw.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(match ? match[0] : raw);
-    const npcUpdates: NpcAnalysis[] = Array.isArray(parsed.npcs)
-      ? parsed.npcs
-          .filter((u: unknown): u is Record<string, unknown> => !!u && typeof u === "object")
-          .map((u: Record<string, unknown>) => ({
-            id: String(u.id ?? ""),
-            oneBreath: u.oneBreath ? String(u.oneBreath).trim().slice(0, 200) : undefined,
-            note: u.note ? String(u.note).trim().slice(0, 160) : undefined,
-            relationship: u.relationship ? String(u.relationship).trim().slice(0, 60) : undefined,
-          }))
-          .filter((u: NpcAnalysis) => knownIds.has(u.id) && (u.oneBreath || u.note || u.relationship))
-      : [];
+    const npcUpdates: NpcAnalysis[] = (Array.isArray(parsed.npcs) ? parsed.npcs : [])
+      .filter((u: unknown): u is Record<string, unknown> => !!u && typeof u === "object")
+      .map((u: Record<string, unknown>): NpcAnalysis => {
+        const id = u.id ? String(u.id) : undefined;
+        return {
+          id: id && knownIds.has(id) ? id : undefined, // only trust a REAL known id
+          name: str(u.name, 60),
+          presence: u.presence === "mentioned" ? "mentioned" : u.presence === "present" ? "present" : undefined,
+          role: str(u.role, 40),
+          oneBreath: str(u.oneBreath, 200),
+          note: str(u.note, 160),
+          relationship: str(u.relationship, 60),
+        };
+      })
+      // Keep anyone we can act on: a known NPC to refresh, OR a new figure with a name.
+      .filter((u: NpcAnalysis) => u.id || u.name);
+    const itemUpdates: ItemAnalysis[] = (Array.isArray(parsed.items) ? parsed.items : [])
+      .filter((i: unknown): i is Record<string, unknown> => !!i && typeof i === "object")
+      .map((i: Record<string, unknown>) => ({ name: str(i.name, 60) ?? "", note: str(i.note, 120) }))
+      .filter((i: ItemAnalysis) => i.name)
+      .slice(0, 4);
     return {
       summary: String(parsed.summary ?? ""),
       entityRefs: Array.isArray(parsed.entityRefs) ? parsed.entityRefs.map(String) : [],
       npcs: npcUpdates,
+      items: itemUpdates,
     };
   } catch {
-    return { summary: raw.slice(0, 500), entityRefs: [], npcs: [] };
+    return { summary: raw.slice(0, 500), entityRefs: [], npcs: [], items: [] };
   }
 }

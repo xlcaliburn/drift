@@ -807,6 +807,35 @@ export class TurnRuntime {
     return { added: true, id };
   }
 
+  /** Force-refresh a cast NPC's one-line identity (scene analyst upgrading a thin/
+   *  placeholder oneBreath). Unlike registerNpc this OVERWRITES — the caller gates
+   *  on isPlaceholderOneBreath so real, authored canon is never clobbered. */
+  setNpcOneBreath(id: string, oneBreath: string, role?: string) {
+    const text = oneBreath.trim();
+    if (!text) return;
+    this.state = {
+      ...this.state,
+      npcs: this.state.npcs.map((n) => (n.id === id ? { ...n, oneBreath: text, role: n.role ?? role?.trim() } : n)),
+    };
+  }
+
+  /** Grant a FLAVOR prop the scene analyst found the player came away with (a gift,
+   *  a keepsake, a document). The engine still OWNS gear: a catalog item or a
+   *  weapon/armor-ish name is ignored here (those only come from loot/purchase/
+   *  quest). Deduped by name; skipped silently if the pack is full. */
+  grantSceneItem(name: string, note?: string): string | null {
+    const pc = this.pc();
+    const trimmed = name.trim();
+    if (!pc || !trimmed) return null;
+    const norm = trimmed.toLowerCase().replace(/^(a|an|the)\s+/, "");
+    if (resolveGearItemId({ name: trimmed }) || looksLikeGear(norm)) return null; // engine owns real gear
+    if (pc.gear.some((g) => g.name.toLowerCase() === trimmed.toLowerCase())) return null; // already carried
+    const gear = [...pc.gear, { name: trimmed, ...(note?.trim() ? { detail: note.trim() } : {}) }];
+    if (slotsUsed({ ...pc, gear }) > maxSlotsFor(pc)) return null; // no room — drop silently (background)
+    this.setGear(pc.id, gear, false);
+    return `🎒 ${trimmed}`;
+  }
+
   /**
    * Narrative item pickup/loss (a looted facemask, a confiscated pistol): the
    * model proposes, the engine writes it into the PC's GEAR so it persists in

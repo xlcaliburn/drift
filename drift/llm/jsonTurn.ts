@@ -1017,16 +1017,21 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
         speaker.role,
       );
     }
-    // Presence: mark present ANY known NPC actually named in THIS narration — so
-    // whoever the player is dealing with (new, or continuing after a scene reset)
-    // shows up in Here & now, not just the ones the model remembered to list.
+    // Presence: mark present a known NPC who SPEAKS this turn — so whoever the player
+    // is dealing with (new, or continuing after a scene reset) shows up in Here & now,
+    // even if the model forgot to list them. A name merely REFERENCED in the prose (a
+    // target a contact names, like Calvo off at another station) is NOT presence — it
+    // would wrongly drag an off-screen figure into the immediate area.
     const lower = narration.toLowerCase();
     const metPlace = runtime.sceneCard.place?.trim();
+    const spokeHandles = extractDialogueNpcs(narration, new Set(), 20).map((s) => s.handle.toLowerCase());
     for (const n of runtime.state.npcs) {
       const nm = n.name.toLowerCase();
       if (nm.length < 3) continue;
       const re = new RegExp(`\\b${nm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
       if (!re.test(lower)) continue;
+      // Only if they actually spoke (name matches a dialogue speaker this turn).
+      if (!spokeHandles.some((h) => nm === h || nm.includes(h) || h.includes(nm))) continue;
       runtime.markPresent(n.id);
       // Seed a relationship the FIRST time you actually deal with someone, so the
       // People panel isn't blank for a fixer/fence you've been talking to — the cheap

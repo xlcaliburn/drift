@@ -16,8 +16,8 @@ import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { buildFallbackChoices } from "@/shared/recap";
 import { CheckSpec, CombatActionSpec, DownedActionSpec, type ChoiceOption } from "@/shared/turnPlan";
 import { carryScene, isSceneMove, type SceneCard, type SceneMemory } from "@/shared/scene";
-import { analyzeScene, type NpcAnalysis } from "@/llm/summarizer";
-import { appendRelationLog, isPlaceholderOneBreath } from "@/shared/scene";
+import { analyzeScene, type NpcAnalysis, type ItemAnalysis } from "@/llm/summarizer";
+import { isPlaceholderOneBreath } from "@/shared/scene";
 import type { ChatEntry } from "@/shared/chat";
 import { hasSupabase } from "@/lib/state";
 
@@ -47,11 +47,13 @@ async function compressClosedScene(
   let summary = "";
   let entityRefs: string[] = [];
   let npcUpdates: NpcAnalysis[] = [];
+  let itemUpdates: ItemAnalysis[] = [];
   try {
     const res = await analyzeScene(text + beatsNote, sceneNpcs, knownEntityIds);
     summary = res.summary.trim();
     entityRefs = res.entityRefs;
     npcUpdates = res.npcs;
+    itemUpdates = res.items;
   } catch {
     /* fall through to the deterministic fallback */
   }
@@ -71,27 +73,10 @@ async function compressClosedScene(
     locationId,
   };
 
-  // Which NPC identities the analyst wants to REFRESH — only genuine upgrades of a
-  // thin/placeholder oneBreath (never clobber real canon), keyed to a present NPC.
-  const oneBreathUpgrades = npcUpdates.filter((u) => {
-    if (!u.oneBreath) return false;
-    const cur = sceneNpcs.find((n) => n.id === u.id)?.oneBreath;
-    return isPlaceholderOneBreath(cur);
-  });
-
   if (hasSupabase()) {
     try {
-      const { getServiceClient, saveScene, updateNpcOneBreath } = await import("@/db/queries");
-      const db = getServiceClient();
-      await saveScene(db, campaignId, scene);
-      // Refresh placeholder NPC identities in the shared cast (universe canon).
-      for (const u of oneBreathUpgrades) {
-        try {
-          await updateNpcOneBreath(db, u.id, u.oneBreath!);
-        } catch (e) {
-          console.error(`[analyst] oneBreath update failed for ${u.id}:`, e instanceof Error ? e.message : e);
-        }
-      }
+      const { getServiceClient, saveScene } = await import("@/db/queries");
+      await saveScene(getServiceClient(), campaignId, scene);
     } catch (e) {
       console.error("[turn] failed to persist scene summary:", e instanceof Error ? e.message : e);
     }
@@ -99,25 +84,51 @@ async function compressClosedScene(
   // Surface in the LIVE session (re-read: turns may have advanced meanwhile), and
   // fold the analyst's continuity updates into the live cast + relationship logs.
   const live = await getSession(campaignId);
-  if (live) {
-    live.recentScenes = [...live.recentScenes.filter((s) => s.seq !== scene.seq), scene]
-      .sort((a, b) => a.seq - b.seq)
-      .slice(-20);
+  if (!live) return;
+  live.recentScenes = [...live.recentScenes.filter((s) => s.seq !== scene.seq), scene]
+    .sort((a, b) => a.seq - b.seq)
+    .slice(-20);
+
+  if (npcUpdates.length || itemUpdates.length) {
+    // Apply through a runtime so registration / relations / gear reuse the engine's
+    // dedup, id-gen, and caps — then write the mutated slices back onto the session.
+    const { TurnRuntime } = await import("@/llm/engineBridge");
+    const { liveRng } = await import("@/engine");
+    const { isPlausibleNpcName, isCollectiveName } = await import("@/shared/npcExtract");
+    const rt = new TurnRuntime(live.state, liveRng, { sceneCard: live.sceneCard, npcRelations: live.npcRelations });
+
     for (const u of npcUpdates) {
-      // Enrich the per-player relationship log with a real beat, and set who they
-      // are to the player if we don't have a label yet (never overwrite one).
-      const rel = live.npcRelations[u.id] ?? { disposition: 0 };
-      if (u.note) appendRelationLog(rel, u.note, closedCard.seq);
-      if (u.relationship && !rel.relationship) rel.relationship = u.relationship;
-      live.npcRelations[u.id] = rel;
-      // Mirror the oneBreath upgrade into the in-memory cast so it rides the very
-      // next prompt (the DB write above is for cold loads / other campaigns).
-      const npc = live.state.npcs.find((n) => n.id === u.id);
-      if (npc && u.oneBreath && isPlaceholderOneBreath(npc.oneBreath)) npc.oneBreath = u.oneBreath;
+      // Resolve to a known cast member — by id, else by name.
+      const known =
+        (u.id ? rt.state.npcs.find((n) => n.id === u.id) : undefined) ??
+        (u.name ? rt.state.npcs.find((n) => n.name.toLowerCase() === u.name!.toLowerCase()) : undefined);
+      let id: string | undefined = known?.id;
+      if (known) {
+        // Upgrade a thin/placeholder identity; never clobber real canon.
+        if (u.oneBreath && isPlaceholderOneBreath(known.oneBreath)) rt.setNpcOneBreath(known.id, u.oneBreath, u.role);
+      } else if (u.name && isPlausibleNpcName(u.name) && !isCollectiveName(u.name)) {
+        // A figure the live turn MISSED — register it now. Works for someone PRESENT
+        // (Yuri) or merely MENTIONED (Calvo, a named target): both join the cast so
+        // they're tracked, but only the PRESENT ones are marked into Here & now.
+        id = rt.registerNpc(u.name, u.oneBreath, u.role).id;
+      }
+      if (id && (u.note || u.relationship)) {
+        rt.updateNpcRelation(id, { note: u.note ?? undefined, relationship: u.relationship ?? undefined });
+      }
+      // Only a genuinely-present figure belongs in the scene's immediate area; a
+      // mentioned/off-screen target (Calvo) stays known but out of Here & now.
+      if (id && u.presence === "present") rt.markPresent(id);
     }
-    setSession(campaignId, live);
-    if (npcUpdates.length) await persistSession(campaignId, live);
+    // Flavor props the player came away with (engine still owns real gear).
+    for (const it of itemUpdates) rt.grantSceneItem(it.name, it.note);
+
+    live.state = rt.state;
+    live.npcRelations = rt.npcRelations;
+    live.sceneCard = rt.sceneCard;
   }
+
+  setSession(campaignId, live);
+  if (npcUpdates.length || itemUpdates.length) await persistSession(campaignId, live);
 }
 
 export const runtime = "nodejs";
