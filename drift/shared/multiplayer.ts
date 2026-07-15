@@ -47,7 +47,9 @@ export type Dossier = z.infer<typeof Dossier>;
 // ── Relationship ledger (who-knows-what) ─────────────────────────────────────
 
 export const KnowledgeLevel = z.enum(["unknown", "secondhand", "firsthand"]);
+export type KnowledgeLevel = z.infer<typeof KnowledgeLevel>;
 export const RelationStance = z.enum(["ally", "rival", "enemy", "neutral", "owed", "owes"]);
+export type RelationStance = z.infer<typeof RelationStance>;
 
 export const LedgerEntry = z.object({
   /** Whose ledger this belongs to. */
