@@ -142,7 +142,14 @@ export function rollCheck(input: CheckInput, rng: RNG): CheckResult {
   // Naturals are decisive: a 20 always succeeds, a 1 always fails, regardless of
   // the modifier — that's what makes them worth calling out.
   const outcome = critical ? "success" : criticalFailure ? "failure" : total >= dc ? "success" : "failure";
-  const tickEligible = stakes && input.dc >= economy.tickRule.minDcForTick;
+  // Tick on a real gamble measured RELATIVE to the character — the raw d20 they had
+  // to beat (FACE = dc − modifier) — NOT an absolute DC. The risk-based DC system
+  // scales DCs to each character's modifier, so an absolute floor locked low-modifier
+  // characters out of XP on their weak skills: a novice's "risky" roll (DC ~10, +0
+  // mod) never reached 13, while a specialist's identical-odds roll did. FACE ≥ 10 is
+  // a "risky" (~55%) attempt or worse; safe ~80% routines still never tick.
+  const faceNeeded = input.dc - modifier;
+  const tickEligible = stakes && faceNeeded >= economy.tickRule.minFaceForTick;
 
   const sign = modifier >= 0 ? `+${modifier}` : `${modifier}`;
   const sig = input.forceNat20

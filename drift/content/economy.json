@@ -22,10 +22,10 @@
     "note": "Failed hazard checks / danger saves deal rng(0..hazardBase) × hazardLevel. Level 1-5, shown to the player as ⚠ on the option BEFORE they commit: ⚠1 scrape (max 2) … ⚠5 deadly (max 10 — can one-shot a fresh 10-HP character). Ability checks (non-hazard skills) never deal damage on failure."
   },
   "tickRule": {
-    "minDcForTick": 13,
+    "minFaceForTick": 10,
     "requiresStakes": true,
     "maxTicksPerSkillPerScene": 1,
-    "levelUpCostFormula": "newLevel * 3",
-    "note": "Only DC 13+ rolls with real stakes earn ticks. Routine departures/dockings/short hops NEVER tick. Max 1 tick per skill per scene."
+    "levelUpCostFormula": "(level + 1) * 6",
+    "note": "Ticks require real stakes AND a genuine gamble, measured RELATIVE to the character: the raw d20 you had to beat (DC minus your modifier) must be >= 10 — a 'risky' roll (~55%) or worse. Safe ~80% routines never tick. Player-relative so a novice and a specialist earn XP on equally-risky rolls (the old absolute DC-13 floor locked low-modifier characters out of XP on their weak skills). Max 1 tick per skill per scene."
   }
 }

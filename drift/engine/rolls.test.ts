@@ -157,11 +157,16 @@ describe("rollCheck", () => {
     expect(r.outcome).toBe("success");
   });
 
-  it("tick eligible only for stakes DC13+", () => {
-    const rng = scriptedRng([10, 10]);
-    const eligible = rollCheck({ character: vess, skill: "gunnery", dc: 15, stakes: true }, rng);
-    expect(eligible.tickEligible).toBe(true);
-    const low = rollCheck({ character: vess, skill: "gunnery", dc: 12, stakes: true }, rng);
-    expect(low.tickEligible).toBe(false);
+  it("tick eligible on a real gamble RELATIVE to the character (FACE ≥ 10), not an absolute DC", () => {
+    const rng = scriptedRng([10, 10, 10, 10, 10]);
+    // Vess gunnery = +5. FACE = dc − modifier: DC 15 → face 10 (risky) ticks; DC 12 → face 7 (safe) doesn't.
+    expect(rollCheck({ character: vess, skill: "gunnery", dc: 15, stakes: true }, rng).tickEligible).toBe(true);
+    expect(rollCheck({ character: vess, skill: "gunnery", dc: 12, stakes: true }, rng).tickEligible).toBe(false);
+    // The reported fix: a LOW-modifier skill (melee = +0) now ticks on a risky DC-10
+    // roll — where the old absolute DC-13 floor granted a novice nothing on it.
+    expect(rollCheck({ character: vess, skill: "melee", dc: 10, stakes: true }, rng).tickEligible).toBe(true); // face 10
+    expect(rollCheck({ character: vess, skill: "melee", dc: 6, stakes: true }, rng).tickEligible).toBe(false); // face 6 (safe)
+    // No stakes → never ticks, however hard.
+    expect(rollCheck({ character: vess, skill: "melee", dc: 20, stakes: false }, rng).tickEligible).toBe(false);
   });
 });
