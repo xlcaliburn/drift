@@ -88,9 +88,11 @@ pays the reward; offloads quest STRUCTURE off DeepSeek. Phase 1b backlog in the 
 **What's LEFT to build** (rough order; each has a design doc):
 
 - **Crew v1** (`CREW.md`) — recruitment + scaling upkeep. Nothing built yet.
-- **Shared-world runtime** (`MULTIPLAYER.md`) — dossiers, relationship ledgers,
-  cross-campaign reads, break-from-faction trigger, seasons + season-end reckoning.
-  (Universe-shared NPCs are the first piece and are done.)
+- **Shared-world runtime** (`MULTIPLAYER.md`) — dossiers (§1), cross-campaign reads
+  (§3), and the **relationship ledger** (§2 — `shared/ledger.ts`, gates cross-player
+  cameos to what the character knows, persisted on `campaign_runtime.player_ledger`,
+  migration 020) are SHIPPED. LEFT: the break-from-faction trigger (§4), seasons +
+  season-end reckoning (§5), a Rolodex UI, and the deferred canon-review queue (§6).
 - **World systems** (`WORLD_SYSTEMS.md`) — exploration / artifacts / consequence-web.
 - **Continuity v2** (`CONTINUITY.md`) — a durable facts ledger, and the history-
   window shrink (~10→6 exchanges) after a playtest cycle.

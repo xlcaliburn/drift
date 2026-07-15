@@ -39,13 +39,12 @@ npm test                       # ~525 engine/llm tests, no keys needed
 ## What's left to build (rough order)
 
 1. **Crew v1** (`CREW.md`): recruitment + scaling upkeep. Nothing built yet.
-2. **Shared-world runtime** (`MULTIPLAYER.md`): dossiers (derive capability tier from
-   stats, append deeds from `world_events`), relationship ledgers (who-knows-what),
-   cross-campaign reads (pull another player's dossier + your ledger into the prompt
-   so characters can meet, GM plays them gated by ledger knowledge), break-away-from-
-   faction trigger, seasons with fixed end dates + a season-end "state of the
-   universe" reckoning, optional canon review queue (`world_events.visibility` exists).
-   Universe-shared NPCs are the first piece and are done (migration 014).
+2. **Shared-world runtime** (`MULTIPLAYER.md`): dossiers (§1), cross-campaign reads
+   (§3), and the **relationship ledger** (§2 — gates cross-player cameos to what the
+   character knows, `shared/ledger.ts`, migration 020) are SHIPPED. LEFT: the
+   break-away-from-faction trigger (§4), seasons with fixed end dates + a season-end
+   "state of the universe" reckoning (§5), a Rolodex UI, and the optional canon
+   review queue (§6, `world_events.visibility` already exists).
 3. **World systems** (`WORLD_SYSTEMS.md`): exploration / artifacts / consequence-web.
 4. **Continuity v2** (`CONTINUITY.md`): a durable **facts ledger**; the scene-analyst
    **playstyle/facts inference** layer (analyst infra shipped; the rolling playstyle

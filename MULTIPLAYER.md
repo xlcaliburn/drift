@@ -4,12 +4,18 @@
 is NOT a strategy/4X game — no meters, scores, or captured planets. Influence and
 expansion are emergent and judged as story.*
 
-*Status: the foundations have shipped — universe-shared NPCs (generated NPCs
-promote to the universe-scoped `npcs` table; any player can meet them by name,
-per-player standing stays in each campaign's `npc_relations` overlay), backstory
-NPCs seeded at creation, `log_world_event` firing in solo play, and the schemas
-(`shared/multiplayer.ts`: Dossier, LedgerEntry, Season). What remains is the
-shared-world **runtime** — dossiers, ledgers, cross-campaign reads, seasons.*
+*Status: the read-side is SHIPPED — universe-shared NPCs, backstory NPCs at
+creation, `log_world_event` in solo play, the schemas (`shared/multiplayer.ts`),
+**§1 public dossiers** (`shared/dossier.ts` — capability tier from combat stats,
+deeds from world-events, voice notes; promoted on every save, migration 015),
+**§3 cross-campaign reads** (`loadReachableDossiers` + the `cameos` prompt section
+bring other players' characters in as NPCs), and **§2 the relationship ledger**
+(`shared/ledger.ts` — a per-campaign Rolodex that GATES cameos to what the character
+actually knows: firsthand = met them, secondhand = heard of them, unknown = dropped;
+promoted to firsthand on a real in-scene encounter, persisted on `campaign_runtime.
+player_ledger`, migration 020). What remains: the **break-away trigger** (§4) and
+**seasons** (§5 — fixed end date + reckoning), plus a Rolodex UI + the deferred
+canon-review queue (§6).*
 
 ## The concept in one breath
 
@@ -61,7 +67,17 @@ The dossier updates as they play — deeds accrue, standing shifts. Fully AI-run
 so world-events default to **canon** (no approval queue yet); a human-curation
 step can be added later if a runaway thread ever needs reining in.
 
-### 2. Relationship ledger (who-knows-what)
+### 2. Relationship ledger (who-knows-what) — SHIPPED
+
+*SHIPPED: `shared/ledger.ts` (pure `deriveKnowledge` / `visibleDeeds` /
+`projectDossier` / `recordEncounter` / `advanceLedger`, 16 tests) + the `cameos`
+prompt gate + persistence on `campaign_runtime.player_ledger` (migration 020).
+Knowledge model: you've HEARD of someone (secondhand) if they have a public deed or
+share your faction; you KNOW them (firsthand) once the GM brings them into your scene
+(here-now + named in the narration promotes the entry); a true stranger is dropped
+from the cameo pool. Only firsthand is stored — secondhand is derived. Still open:
+stance/warmth evolution from actual interactions (currently seeded neutral) and a
+Rolodex UI (the entries persist; the sidebar view isn't built yet). Original design:*
 
 A dossier being *public* doesn't mean every character *knows* it. Each character
 carries a **relationship ledger**: a per-character log of who they've met or
