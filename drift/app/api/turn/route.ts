@@ -9,6 +9,9 @@ import { downedActions } from "@/shared/death";
 import { usableConsumables, outOfCombatItemChips } from "@/shared/items";
 import { repairQuote } from "@/engine/market";
 import { patronHelp } from "@/shared/netWorth";
+import { acceptJob, abandonJob } from "@/shared/quests";
+import { resolveJobsTurn } from "@/shared/jobsRuntime";
+import { liveRng } from "@/engine/rng";
 import { getSession, setSession, persistSession, loadReachableDossiers } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
@@ -130,6 +133,9 @@ export async function POST(req: NextRequest) {
   const preRepair = Boolean(body.repairHull);
   // A clicked "Rest up with <patron>" chip — the free early-game safety net (STARTER).
   const preRest = Boolean(body.patronRest);
+  // Clicked job-board chips (QUESTS.md): accept an offered job / abandon an active one.
+  const acceptJobId = typeof body.acceptJob === "string" && body.acceptJob ? body.acceptJob : undefined;
+  const abandonJobId = typeof body.abandonJob === "string" && body.abandonJob ? body.abandonJob : undefined;
   // A clicked full-pack swap chip: the gear to drop, or "__decline__" to leave it.
   const preSwap = Boolean(body.swapDecline)
     ? "__decline__"
@@ -353,6 +359,27 @@ export async function POST(req: NextRequest) {
         // no fallbacks; the client goes terminal on the `dead` flag.
         const pcDied = !!resultPc && (resultPc.injuries ?? []).some((i) => i.name === "Dead");
 
+        // ── Job board (QUESTS.md): fold any accept/abandon click into the board,
+        //    then advance active jobs from THIS turn's real signals (arrival, a won
+        //    fight, a successful skill roll), pay out completions, and top the board
+        //    back up. Engine-owned end to end — the payout math + rep are applied
+        //    here (invariant intact); the mutated state/events/lines flow on. A
+        //    fight that ended this turn with the PC standing satisfies eliminate/
+        //    survive objectives.
+        const combatResolvedAlive = wasCombatTurn && !resultCombat?.active && !pcDied;
+        let jobsBoard = session.jobs ?? [];
+        if (acceptJobId) jobsBoard = acceptJob(jobsBoard, acceptJobId);
+        if (abandonJobId) jobsBoard = abandonJob(jobsBoard, abandonJobId);
+        const jobsRes = resolveJobsTurn({
+          state: result.state,
+          jobs: jobsBoard,
+          events: result.events,
+          combatResolvedAlive,
+          rng: liveRng,
+        });
+        result.state = jobsRes.state; // credits + faction rep for any job paid out
+        result.events = [...result.events, ...jobsRes.events];
+
         // Bleeding Out is engine-owned end to end now (runDownedTurn resolves the
         // death saves), so the route only needs to detect the state for the chips:
         // a PC that's Downed & alive & out of combat is offered the desperate-act
@@ -422,7 +449,7 @@ export async function POST(req: NextRequest) {
         // Engine display lines (dice/ticks/damage/payment/combat) — the handlers
         // return them pre-prefixed; they become system transcript lines so a
         // refresh shows the same mechanics seen live.
-        const engineLineTexts = result.engineLines ?? [];
+        const engineLineTexts = [...(result.engineLines ?? []), ...jobsRes.lines];
         const engineLines = engineLineTexts.map((text) => ({ role: "system" as const, text }));
 
         const transcriptAdds = [
@@ -494,6 +521,8 @@ export async function POST(req: NextRequest) {
           sceneCard: sceneClosed ? carryScene(session.sceneCard, newTranscript.length) : session.sceneCard,
           // Retain the offered choices so a refresh restores them (not just combat).
           lastChoices: choices,
+          // The job board after this turn's advance/payout/top-up (QUESTS.md).
+          jobs: jobsRes.jobs,
         };
         setSession(campaignId, updatedSession);
 
@@ -568,6 +597,7 @@ export async function POST(req: NextRequest) {
           dead: pcDied,
           npcRelations: updatedSession.npcRelations,
           sceneCard: updatedSession.sceneCard,
+          jobs: updatedSession.jobs,
           tutorialGraduated: result.tutorialGraduated,
           model: result.model,
           usage: result.usage,
