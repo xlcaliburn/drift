@@ -1,6 +1,15 @@
 # RELATIONSHIPS.md — NPC depth & relationship tiers
 
-*DESIGN — not yet built. The problem: NPCs read flat, especially as the bond
+*PHASE 1 SHIPPED (2026-07-15): deepening a bond now unlocks content. At **trusted
+(+2)** a present NPC raises their backstory want (the `npcTiers` prompt section) and
+the engine offers a **personal-favor chip**; accepting generates their personal job
+(`generatePersonalJob`) straight to ACTIVE — private, never on the public board.
+Completing it resolves the arc campaign-side (`arcStage`/`arcNote` on `NpcRelation`,
+disposition bumped toward ally); the universe-shared `Npc` is never mutated per-player.
+Phase 2 (betrayal, favor ledger, reputation-aware greetings, ally-tier mechanics,
+hostility escalation) is below.*
+
+*Original design follows. The problem: NPCs read flat, especially as the bond
 deepens. Today disposition is a single scalar (`-3..+3`) with seven fixed labels
 ([`shared/scene.ts`](drift/shared/scene.ts)); at the top it just prints "ally". The
 `quirk` + `backstory` flavor is frozen at birth ([`shared/npcFlavor.ts`](drift/shared/npcFlavor.ts))
@@ -93,9 +102,12 @@ state lives on the **per-player `NpcRelation`**, not the shared `Npc`:
 
 ## Phasing
 
-- **Phase 1 (buildable now):** the tier-unlock prompt section (warm/ally narration-only
-  at first) + the trusted personal-job offer chip + `generatePersonalJob` + campaign-side
-  arc resolution on completion. Delivers the core "deepening unlocks their story" loop.
+- **Phase 1 (SHIPPED):** the tier-unlock prompt section (`llm/promptSections/npcTiers.ts`
+  — warm/ally narration-only for now) + the trusted personal-job offer chip
+  (`acceptPersonalJob`, gated by `personalJobAvailable`) + `generatePersonalJob` +
+  campaign-side arc resolution in `resolveJobsTurn` (`arcStage`/`arcNote`, disposition
+  bump). The core "deepening unlocks their story" loop. Covered by `quests.test.ts` +
+  `jobsRuntime.test.ts`; the cues block is pinned by the context-slice golden.
 - **Phase 2:** ally-tier concrete mechanics (combat assist, debt cover, faction vouch =
   rep), **betrayable** secrets (breaking trust craters disposition + spawns a persistent
   grudge via `world_events`), an asymmetric **favor ledger** (favors owed each way, acted

@@ -168,7 +168,8 @@ Don't add prose rules for things the engine can enforce.
   weighted scores; `shared/quests.ts` + `shared/jobsRuntime.ts`; Jobs rail tab)
 - `RELATIONSHIPS.md` — NPC depth: relationship tiers (disposition → unlocks) + the
   trusted-tier personal job (private diegetic offer, tracked execution, campaign-side
-  arc resolution). DESIGN, not yet built.
+  arc resolution). Phase 1 SHIPPED (`npcTiers` section + `generatePersonalJob` +
+  arc resolution in `jobsRuntime`); Phase 2 (betrayal / favor ledger / rep greetings).
 - `IMPLEMENTATION.md` — what's left to build, in rough order
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
