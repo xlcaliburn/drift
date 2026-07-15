@@ -61,10 +61,12 @@ export type DangerSpec = z.infer<typeof DangerSpec>;
 
 /** A combat action carried by an engine-generated combat choice. */
 export const CombatActionSpec = z.object({
-  type: z.enum(["attack", "aim", "cover", "stim", "flee", "item"]),
+  type: z.enum(["attack", "aim", "cover", "stim", "flee", "item", "switch"]),
   enemyId: optionalNullable(z.string()),
   /** For type "item": catalog id of the consumable to use. */
   itemId: optionalNullable(z.string()),
+  /** For type "switch": the gear name of the weapon to draw. */
+  weaponName: optionalNullable(z.string()),
 });
 
 /** A desperate act carried by an engine-generated Bleeding Out choice (death.ts).

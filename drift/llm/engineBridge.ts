@@ -24,7 +24,7 @@ import {
   type SpawnSpec,
   type ShipSpawnSpec,
 } from "@/engine/combatEngine";
-import { fleeDC, threatLevel } from "@/shared/combat";
+import { fleeDC, threatLevel, weaponSkill } from "@/shared/combat";
 import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
 import { catalogItem, itemCount, allItems, slotsUsed, maxSlotsFor, resolveGearItemId } from "@/shared/items";
 import { marketStock, repPriceFactor, localRep, SELL_RATE, marketTierFor } from "@/engine/market";
@@ -969,15 +969,23 @@ export class TurnRuntime {
     if (!pc) return { error: "no character" };
     const n = Math.max(1, Math.min(5, Math.floor(qty)));
     const loc = this.state.locations.find((l) => l.id === this.state.campaign.currentLocationId);
-    if (!loc) return { error: "no market here" };
-    const stock = marketStock(loc, (this.state.campaign.tendaysElapsed ?? 0) * 10);
-    const entry = stock.find((s) => s.item.id === itemId);
-    if (!entry) return { error: `${catalogItem(itemId)?.name ?? itemId} isn't on the shelves here` };
+    const tier = marketTierFor(loc);
+    if (!loc || !tier) return { error: "no market here" };
+    // Resolve the request leniently — cheap models emit a name or a near-id, and a
+    // buy REJECTED after the narrator offered it (the reported bug) is worse than a
+    // loose match. Then gate by the market's TIER, not the rotated "featured" subset:
+    // buying was failing because the model offered a tier-appropriate item that just
+    // wasn't in that window's random stock. Consumables sell at any market.
+    const wantId = catalogItem(itemId) ? itemId : resolveGearItemId({ name: itemId }) ?? itemId;
+    const cat = catalogItem(wantId);
+    if (!cat) return { error: `no such item "${itemId}"` };
+    const order = { T1: 1, T2: 2, T3: 3 } as const;
+    if (cat.type !== "consumable" && !(cat.marketTier && order[cat.marketTier] <= order[tier])) {
+      return { error: `${cat.name} is above what this market carries` };
+    }
     const rep = localRep(loc, this.state.factions, this.state.factionRep);
-    const price = Math.round(entry.price * repPriceFactor(rep)) * n;
+    const price = Math.round(cat.price * repPriceFactor(rep)) * n;
     if ((pc.credits ?? 0) < price) return { error: `can't afford it (¢${price}, holding ¢${pc.credits ?? 0})` };
-
-    const cat = entry.item;
     const existing = pc.gear.find((g) => g.itemId === cat.id);
     const gear = existing
       ? pc.gear.map((g) => (g === existing ? { ...g, qty: (g.qty ?? 1) + n } : g))
@@ -1548,13 +1556,30 @@ export class TurnRuntime {
   }
 
   /** Derive the PC's personal-scale combat profile (best weapon, combat level). */
-  private personalCombatant(): PlayerCombatant {
+  /** The weapon the character fights BEST with — highest to-hit for the weapon's
+   *  own skill (a blade rolls melee/might, a gun rolls smallArms/reflex), tie-broken
+   *  by damage. This is why a melee build defaults to his knife instead of auto-
+   *  firing a gun he has no ranged skill for. */
+  private defaultWeapon(pc: Character): Character["gear"][number] | undefined {
+    const weapons = pc.gear.filter((g) => g.damage);
+    if (!weapons.length) return undefined;
+    return [...weapons].sort((a, b) => {
+      const ma = computeModifier(pc, weaponSkill(a.name));
+      const mb = computeModifier(pc, weaponSkill(b.name));
+      if (mb !== ma) return mb - ma;
+      return maxDice(String(b.damage)) - maxDice(String(a.damage));
+    })[0];
+  }
+
+  private personalCombatant(weaponName?: string): PlayerCombatant {
     const pc = this.pc()!;
-    const attackMod = computeModifier(pc, "smallArms");
-    const weapon = [...pc.gear]
-      .filter((g) => g.damage)
-      .sort((a, b) => maxDice(String(b.damage)) - maxDice(String(a.damage)))[0];
-    const weaponDamage = weapon?.damage ?? "1d4"; // unarmed
+    const weapons = pc.gear.filter((g) => g.damage);
+    // The drawn weapon if named + still carried, else the character-aware default.
+    const weapon = (weaponName ? weapons.find((g) => g.name === weaponName) : undefined) ?? this.defaultWeapon(pc);
+    const weaponDamage = weapon?.damage ?? "1d4"; // unarmed → 1d4
+    // Attack with the WEAPON's skill (melee for a blade, smallArms for a gun);
+    // unarmed reads as melee. This was the always-miss bug: smallArms was forced.
+    const attackMod = computeModifier(pc, weaponSkill(weapon?.name));
     const combatLevel = Math.max(
       0,
       ...["smallArms", "gunnery", "melee"].map((s) => pc.skills.find((k) => k.name === s)?.level ?? 0),
@@ -1593,6 +1618,7 @@ export class TurnRuntime {
     enemies: CombatEnemy[],
     surprise: "player" | "enemy" | "none",
   ): { combat: CombatState; lines: string[]; outcome: CombatOutcome } {
+    const pc = this.pc();
     const combat: CombatState = {
       active: true,
       round: 1,
@@ -1604,6 +1630,8 @@ export class TurnRuntime {
       playerAimBonus: scale === "ship" && surprise === "player" ? 2 : 0,
       playerSurprise: scale === "personal" && surprise === "player",
       fleeAttempts: 0,
+      // Draw the weapon this character fights best with; the player can switch.
+      ...(scale === "personal" && pc ? { weaponName: this.defaultWeapon(pc)?.name } : {}),
     };
     const lines = [`⚔ ${scale === "ship" ? "Ship combat" : "Combat"} — ${enemies.map((e) => e.name).join(", ")}.`];
     let outcome: CombatOutcome = "continue";
@@ -1641,7 +1669,7 @@ export class TurnRuntime {
     action: CombatAction,
   ): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
     const lines: string[] = [];
-    const cbt = this.personalCombatant();
+    const cbt = this.personalCombatant(combat.weaponName);
     let enemies = combat.enemies.map((e) => ({ ...e }));
     let aim = combat.playerAimBonus;
     let cover = combat.playerCoverAc;
@@ -1650,6 +1678,17 @@ export class TurnRuntime {
     // advantage and the surprised enemies get NO return volley this round (D&D). One
     // round only — cleared on `next` so round 2 onward is a normal exchange.
     const surpriseRound = combat.playerSurprise === true;
+
+    // Drawing another weapon is FREE — a quick swap that doesn't cost the round or
+    // draw a volley, so a fight isn't a trap when you opened with the wrong tool.
+    if (action.type === "switch") {
+      const pc = this.pc();
+      const w = pc?.gear.find((g) => g.damage && g.name === action.weaponName);
+      if (w) {
+        lines.push(`🔁 You draw your ${w.name}.`);
+        return { combat: { ...combat, weaponName: w.name, playerSurprise: surpriseRound }, lines, outcome: "continue", loot: 0 };
+      }
+    }
 
     switch (action.type) {
       case "attack": {

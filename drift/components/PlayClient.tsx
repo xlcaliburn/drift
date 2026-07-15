@@ -123,7 +123,12 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
           const burstReady = !!d.state.ship?.burstDriveReady;
           setChoices(
             d.combat.enemies
-              ? combatActions(d.combat, combatPc ? usableConsumables(combatPc, d.combat.scale) : [], burstReady)
+              ? combatActions(
+                  d.combat,
+                  combatPc ? usableConsumables(combatPc, d.combat.scale) : [],
+                  burstReady,
+                  (combatPc?.gear ?? []).filter((g: { damage?: string }) => g.damage).map((g: { name: string }) => g.name),
+                )
               : [],
           );
         } else if (d.lastChoices?.length) {

@@ -407,9 +407,9 @@ export function buildContextSlice(
   const stock = locForMarket ? marketStock(locForMarket, (state.campaign.tendaysElapsed ?? 0) * 10) : [];
   const marketRep = localRep(locForMarket, state.factions, state.factionRep);
   const marketLine = stock.length
-    ? `MARKET HERE (these EXACT shelves, engine-priced — never invent stock or prices): ${stock
+    ? `MARKET HERE (FEATURED stock, engine-priced — never invent prices): ${stock
         .map((s) => `${s.item.id} ¢${Math.round(s.price * repPriceFactor(marketRep))}`)
-        .join(" · ")}. Player buys → emit "purchase":{"itemId","qty"}; sells carried gear → "sell":{"name"} (≈40% of value). The ENGINE prints every figure and validates credits/stock/pack space — narrate the counter, not the math.`
+        .join(" · ")}. This is a SAMPLE — the market also carries any other CATALOG gear up to its grade, so if the player asks for a tier-appropriate item, sell it (use its catalog id). Player buys → emit "purchase":{"itemId","qty"} (a catalog id, e.g. "combatRifle"); sells carried gear → "sell":{"name"} (≈40% of value). The ENGINE prices it, validates credits/tier/pack space, and prints every figure — narrate the counter, not the math, and never promise a price or a deal the engine hasn't confirmed.`
     : `MARKET HERE: none — nothing is for sale at this location.`;
 
   // Dock repair (ECONOMY E-3) + the debt payoff loop. The engine owns the figure

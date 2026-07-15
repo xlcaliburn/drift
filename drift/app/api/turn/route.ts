@@ -338,6 +338,7 @@ export async function POST(req: NextRequest) {
                   playerText,
                   session.combat!,
                   combatPc ? usableConsumables(combatPc, session.combat!.scale) : [],
+                  (combatPc?.gear ?? []).filter((g) => g.damage).map((g) => g.name),
                 );
               return runCombatTurn({ ...common, combat: session.combat!, action, playerText });
             })()
@@ -391,7 +392,12 @@ export async function POST(req: NextRequest) {
         const choices: ChoiceOption[] = pcDied
           ? []
           : resultCombat?.active
-            ? combatActions(resultCombat, resultPc ? usableConsumables(resultPc, resultCombat.scale) : [], burstReady)
+            ? combatActions(
+                resultCombat,
+                resultPc ? usableConsumables(resultPc, resultCombat.scale) : [],
+                burstReady,
+                (resultPc?.gear ?? []).filter((g) => g.damage).map((g) => g.name),
+              )
             : stillDowned
               ? // Bleeding Out — the engine-generated desperate-act chips (self-
                 // rescue with a held stim, crawl for cover, call for help, hold on).

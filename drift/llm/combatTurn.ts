@@ -84,6 +84,7 @@ export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnR
   const pc = runtime.state.characters.find((c) => c.kind === "pc");
   const consumables = pc ? usableConsumables(pc, nextCombat.scale) : [];
   const burstReady = !!runtime.state.ship?.burstDriveReady;
+  const weaponNames = (pc?.gear ?? []).filter((g) => g.damage).map((g) => g.name);
 
   // 2. Narrate the round from the engine results (model narrates only).
   const status =
@@ -133,7 +134,7 @@ export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnR
   const narration = stripInlineMenu(raw.trim()) || status;
 
   const choices =
-    outcome === "continue" && nextCombat.active ? combatActions(nextCombat, consumables, burstReady) : endChoices(outcome);
+    outcome === "continue" && nextCombat.active ? combatActions(nextCombat, consumables, burstReady, weaponNames) : endChoices(outcome);
 
   return {
     narration,

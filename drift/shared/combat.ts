@@ -34,6 +34,9 @@ export interface CombatState {
   round: number; // 1-based
   scale: "personal" | "ship";
   enemies: CombatEnemy[];
+  /** The weapon the player has drawn this fight (gear name). Personal scale only;
+   *  set to a sensible default at combat start, changeable via a "switch" action. */
+  weaponName?: string;
   /** +AC vs the enemy volley while in cover (persists until the player acts otherwise). */
   playerCoverAc: number;
   /** +to-hit on the player's next attack (consumed after one attack). */
@@ -47,12 +50,24 @@ export interface CombatState {
   fleeAttempts: number;
 }
 
-export type CombatActionType = "attack" | "aim" | "cover" | "stim" | "flee" | "item";
+export type CombatActionType = "attack" | "aim" | "cover" | "stim" | "flee" | "item" | "switch";
 export interface CombatAction {
   type: CombatActionType;
   enemyId?: string;
   /** For type "item": the catalog id of the consumable to use. */
   itemId?: string;
+  /** For type "switch": the gear name of the weapon to draw. */
+  weaponName?: string;
+}
+
+/** Which combat skill a weapon rolls to hit with — a blade/baton is melee (might),
+ *  anything else that deals damage is a firearm (smallArms, reflex). This is why a
+ *  melee build kept missing: the engine used to force smallArms for EVERY weapon,
+ *  so a knife-fighter auto-fired a gun at his ranged modifier (0). */
+const MELEE_WEAPON_RE =
+  /\b(knife|blade|baton|sword|axe|club|fist|machete|cleaver|wrench|torch|shiv|spear|staff|hammer|bat|cutlass|dagger|melee|knuckle|prod|pipe|cutting)\b/i;
+export function weaponSkill(name: string | undefined): "melee" | "smallArms" {
+  return name && MELEE_WEAPON_RE.test(name) ? "melee" : "smallArms";
 }
 /** How the round ended (or didn't). "disabled" is the ship-scale analog of
  *  "downed" — hull at 0, adrift, aftermath narrated (not instant death). */
@@ -76,10 +91,15 @@ export function combatActions(
   combat: CombatState,
   consumables: UsableConsumable[],
   burstReady = false,
+  /** The PC's carried weapons (personal scale) — enables weapon-switch chips. */
+  weapons: string[] = [],
 ): { label: string; combatAction: CombatAction }[] {
   const verb = combat.scale === "ship" ? "Fire on" : "Attack";
+  // On foot, name the drawn weapon in the attack label so the player sees what
+  // they're swinging (and can tell it changed after a switch).
+  const withWeapon = combat.scale === "personal" && combat.weaponName ? ` with ${combat.weaponName}` : "";
   const actions: { label: string; combatAction: CombatAction }[] = combat.enemies.map((e) => ({
-    label: `${verb} ${e.name} (${e.hp}/${e.maxHp})`,
+    label: `${verb} ${e.name} (${e.hp}/${e.maxHp})${withWeapon}`,
     combatAction: { type: "attack", enemyId: e.id },
   }));
   const itemChips = consumables.map((u) => ({
@@ -94,6 +114,11 @@ export function combatActions(
   }
   actions.push({ label: "Take aim (+2 next hit)", combatAction: { type: "aim" } });
   actions.push({ label: "Take cover (+2 AC)", combatAction: { type: "cover" } });
+  // Weapon switch — draw any OTHER carried weapon (free; it doesn't cost the round).
+  for (const w of weapons) {
+    if (w === combat.weaponName) continue;
+    actions.push({ label: `Draw ${w}`, combatAction: { type: "switch", weaponName: w } });
+  }
   actions.push(...itemChips);
   actions.push({ label: "Flee", combatAction: { type: "flee" } });
   return actions;
@@ -109,12 +134,21 @@ export function interpretCombatText(
   text: string,
   combat: CombatState,
   consumables: UsableConsumable[],
+  weapons: string[] = [],
 ): CombatAction {
   const t = ` ${text.toLowerCase()} `;
   if (/\b(flee|run|escape|retreat|disengage|break off|bail|burst|withdraw)\b/.test(t)) return { type: "flee" };
   if (consumables.length && /\b(stim|heal|medkit|patch|shield cell|inject|use)\b/.test(t)) {
     const named = consumables.find((c) => t.includes(c.name.toLowerCase()));
     return { type: "item", itemId: (named ?? consumables[0]).itemId };
+  }
+  // Draw a different carried weapon ("switch to my knife", "use the plasma carbine").
+  // Only when the named weapon isn't the one already drawn AND it isn't paired with a
+  // clear attack on a foe (that stays an attack — the weapon just flavors it).
+  const namedWeapon = weapons.find((w) => w !== combat.weaponName && t.includes(w.toLowerCase()));
+  const namesFoe = combat.enemies.some((e) => e.hp > 0 && t.includes(e.name.toLowerCase()));
+  if (namedWeapon && !namesFoe && /\b(draw|switch|swap|pull|equip|grab|ready|use|with|to)\b/.test(t)) {
+    return { type: "switch", weaponName: namedWeapon };
   }
   if (/\b(cover|duck|hide|shelter|evasive|evade|dodge|behind)\b/.test(t)) return { type: "cover" };
   if (/\b(aim|steady|line up|line-up|focus|brace|sight)\b/.test(t)) return { type: "aim" };

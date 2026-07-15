@@ -66,13 +66,29 @@ describe("buyItem — the engine owns the whole transaction", () => {
 
   it("buying armor recomputes AC to the best single piece", () => {
     const rt = new TurnRuntime(atLocation(["blackmarket"], { credits: 2000 }), maxRng);
-    // ballisticVest (+2) may not be on this chunk's shelves — find any armor there.
-    const armor = marketStock({ id: "loc-1", tags: ["blackmarket"] }, 0).find((s) => s.item.acBonus);
-    if (!armor) return; // seeded draw shelved no armor this chunk — covered by market tests
-    const res = rt.buyItem(armor.item.id);
+    const res = rt.buyItem("ballisticVest"); // +2 AC, T1 — buyable at any market now
     expect(res.line).toBeTruthy();
     const pc = rt.state.characters[0];
-    expect(pc.ac).toBe(10 + 2 + (armor.item.acBonus ?? 0)); // 10 + reflex + best piece
+    expect(pc.ac).toBe(10 + 2 + 2); // 10 + reflex 2 + vest +2
+  });
+
+  it("buys a tier-appropriate item even when it's NOT in the rotated 'featured' stock (the offer-then-rejected bug)", () => {
+    const rt = new TurnRuntime(atLocation(["blackmarket"], { credits: 2000 }), maxRng); // T3 market
+    const res = rt.buyItem("railRifle"); // T3 hardware — must be buyable regardless of the chunk's featured window
+    expect(res.error).toBeUndefined();
+    expect(res.line).toContain("Rail rifle");
+    expect(rt.state.characters[0].gear.some((g) => g.itemId === "railRifle")).toBe(true);
+  });
+
+  it("resolves a purchase by NAME, not just catalog id", () => {
+    const rt = new TurnRuntime(atLocation(["blackmarket"], { credits: 2000 }), maxRng);
+    expect(rt.buyItem("Combat rifle").error).toBeUndefined();
+    expect(rt.state.characters[0].gear.some((g) => g.itemId === "combatRifle")).toBe(true);
+  });
+
+  it("still refuses gear ABOVE the market's tier", () => {
+    const rt = new TurnRuntime(atLocation(["hostile"], { credits: 2000 }), maxRng); // backwater → T1 market
+    expect(rt.buyItem("plasmaCarbine").error).toMatch(/above/); // T3 gun, not at a T1 dock
   });
 });
 
