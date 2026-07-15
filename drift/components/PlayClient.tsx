@@ -12,6 +12,7 @@ import { combatActions, type CombatState } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
 import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
 import { riskOdds, type RiskTier } from "@/shared/risk";
+import { chipKind } from "./chipKinds";
 import Sidebar from "./Sidebar";
 
 /** Tailwind classes for a choice's RISK pill (odds axis — distinct from the
@@ -200,21 +201,16 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
       const res = await fetch("/api/turn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // A choice's attached check / combat action rides along to the engine.
-        // fromChoice marks a CLICKED option (vs. typed text): a clicked choice's
-        // check is already decided (shown on the chip), so the engine won't add a
-        // surprise roll — the badge is the contract.
+        // The WHOLE clicked choice rides along to the engine — every chip field
+        // (check, combatAction, useItemId, repairHull, patronRest, swap*, and any
+        // future kind) forwards without this file changing. fromChoice marks a
+        // CLICKED option (vs. typed text): a clicked choice's check is already
+        // decided (shown on the chip), so the engine won't add a surprise roll —
+        // the badge is the contract.
         body: JSON.stringify({
+          ...action,
           campaignId,
           playerText: text,
-          check: action?.check,
-          combatAction: action?.combatAction,
-          downedAction: action?.downedAction,
-          useItemId: action?.useItemId,
-          repairHull: action?.repairHull,
-          patronRest: action?.patronRest,
-          swapDrop: action?.swapDrop,
-          swapDecline: action?.swapDecline,
           fromChoice: !!action,
         }),
       });
@@ -643,14 +639,19 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                 </button>
                 {!choicesCollapsed && (
                   <div className="flex flex-wrap gap-2">
-                    {choices.map((c, i) => (
+                    {choices.map((c, i) => {
+                      // Engine-owned chips (deterministic use/repair/rest/swap…) get
+                      // their icon/tooltip/styling from the registry — a new chip
+                      // kind is one chipKinds.ts entry, zero edits here.
+                      const kind = chipKind(c);
+                      return (
                       <button
                         key={i}
                         onClick={() => send(c)}
                         disabled={!hasApiKey}
                         className={
                           "flex items-center gap-2 rounded-full border px-4 py-2 text-left text-[15px] transition hover:border-accent hover:text-accent disabled:opacity-40 " +
-                          (c.useItemId || c.repairHull || c.patronRest || c.swapDrop || c.swapDecline
+                          (kind
                             ? "border-good/40 bg-good/5 text-neutral-200"
                             : "border-edge bg-panel text-neutral-200")
                         }
@@ -660,16 +661,10 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                               (c.check.hazardLevel
                                 ? ` · danger ${"⚠".repeat(c.check.hazardLevel)} — up to ${c.check.hazardLevel * 2} damage on failure`
                                 : "")
-                            : c.useItemId
-                              ? "Use this item — the engine applies it immediately."
-                              : c.repairHull
-                                ? "Repair the hull at the dock — the engine charges ¢12/HP (credit extended if short)."
-                                : c.patronRest
-                                  ? "Your patron patches you up for free — full HP & hull, a stim or two, a small stipend if you're broke. Offered while you're still finding your feet."
-                                  : undefined
+                            : kind?.tip
                         }
                       >
-                        <span>{c.useItemId || c.swapDrop || c.swapDecline ? "🎒 " : c.repairHull ? "🔧 " : c.patronRest ? "🛟 " : ""}{c.label}</span>
+                        <span>{kind ? `${kind.icon} ` : ""}{c.label}</span>
                         {c.check && (
                           <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium capitalize text-accent">
                             🎲 {c.check.skill ?? c.verb}
@@ -695,7 +690,8 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                           </span>
                         ) : null}
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
