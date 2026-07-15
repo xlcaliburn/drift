@@ -17,7 +17,7 @@ import { buildFallbackChoices } from "@/shared/recap";
 import { CheckSpec, CombatActionSpec, DownedActionSpec, type ChoiceOption } from "@/shared/turnPlan";
 import { carryScene, isSceneMove, type SceneCard, type SceneMemory } from "@/shared/scene";
 import { analyzeScene, type NpcAnalysis, type ItemAnalysis } from "@/llm/summarizer";
-import { isPlaceholderOneBreath } from "@/shared/scene";
+import { applyAnalystUpdates, runOpenSceneAnalyst, ANALYST_INTERVAL } from "@/lib/analystRun";
 import type { ChatEntry } from "@/shared/chat";
 import { hasSupabase } from "@/lib/state";
 
@@ -88,47 +88,9 @@ async function compressClosedScene(
   live.recentScenes = [...live.recentScenes.filter((s) => s.seq !== scene.seq), scene]
     .sort((a, b) => a.seq - b.seq)
     .slice(-20);
-
-  if (npcUpdates.length || itemUpdates.length) {
-    // Apply through a runtime so registration / relations / gear reuse the engine's
-    // dedup, id-gen, and caps — then write the mutated slices back onto the session.
-    const { TurnRuntime } = await import("@/llm/engineBridge");
-    const { liveRng } = await import("@/engine");
-    const { isPlausibleNpcName, isCollectiveName } = await import("@/shared/npcExtract");
-    const rt = new TurnRuntime(live.state, liveRng, { sceneCard: live.sceneCard, npcRelations: live.npcRelations });
-
-    for (const u of npcUpdates) {
-      // Resolve to a known cast member — by id, else by name.
-      const known =
-        (u.id ? rt.state.npcs.find((n) => n.id === u.id) : undefined) ??
-        (u.name ? rt.state.npcs.find((n) => n.name.toLowerCase() === u.name!.toLowerCase()) : undefined);
-      let id: string | undefined = known?.id;
-      if (known) {
-        // Upgrade a thin/placeholder identity; never clobber real canon.
-        if (u.oneBreath && isPlaceholderOneBreath(known.oneBreath)) rt.setNpcOneBreath(known.id, u.oneBreath, u.role);
-      } else if (u.name && isPlausibleNpcName(u.name) && !isCollectiveName(u.name)) {
-        // A figure the live turn MISSED — register it now. Works for someone PRESENT
-        // (Yuri) or merely MENTIONED (Calvo, a named target): both join the cast so
-        // they're tracked, but only the PRESENT ones are marked into Here & now.
-        id = rt.registerNpc(u.name, u.oneBreath, u.role).id;
-      }
-      if (id && (u.note || u.relationship)) {
-        rt.updateNpcRelation(id, { note: u.note ?? undefined, relationship: u.relationship ?? undefined });
-      }
-      // Only a genuinely-present figure belongs in the scene's immediate area; a
-      // mentioned/off-screen target (Calvo) stays known but out of Here & now.
-      if (id && u.presence === "present") rt.markPresent(id);
-    }
-    // Flavor props the player came away with (engine still owns real gear).
-    for (const it of itemUpdates) rt.grantSceneItem(it.name, it.note);
-
-    live.state = rt.state;
-    live.npcRelations = rt.npcRelations;
-    live.sceneCard = rt.sceneCard;
-  }
-
+  const changed = await applyAnalystUpdates(live, npcUpdates, itemUpdates);
   setSession(campaignId, live);
-  if (npcUpdates.length || itemUpdates.length) await persistSession(campaignId, live);
+  if (changed) await persistSession(campaignId, live);
 }
 
 export const runtime = "nodejs";
@@ -538,6 +500,15 @@ export async function POST(req: NextRequest) {
           const locId = result.state.campaign.currentLocationId;
           const title = result.sceneTitle ?? `Scene ${closedCard.seq}`;
           after(() => compressClosedScene(campaignId, closedCard, newTranscript, title, locId, entityIds, sceneNpcs));
+        } else if (
+          !resultCombat?.active &&
+          session.sceneCard.turnCount > 0 &&
+          session.sceneCard.turnCount % ANALYST_INTERVAL === 0
+        ) {
+          // A long scene that HASN'T closed yet (before the 12-turn cap): run the
+          // analyst mid-scene in the background so figures/relations/items are picked
+          // up without waiting for the close — no summary, just the continuity updates.
+          after(() => runOpenSceneAnalyst(campaignId));
         }
 
         // Audit every call (dev included; dev logs with a null user id). Best-effort.
