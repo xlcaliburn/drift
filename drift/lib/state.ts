@@ -8,6 +8,7 @@ import { freshSceneCard, type SceneCard, type NpcRelations, type SceneMemory } f
 import { mergeNpcs } from "@/shared/npcMerge";
 import { isShareableNpcName, isPlausibleNpcName } from "@/shared/npcExtract";
 import { mapLegacyGear } from "@/shared/items";
+import { ensureStartingGun } from "@/engine/creation";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Dossier } from "@/shared/multiplayer";
 
@@ -79,10 +80,11 @@ export async function getSession(campaignId: string): Promise<SessionData | null
       // Fold the campaign's private NPCs (persisted on the runtime) back into the
       // universe-seed cast so narrator-introduced NPCs survive a cold reload.
       if (runtime?.npcs?.length) state.npcs = mergeNpcs(state.npcs, runtime.npcs);
-      // One-shot legacy-gear mapping (ITEMS.md IT-1): attach catalog ids to
-      // freeform gear so price/slot data exist for netWorth, slots, and shops.
-      // Idempotent — mapped gear passes through untouched; persists on next save.
-      state.characters = state.characters.map((c) => mapLegacyGear(c));
+      // On load: attach catalog ids to freeform gear (ITEMS.md IT-1), then GUARANTEE
+      // every PC has a gun — a legacy character whose old background gave no firearm
+      // gets their faction sidearm. Both idempotent (mapped gear + already-armed PCs
+      // pass through); they persist on the next save.
+      state.characters = state.characters.map((c) => ensureStartingGun(mapLegacyGear(c)));
       const session: SessionData =
         runtime && runtime.history.length
           ? {

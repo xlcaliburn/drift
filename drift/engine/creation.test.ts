@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildCharacterFromCreation } from "./creation";
+import { buildCharacterFromCreation, ensureStartingGun } from "./creation";
+import type { Character } from "@/shared/schemas";
 import { computeModifier, rollCheck, passiveBonus } from "./rolls";
 import { resolveShipAttack } from "./combat";
 import { scriptedRng } from "./rng";
@@ -69,6 +70,31 @@ describe("buildCharacterFromCreation", () => {
     expect(c.parentFactionId).toBe("f-crown");
     expect(c.loyaltyToParent).toBe(4);
     expect(c.uniqueSkill?.name).toBe("Deadhand");
+  });
+});
+
+describe("ensureStartingGun — no PC is ever stuck gunless (the Cali backfill)", () => {
+  const pc = (over: Partial<Character>): Character =>
+    ({ id: "p", kind: "pc", name: "X", parentFactionId: "f-meridian", gear: [], ...over } as Character);
+
+  it("adds a faction sidearm to a gunless legacy PC", () => {
+    const fixed = ensureStartingGun(pc({ gear: [{ name: "Encrypted datapad" }, { name: "Fine jacket", acBonus: 1 }] }));
+    const gun = fixed.gear.find((g) => g.itemId === "sidearm");
+    expect(gun?.damage).toBe("1d8");
+    expect(gun?.name).toBe("Bonded sidearm"); // f-meridian flavor
+  });
+
+  it("leaves an already-armed PC untouched (a knife-only build still counts as needing a gun)", () => {
+    const armed = ensureStartingGun(pc({ gear: [{ name: "Sidearm", itemId: "sidearm", damage: "1d8" }] }));
+    expect(armed.gear.filter((g) => g.itemId === "sidearm")).toHaveLength(1); // not doubled
+    // A MELEE-only loadout has no gun, so one is added.
+    const meleeOnly = ensureStartingGun(pc({ gear: [{ name: "Combat knife", damage: "1d6" }] }));
+    expect(meleeOnly.gear.some((g) => g.itemId === "sidearm")).toBe(true);
+  });
+
+  it("does not touch non-PCs", () => {
+    const crew = ensureStartingGun(pc({ kind: "party", gear: [] }));
+    expect(crew.gear).toHaveLength(0);
   });
 });
 

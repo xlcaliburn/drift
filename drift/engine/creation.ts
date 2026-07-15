@@ -4,6 +4,7 @@ import type { NpcRelation } from "@/shared/scene";
 import { seededRng, type RNG } from "@/engine/rng";
 import { backgrounds, biasSkills, biasAttribute, attributeBaseline, factionStarterGear } from "@/content/creation";
 import { mapLegacyGear } from "@/shared/items";
+import { weaponSkill } from "@/shared/combat";
 
 /**
  * Turn character-creation answers into a starting sheet — pure and
@@ -85,6 +86,25 @@ function addSkillLevel(skills: Skill[], name: string, delta: number) {
   const existing = skills.find((s) => s.name === name);
   if (existing) existing.level += delta;
   else skills.push({ name, level: delta, ticks: 0 });
+}
+
+/**
+ * Guarantee a PC carries at least one GUN. New characters get one in their faction
+ * kit, but LEGACY characters (whose old background gave no firearm — a broker, a
+ * corporate insider) could start gunless. Run on load: if the PC has no ranged
+ * weapon, add their faction-flavored sidearm. Non-PCs and anyone already armed pass
+ * through untouched.
+ */
+export function ensureStartingGun(c: Character): Character {
+  if (c.kind !== "pc") return c;
+  const hasGun = (c.gear ?? []).some((g) => g.damage && weaponSkill(g.name) === "smallArms");
+  if (hasGun) return c;
+  const gun = factionStarterGear(c.parentFactionId).find((g) => g.itemId === "sidearm");
+  if (!gun) return c;
+  return {
+    ...c,
+    gear: [...(c.gear ?? []), { name: gun.name, itemId: gun.itemId, damage: gun.damage, detail: "faction-issue sidearm" }],
+  };
 }
 
 // ── Backstory NPCs (universe-shared, seeded at creation) ─────────────────────
