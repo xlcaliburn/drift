@@ -141,6 +141,9 @@ export const Character = z.object({
     .optional(),
   /** Player-selected sex (male/female). Optional — absent on legacy PCs. */
   sex: z.enum(["male", "female"]).optional(),
+  /** Narrative appearance — what the character looks like. Set/rewritten by the
+   *  Rook body-modification service (engine-owned bodyMod). */
+  appearance: z.string().optional(),
   background: z.string().optional(),
   ambition: z.string().optional(),
   /** The line this character won't cross (e.g. "people aren't cargo"). */

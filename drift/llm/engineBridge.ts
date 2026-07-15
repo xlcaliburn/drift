@@ -1066,6 +1066,39 @@ export class TurnRuntime {
     }
   }
 
+  /**
+   * Rook Station body-modification service (Chrome's studio). For a flat ¢500 the
+   * artist reshapes the character's APPEARANCE and works the change into their
+   * STORY (appended to backstory) — a diegetic way to re-customize a character.
+   * Elective/cosmetic, so it's REFUSED when they can't afford it (unlike survival
+   * dock repair). Gated to Rook; the engine owns the charge and the writes.
+   */
+  bodyMod(input: { appearance?: string; story?: string }): { line?: string; error?: string } {
+    const pc = this.pc();
+    if (!pc) return { error: "no character" };
+    if (this.state.campaign.currentLocationId !== "loc-rook") {
+      return { error: "the body artist keeps a studio on Rook Station only" };
+    }
+    const cost = economy.constants.bodyModCost ?? 500;
+    if ((pc.credits ?? 0) < cost) return { error: `can't afford the work (¢${cost}, holding ¢${pc.credits ?? 0})` };
+    const appearance = input.appearance?.trim();
+    const story = input.story?.trim();
+    if (!appearance && !story) return { error: "no change described" };
+
+    const after = (pc.credits ?? 0) - cost;
+    const backstory = story ? `${pc.backstory ? `${pc.backstory}\n\n` : ""}${story}` : pc.backstory;
+    this.state = {
+      ...this.state,
+      characters: this.state.characters.map((c) =>
+        c.id === pc.id
+          ? { ...c, credits: after, ...(appearance ? { appearance } : {}), ...(backstory !== undefined ? { backstory } : {}) }
+          : c,
+      ),
+    };
+    this.events.push({ type: "cost", breakdown: `Body work at Chrome's — -¢${cost}`, amount: -cost });
+    return { line: `💉 Reshaped under Chrome's needles — ¢${cost}. You walk out someone new. ¢${after} left.` };
+  }
+
   /** Mark an NPC as present in the current scene — they ride retrieval every
    *  turn of the scene without needing to be re-named (CONTINUITY tier NOW). */
   markPresent(npcId: string) {

@@ -73,6 +73,7 @@ Respond with ONE json object and nothing else:
   "purchase": {"itemId": "medkit", "qty": 1},
   "sell": {"name": "Combat rifle"},
   "repair": {},
+  "bodyMod": {"appearance": "cropped silver hair, a new jawline, old burn scars erased", "story": "The face you were born with is gone — and with it, the bounty poster that wore it."},
   "payout": {"tier": "T1", "reason": "courier run delivered"},
   "offers": [{"tier": "T2", "from": "the rival buyer"}],
   "worldEvent": {"headline": "..."},
@@ -422,6 +423,13 @@ export function buildContextSlice(
     ? `DOCK DEBT: the player owes the dock (balance is negative). Steer them toward a quick T0/T1 payoff job — any payout comes off the debt first. Keep the pressure light but present.`
     : "";
 
+  // Body-modification studio — a Rook-only service (the NPC Chrome). Lets a player
+  // re-customize their look and weave it into their story for a flat fee.
+  const bodyModLine =
+    state.campaign.currentLocationId === "loc-rook"
+      ? `BODY-MOD STUDIO (Rook only): Chrome's back-room studio reshapes a character's face, build, and skin for a flat ¢500, and works the change into their history. If the player COMMITS and describes the new look, emit "bodyMod":{"appearance":"<the new look>","story":"<a sentence folding it into their past>"} — the ENGINE charges and rewrites their appearance + backstory. Never state the price yourself; if they're short, the artist turns them away.`
+      : "";
+
   // Consumables the PC actually holds — so the narrator only offers useItem for
   // items in hand (and knows what's available to spend between fights).
   const held = pc
@@ -450,6 +458,7 @@ export function buildContextSlice(
   const identityBits = [
     bgLabel ? `background: ${bgLabel}` : "",
     amb ? `ambition: ${amb.label} — ${amb.description}` : "",
+    pc?.appearance ? `appearance: ${pc.appearance}` : "",
   ].filter(Boolean);
   const identityLine =
     pc && identityBits.length
@@ -534,6 +543,7 @@ export function buildContextSlice(
     marketLine,
     ...(dockLine ? [dockLine] : []),
     ...(debtLine ? [debtLine] : []),
+    ...(bodyModLine ? [bodyModLine] : []),
     ``,
     npcs.length
       ? `NPCs in play (proximity = how close; standing = their history; "plays:" = their canon personality — play it CONSISTENTLY; "hook:" = a backstory thread you can pull into a quest):\n${npcs

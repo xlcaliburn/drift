@@ -753,6 +753,16 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     if (res.line) emit([res.line]);
     else if (res.error) emit([`⚠ ${res.error}`]);
   }
+  // Rook body-modification (Chrome's studio) — reshape appearance + story for ¢500.
+  if (plan.bodyMod && pc) {
+    toolCalls.push("body_mod");
+    const res = runtime.bodyMod({
+      appearance: plan.bodyMod.appearance ?? undefined,
+      story: plan.bodyMod.story ?? undefined,
+    });
+    if (res.line) emit([res.line]);
+    else if (res.error) emit([`⚠ ${res.error}`]);
+  }
   // Persist any named NPCs the narrator introduced so the world remembers them
   // (continuity — recognized when the player returns), mark them present in the
   // scene, and apply relationship updates (disposition nudge / last-note / tie).

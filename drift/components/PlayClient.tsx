@@ -667,7 +667,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
                             🎲 {c.check.skill ?? c.verb}
                           </span>
                         )}
-                        {c.check?.risk && (
+                        {c.check?.risk && c.check.risk !== "safe" && (
                           <span
                             className={
                               "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium capitalize " +

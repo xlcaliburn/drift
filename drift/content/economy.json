@@ -4,7 +4,8 @@
     "repairCostPerHp": 12,
     "dockFee": 15,
     "missileCost": 51,
-    "crewWagePerPayingJob": 50
+    "crewWagePerPayingJob": 50,
+    "bodyModCost": 500
   },
   "jobPayouts": {
     "note": "Engine-clamped income (ECONOMY.md). The narrator picks the tier; the ENGINE rolls the credits inside the band. A successful negotiation check the same turn shifts the roll to the upper half of the band; a failed one to the lower half. Direct model credit grants above flavorGrantCap are clamped.",

@@ -993,6 +993,11 @@ function StoryDetail({ character: c }: { character: CampaignState["characters"][
             {c.uniqueSkill.description && <p className="mt-0.5 text-neutral-400">{c.uniqueSkill.description}</p>}
           </SheetSection>
         )}
+        {c.appearance && (
+          <SheetSection label="Appearance">
+            <p className="leading-relaxed text-neutral-300">{c.appearance}</p>
+          </SheetSection>
+        )}
         {c.moralCode && (
           <SheetSection label="The line won't cross">
             <p className="text-neutral-200">{c.moralCode}</p>

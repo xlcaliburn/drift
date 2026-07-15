@@ -174,6 +174,16 @@ export const TurnPlan = z.object({
    *  optional (full patch if omitted). The ENGINE charges ¢12/HP and prints the
    *  figure; never refused for lack of funds — the balance goes negative (debt). */
   repair: optionalNullable(z.object({ hp: optionalNullable(z.coerce.number().int().min(1).max(999)) })),
+  /** Rook Station body-modification (Chrome's studio): the player pays ¢500 to
+   *  reshape their APPEARANCE and (optionally) weave the change into their STORY.
+   *  The ENGINE charges and applies it; refused if they can't afford it or aren't
+   *  at Rook. Emit only when the player has actually committed to and described it. */
+  bodyMod: optionalNullable(
+    z.object({
+      appearance: optionalNullable(z.string().max(400)),
+      story: optionalNullable(z.string().max(400)),
+    }),
+  ),
   /** Job/bounty/deal concluded → the ENGINE rolls the credits inside the tier's
    *  payout band (ECONOMY.md — the model never sets amounts). */
   payout: optionalNullable(
