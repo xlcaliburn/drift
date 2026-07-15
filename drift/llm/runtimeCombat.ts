@@ -1,0 +1,779 @@
+import type { CampaignState, Character } from "@/shared/schemas";
+import {
+  rollCheck as rollCheckEngine,
+  resolveShipAttack,
+  resolvePersonalAttack,
+  computeModifier,
+  type RNG,
+  type CombatTarget,
+  type EngineEvent,
+} from "@/engine";
+import { enemyTiers, shipClasses, economy, isHazardSkill } from "@/content";
+import { awardTick } from "@/engine/progression";
+import { rollDamage, maxDice } from "@/engine/dice";
+import { generateScavengeLoot } from "@/engine/loot";
+import {
+  spawnCombatEnemies,
+  spawnCombatShips,
+  playerAttack,
+  enemyAttack,
+  type SpawnSpec,
+  type ShipSpawnSpec,
+} from "@/engine/combatEngine";
+import { fleeDC, threatLevel, weaponSkill } from "@/shared/combat";
+import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
+import { catalogItem, itemCount, slotsUsed, maxSlotsFor } from "@/shared/items";
+import { inTutorial } from "@/shared/tutorial";
+import { freshDeathSaves, advanceSaves } from "@/shared/death";
+import type { SceneCard, NpcRelations } from "@/shared/scene";
+import { applyHeal, consumeItem } from "./runtimeHeal";
+import { nudgeStandingFromCheck } from "./runtimeNarrative";
+
+/**
+ * The combat + check side of TurnRuntime, split out of engineBridge.ts as free
+ * functions over a CombatRT surface. Covers damage application (personal + ship),
+ * skill checks (rollCheck, with hazard damage + ticks + loot + rapport), attacks
+ * and encounter spawns, and the multi-turn combat rounds (personal + ship). This
+ * is the deterministic combat math — the one invariant; the runtime is the only
+ * mutator. Fully covered by the combat* / deathGate / immediateTicks test suites.
+ */
+export interface CombatRT {
+  state: CampaignState;
+  rng: RNG;
+  events: EngineEvent[];
+  enemies: Map<string, CombatTarget>;
+  enemyCounter: number;
+  tickedThisScene: Set<string>;
+  lootedThisTurn: boolean;
+  // rollCheck moves standing on a passed social check → it calls
+  // nudgeStandingFromCheck, which needs these (the RelationRT subset).
+  sceneCard: SceneCard;
+  npcRelations: NpcRelations;
+  nudgedThisTurn: Set<string>;
+}
+
+/** Victory loot band by top tier faced (ECONOMY.md). */
+const LOOT_BAND: Record<"T1" | "T2" | "T3", [number, number]> = {
+  T1: [20, 60],
+  T2: [80, 200],
+  T3: [350, 700],
+};
+
+/** Skills whose successful use ON a present NPC moves your STANDING (rapport). */
+const RAPPORT_SKILLS = new Set(["negotiation"]);
+
+const charOf = (rt: CombatRT, id: string): Character | undefined => rt.state.characters.find((c) => c.id === id);
+const pcOf = (rt: CombatRT): Character | undefined => rt.state.characters.find((c) => c.kind === "pc");
+const isDeadChar = (c: Character): boolean => (c.injuries ?? []).some((i) => i.name === "Dead");
+const isShipTarget = (rt: CombatRT, id: string): boolean =>
+  !!rt.state.ship && (id === rt.state.ship.id || id === "ship" || id === "lark");
+
+export function applyDamage(rt: CombatRT, characterId: string, amount: number, reason: string) {
+  const c = charOf(rt, characterId);
+  if (!c || amount <= 0) return { hpAfter: c?.hp ?? 0, taken: 0, downed: false, died: false };
+  const before = c.hp;
+  const hp = Math.max(0, before - amount);
+  let injuries = c.injuries ?? [];
+  let downed = false;
+  let died = false;
+  // No permadeath during the tutorial — the worst that happens is staying Downed.
+  const lethal = !inTutorial(rt.state);
+  if (before === 0 && lethal) {
+    // Struck while already down → killed.
+    died = true;
+    injuries = [...injuries.filter((i) => i.name !== "Downed"), { name: "Dead", effect: reason }];
+  } else if (hp === 0 || before === 0) {
+    downed = true;
+    if (!injuries.some((i) => i.name === "Downed")) {
+      injuries = [...injuries, { name: "Downed", effect: "critical — bleeding out; three failed saves is death" }];
+    }
+  }
+  // Seed the death-save track the moment they go down; a hit that lands WHILE already
+  // down tacks on a failure — the D&D "struck while down".
+  let deathSaves = c.deathSaves;
+  if (downed) deathSaves = deathSaves ?? freshDeathSaves();
+  if (before === 0 && !died && deathSaves) deathSaves = advanceSaves(deathSaves, { failures: 1 });
+  rt.state = {
+    ...rt.state,
+    characters: rt.state.characters.map((x) =>
+      x.id === characterId ? { ...x, hp, injuries, ...(deathSaves ? { deathSaves } : {}) } : x,
+    ),
+  };
+  const tag = died ? " · KILLED" : downed ? " · DOWNED" : "";
+  rt.events.push({
+    type: "resource",
+    breakdown: `${c.name} takes ${amount} damage — ${before}→${hp} HP${tag}`,
+    field: "hp",
+    delta: -amount,
+  });
+  if (died) rt.events.push({ type: "note", breakdown: `${c.name} has DIED. ${reason}` });
+  return { hpAfter: hp, taken: amount, downed, died };
+}
+
+export function rollCheck(rt: CombatRT, input: Record<string, unknown>) {
+  const character = charOf(rt, String(input.characterId));
+  if (!character) return { error: `unknown character ${input.characterId}` };
+  const dcMod = input.useShipDcModifier && rt.state.ship ? rt.state.ship.dcModifier : 0;
+  const res = rollCheckEngine(
+    {
+      character,
+      skill: String(input.skill),
+      dc: Number(input.dc),
+      stakes: Boolean(input.stakes),
+      situationalMod: input.situationalMod ? Number(input.situationalMod) : 0,
+      dcModifier: dcMod,
+    },
+    rt.rng,
+  );
+  rt.events.push(res.event);
+  // Award the skill tick IMMEDIATELY (cheap narrators rarely call end_scene). The
+  // per-character set enforces the max-1-tick-per-skill-per-scene cap.
+  let tick: string | undefined;
+  let tickCapped: string | undefined;
+  if (res.tickEligible) {
+    const skillName = String(input.skill);
+    const perChar = new Set(
+      [...rt.tickedThisScene]
+        .filter((k) => k.startsWith(`${character.id}:`))
+        .map((k) => k.slice(character.id.length + 1)),
+    );
+    // XP scales with the roll: 2 on a success, 1 on a failure.
+    const award = awardTick(character, skillName, perChar, res.outcome === "success" ? 2 : 1);
+    if (award.ticked) {
+      rt.tickedThisScene.add(`${character.id}:${skillName}`);
+      rt.state = {
+        ...rt.state,
+        characters: rt.state.characters.map((c) => (c.id === character.id ? award.character : c)),
+      };
+      rt.events.push(award.event);
+      tick = award.event.breakdown;
+    } else {
+      tickCapped = skillName;
+    }
+  }
+  // Real stakes: a failed roll that carries failDamage HURTS — but only from a
+  // PHYSICAL HAZARD (a hazard skill, or an explicit danger save via input.hazard).
+  let harm: { taken: number; hpAfter: number; downed: boolean; died: boolean } | undefined;
+  let shipHarm: { taken: number; hpAfter: number; disabled: boolean } | undefined;
+  if (res.outcome === "failure" && (input.hazardLevel || input.failDamage)) {
+    const skill = String(input.skill);
+    const explicit = input.hazardLevel ? Number(input.hazardLevel) : 0;
+    const derived = !explicit && input.failDamage ? Math.ceil(maxDice(String(input.failDamage)) / 2) : 0;
+    const level = Math.max(1, Math.min(economy.damageRules.maxHazardLevel, explicit || derived || 1));
+    const dealt = rt.rng.int(0, economy.damageRules.hazardBase) * level;
+    if (dealt > 0 && input.target === "ship" && rt.state.ship) {
+      // A flying/docking mishap damages the HULL, not the pilot.
+      const sh = applyShipDamage(rt, dealt);
+      shipHarm = { taken: sh.taken, hpAfter: sh.hpAfter, disabled: sh.disabled };
+    } else if (dealt > 0 && input.target !== "ship" && (Boolean(input.hazard) || isHazardSkill(skill))) {
+      harm = applyDamage(rt, character.id, dealt, `Failed ${skill} check.`);
+    }
+  }
+  // Engine-owned loot: a successful loot/scavenge ATTEMPT is where items come from —
+  // the engine decides the haul; the player never names it.
+  let loot: string | undefined;
+  if (input.loot && res.outcome === "success") {
+    const drop = generateScavengeLoot(rt.rng, { crit: res.critical });
+    rt.lootedThisTurn = true;
+    const target = charOf(rt, character.id);
+    if (target) {
+      // Capacity-aware (ITEMS.md slice B): each find must fit or it's left in the wreck.
+      const cap = maxSlotsFor(target);
+      let gear = [...(target.gear ?? [])];
+      let leftBehind = false;
+      for (const g of drop.gear) {
+        const next = [...gear, { name: g.name, detail: g.detail }];
+        if (slotsUsed({ ...target, gear: next }) > cap) {
+          leftBehind = true;
+          continue;
+        }
+        gear = next;
+      }
+      for (const itemId of drop.consumables) {
+        const cat = catalogItem(itemId);
+        if (!cat) continue;
+        const ex = gear.find((x) => x.itemId === itemId);
+        const next = ex
+          ? gear.map((x) => (x === ex ? { ...x, qty: (x.qty ?? 1) + 1 } : x))
+          : [...gear, { name: cat.name, itemId: cat.id, qty: 1 }];
+        if (slotsUsed({ ...target, gear: next }) > cap) {
+          leftBehind = true;
+          continue;
+        }
+        gear = next;
+      }
+      if (leftBehind) drop.line += " · pack full — some of it stays in the wreck";
+      rt.state = {
+        ...rt.state,
+        characters: rt.state.characters.map((c) =>
+          c.id === character.id ? { ...c, gear, credits: (c.credits ?? 0) + drop.credits } : c,
+        ),
+      };
+    }
+    rt.events.push({ type: "note", breakdown: drop.line });
+    loot = drop.line;
+  }
+  // Relationship: a passed SOCIAL check on the present NPC moves your standing.
+  let standing: string | undefined;
+  if (RAPPORT_SKILLS.has(String(input.skill))) {
+    standing = nudgeStandingFromCheck(rt, res.outcome, res.critical, res.criticalFailure);
+  }
+  return {
+    breakdown: res.breakdown,
+    total: res.total,
+    outcome: res.outcome,
+    critical: res.critical,
+    criticalFailure: res.criticalFailure,
+    tickEligible: res.tickEligible,
+    ...(tick ? { tick } : {}),
+    ...(tickCapped ? { tickCapped } : {}),
+    ...(standing ? { standing } : {}),
+    ...(loot ? { loot } : {}),
+    ...(harm && harm.taken > 0
+      ? { damage: harm.taken, hpAfter: harm.hpAfter, downed: harm.downed, died: harm.died }
+      : {}),
+    ...(shipHarm && shipHarm.taken > 0
+      ? { shipDamage: shipHarm.taken, shipHpAfter: shipHarm.hpAfter, shipDisabled: shipHarm.disabled }
+      : {}),
+  };
+}
+
+function attackModFor(rt: CombatRT, attackerId: string | undefined, scale: string): number {
+  if (!attackerId) return 5;
+  const c = charOf(rt, attackerId);
+  if (c) return computeModifier(c, scale === "ship" ? "gunnery" : "smallArms");
+  // enemy attacker: use stored tier atk if present
+  const enemy = rt.enemies.get(attackerId) as (CombatTarget & { atk?: number }) | undefined;
+  return enemy?.atk ?? 5;
+}
+
+export function resolveAttack(rt: CombatRT, input: Record<string, unknown>) {
+  const scale = String(input.scale);
+  const attackMod =
+    input.attackMod !== undefined
+      ? Number(input.attackMod)
+      : attackModFor(rt, input.attackerId as string | undefined, scale);
+  const targetId = String(input.targetId);
+
+  // Build the target from ship, character, or spawned enemy.
+  let target: CombatTarget;
+  let commit: (hpAfter: number, shieldReady: boolean) => void;
+
+  if (isShipTarget(rt, targetId)) {
+    const s = rt.state.ship!;
+    target = {
+      id: s.id,
+      name: s.name,
+      hp: s.hp,
+      ac: s.ac,
+      armored: s.damageReduction > 0,
+      shieldReady: s.hasShield && s.shieldReady,
+    };
+    commit = (hp, shield) => {
+      rt.state = { ...rt.state, ship: { ...s, hp, shieldReady: shield } };
+    };
+  } else if (rt.enemies.has(targetId)) {
+    target = rt.enemies.get(targetId)!;
+    commit = (hp, shield) => {
+      rt.enemies.set(targetId, { ...target, hp, shieldReady: shield });
+    };
+  } else {
+    const c = charOf(rt, targetId);
+    if (!c) return { error: `unknown target ${targetId}` };
+    target = { id: c.id, name: c.name, hp: c.hp, ac: c.ac };
+    commit = (hp) => {
+      rt.state = {
+        ...rt.state,
+        characters: rt.state.characters.map((x) => (x.id === c.id ? { ...x, hp } : x)),
+      };
+    };
+  }
+
+  const res =
+    scale === "ship"
+      ? resolveShipAttack(
+          {
+            attackerSide: input.attackerSide === "enemy" ? "enemy" : "player",
+            attackMod,
+            weaponType: input.weaponType as "kinetic" | "energy" | "missile" | "ion",
+            damage: String(input.damage),
+            target,
+          },
+          rt.rng,
+        )
+      : resolvePersonalAttack(
+          {
+            attackerSide: input.attackerSide === "enemy" ? "enemy" : "player",
+            attackMod,
+            damage: String(input.damage),
+            target: { ...target, damageReduction: 0 },
+          },
+          rt.rng,
+        );
+
+  rt.events.push(...res.events);
+  commit(res.targetHpAfter, res.targetShieldReadyAfter);
+  return {
+    breakdown: res.breakdown,
+    hit: res.hit,
+    damageDealt: res.damageDealt,
+    targetHpAfter: res.targetHpAfter,
+    destroyed: res.targetHpAfter <= 0,
+  };
+}
+
+export function spawnEncounter(rt: CombatRT, input: Record<string, unknown>) {
+  const composition = (input.composition as Array<Record<string, unknown>>) ?? [];
+  const spawned: Array<{ id: string; name: string; hp: number; ac: number }> = [];
+  for (const spec of composition) {
+    const tierKey = String(spec.tier) as keyof typeof enemyTiers.tiers;
+    const tier = enemyTiers.tiers[tierKey];
+    const classKey = spec.shipClass ? (String(spec.shipClass) as keyof typeof shipClasses.classes) : null;
+    const cls = classKey ? shipClasses.classes[classKey] : null;
+
+    const hpRange = (cls?.hpRange ?? tier?.hpRange ?? [15, 20]) as [number, number];
+    const hp = rt.rng.int(hpRange[0], hpRange[1]);
+    const acRange = (cls?.acRange ?? (tier as { acRange?: [number, number]; ac?: number })?.acRange) as
+      | [number, number]
+      | undefined;
+    const ac = acRange ? rt.rng.int(acRange[0], acRange[1]) : (tier as { ac?: number })?.ac ?? 14;
+
+    const id = `enemy-${++rt.enemyCounter}`;
+    const name = String(spec.name ?? `${tier?.label ?? "Enemy"} ${cls?.label ?? ""}`.trim());
+    const isEvasive = classKey === "scout" || classKey === "fighter";
+    const target: CombatTarget & { atk?: number } = {
+      id,
+      name,
+      hp,
+      ac,
+      isEvasive,
+      armored: classKey === "hauler",
+      shieldReady: classKey === "gunship" || classKey === "corvette",
+      hasPointDefense: classKey === "corvette",
+      atk: tier?.atk ?? 5,
+    };
+    rt.enemies.set(id, target);
+    spawned.push({ id, name, hp, ac });
+  }
+  rt.events.push({ type: "note", breakdown: `Spawned: ${spawned.map((s) => `${s.name}(${s.id}, ${s.hp}hp/AC${s.ac})`).join(", ")}` });
+  return { enemies: spawned };
+}
+
+/** The weapon the character fights BEST with — highest to-hit for the weapon's own
+ *  skill (a blade rolls melee/might, a gun rolls smallArms/reflex), tie-broken by
+ *  damage. Why a melee build defaults to his knife instead of auto-firing a gun. */
+function defaultWeapon(pc: Character): Character["gear"][number] | undefined {
+  const weapons = pc.gear.filter((g) => g.damage);
+  if (!weapons.length) return undefined;
+  return [...weapons].sort((a, b) => {
+    const ma = computeModifier(pc, weaponSkill(a.name));
+    const mb = computeModifier(pc, weaponSkill(b.name));
+    if (mb !== ma) return mb - ma;
+    return maxDice(String(b.damage)) - maxDice(String(a.damage));
+  })[0];
+}
+
+function personalCombatant(rt: CombatRT, weaponName?: string): PlayerCombatant {
+  const pc = pcOf(rt)!;
+  const weapons = pc.gear.filter((g) => g.damage);
+  // The drawn weapon if named + still carried, else the character-aware default.
+  const weapon = (weaponName ? weapons.find((g) => g.name === weaponName) : undefined) ?? defaultWeapon(pc);
+  const weaponDamage = weapon?.damage ?? "1d4"; // unarmed → 1d4
+  // Attack with the WEAPON's skill (melee for a blade, smallArms for a gun); unarmed
+  // reads as melee. This was the always-miss bug: smallArms was forced.
+  const attackMod = computeModifier(pc, weaponSkill(weapon?.name));
+  const combatLevel = Math.max(
+    0,
+    ...["smallArms", "gunnery", "melee"].map((s) => pc.skills.find((k) => k.name === s)?.level ?? 0),
+  );
+  return { hp: pc.hp, maxHp: pc.maxHp, ac: pc.ac, attackMod, weaponDamage, combatLevel };
+}
+
+/** Enemies attack the player; halts the instant the player drops (COMBAT D-4). */
+function enemyVolley(rt: CombatRT, combat: CombatState, lines: string[]): CombatOutcome {
+  const pc = pcOf(rt)!;
+  const targetAc = pc.ac + combat.playerCoverAc;
+  for (const enemy of combat.enemies) {
+    const swings = enemy.multiAttack ? 2 : 1;
+    for (let i = 0; i < swings; i++) {
+      if ((pcOf(rt)?.hp ?? 0) <= 0) return isDeadChar(pcOf(rt)!) ? "dead" : "downed";
+      const atk = enemyAttack(enemy, targetAc, rt.rng);
+      lines.push(`💢 ${atk.breakdown}`);
+      if (atk.hit) {
+        const harm = applyDamage(rt, pc.id, atk.damage, `${enemy.name}'s attack.`);
+        lines.push(
+          `💥 You take ${harm.taken} — ${harm.hpAfter + harm.taken}→${harm.hpAfter} HP` +
+            (harm.died ? " · KILLED" : harm.downed ? " · DOWNED" : ""),
+        );
+        if (harm.died) return "dead";
+        if (harm.downed) return "downed";
+      }
+    }
+  }
+  return "continue";
+}
+
+/** Begin a fight from pre-spawned enemies; resolve enemy surprise (ambush = a free
+ *  enemy volley before the player acts; you-ambush → an opening edge). */
+function beginCombat(
+  rt: CombatRT,
+  scale: "personal" | "ship",
+  enemies: CombatEnemy[],
+  surprise: "player" | "enemy" | "none",
+): { combat: CombatState; lines: string[]; outcome: CombatOutcome } {
+  const pc = pcOf(rt);
+  const combat: CombatState = {
+    active: true,
+    round: 1,
+    scale,
+    enemies,
+    playerCoverAc: 0,
+    // Ship-scale surprise keeps its flat aim edge; personal-scale surprise uses the
+    // D&D rule (opening strike at advantage + the foe can't answer round 1).
+    playerAimBonus: scale === "ship" && surprise === "player" ? 2 : 0,
+    playerSurprise: scale === "personal" && surprise === "player",
+    fleeAttempts: 0,
+    // Draw the weapon this character fights best with; the player can switch.
+    ...(scale === "personal" && pc ? { weaponName: defaultWeapon(pc)?.name } : {}),
+  };
+  const lines = [`⚔ ${scale === "ship" ? "Ship combat" : "Combat"} — ${enemies.map((e) => e.name).join(", ")}.`];
+  let outcome: CombatOutcome = "continue";
+  if (surprise === "enemy") {
+    lines.push("Ambushed — they fire first.");
+    outcome = scale === "ship" ? enemyShipVolley(rt, combat, false, lines) : enemyVolley(rt, combat, lines);
+    if (outcome !== "continue") combat.active = false;
+  }
+  return { combat, lines, outcome };
+}
+
+/** Start a personal (on-foot) fight. */
+export function startCombat(rt: CombatRT, specs: SpawnSpec[], surprise: "player" | "enemy" | "none") {
+  return beginCombat(rt, "personal", spawnCombatEnemies(specs, rt.rng), surprise);
+}
+
+/** Start a ship-scale fight. */
+export function startShipCombat(rt: CombatRT, specs: ShipSpawnSpec[], surprise: "player" | "enemy" | "none") {
+  return beginCombat(rt, "ship", spawnCombatShips(specs, rt.rng), surprise);
+}
+
+/** Resolve one round — dispatch by scale. */
+export function resolveCombatRound(
+  rt: CombatRT,
+  combat: CombatState,
+  action: CombatAction,
+): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
+  return combat.scale === "ship" ? resolveShipRound(rt, combat, action) : resolvePersonalRound(rt, combat, action);
+}
+
+function resolvePersonalRound(
+  rt: CombatRT,
+  combat: CombatState,
+  action: CombatAction,
+): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
+  const lines: string[] = [];
+  const cbt = personalCombatant(rt, combat.weaponName);
+  let enemies = combat.enemies.map((e) => ({ ...e }));
+  let aim = combat.playerAimBonus;
+  let cover = combat.playerCoverAc;
+  let fleeAttempts = combat.fleeAttempts;
+  // Surprise round: the player struck an unaware foe. The opening strike rolls with
+  // advantage and the surprised enemies get NO return volley this round (D&D).
+  const surpriseRound = combat.playerSurprise === true;
+
+  // Drawing another weapon is FREE — a quick swap that doesn't cost the round.
+  if (action.type === "switch") {
+    const pc = pcOf(rt);
+    const w = pc?.gear.find((g) => g.damage && g.name === action.weaponName);
+    if (w) {
+      lines.push(`🔁 You draw your ${w.name}.`);
+      return { combat: { ...combat, weaponName: w.name, playerSurprise: surpriseRound }, lines, outcome: "continue", loot: 0 };
+    }
+  }
+
+  switch (action.type) {
+    case "attack": {
+      const enemy = enemies.find((e) => e.id === action.enemyId && e.hp > 0) ?? enemies.find((e) => e.hp > 0);
+      if (enemy) {
+        const r = playerAttack(enemy, cbt.attackMod, cbt.weaponDamage, aim, rt.rng, surpriseRound);
+        lines.push(`🎯 ${r.breakdown}`);
+        enemy.hp = r.enemyHpAfter;
+        enemy.shieldReady = r.shieldReadyAfter;
+        if (r.killed) lines.push(`☠ ${enemy.name} is down.`);
+      }
+      aim = 0;
+      cover = 0;
+      break;
+    }
+    case "aim":
+      aim = 2;
+      cover = 0;
+      lines.push("🔺 You steady your aim (+2 to your next attack).");
+      break;
+    case "cover":
+      cover = 2;
+      aim = 0;
+      lines.push("🛡 You take cover (+2 AC until you move).");
+      break;
+    case "stim":
+    case "item": {
+      const pc = pcOf(rt)!;
+      const itemId = action.type === "stim" ? "stim" : action.itemId ?? "";
+      const item = catalogItem(itemId);
+      if (!item || itemCount(pc, itemId) <= 0) {
+        lines.push("Nothing to use.");
+        cover = 0;
+        break;
+      }
+      const eff = item.effect;
+      if (eff?.kind === "heal") {
+        const before = pc.hp;
+        const after = applyHeal(rt, pc.id, rollDamage(eff.dice ?? "1d6+2", rt.rng));
+        consumeItem(rt, pc.id, itemId);
+        lines.push(`🩹 ${item.name}: +${after - before} HP — ${before}→${after}.`);
+        cover = 0;
+      } else if (eff?.kind === "aoe") {
+        const dmg = rollDamage(eff.dice ?? "2d6", rt.rng);
+        enemies = enemies.map((e) => (e.hp > 0 ? { ...e, hp: Math.max(0, e.hp - dmg) } : e));
+        consumeItem(rt, pc.id, itemId);
+        lines.push(`💥 ${item.name}: ${dmg} to every enemy.`);
+        aim = 0;
+        cover = 0;
+      } else if (eff?.kind === "autoFlee") {
+        consumeItem(rt, pc.id, itemId);
+        lines.push(`🌫 ${item.name} — you break contact and slip clear.`);
+        return { combat: { ...combat, active: false }, lines, outcome: "escaped", loot: 0 };
+      } else {
+        lines.push(`${item.name} does nothing here.`);
+        cover = 0;
+      }
+      break;
+    }
+    case "flee": {
+      const pc = pcOf(rt)!;
+      const dc = fleeDC(threatLevel(enemies), cbt.combatLevel, fleeAttempts);
+      const mod = computeModifier(pc, "stealth");
+      const d20 = rt.rng.int(1, 20);
+      const total = d20 + mod;
+      fleeAttempts += 1;
+      const escaped = total >= dc;
+      lines.push(`🎲 Flee: d20(${d20})+${mod} = ${total} vs DC ${dc} → ${escaped ? "escaped" : "they cut you off"}`);
+      if (escaped) {
+        return { combat: { ...combat, active: false }, lines, outcome: "escaped", loot: 0 };
+      }
+      cover = 0;
+      break;
+    }
+  }
+
+  // Deaths resolve; victory if the field is clear.
+  enemies = enemies.filter((e) => e.hp > 0);
+  if (enemies.length === 0) {
+    const tier = combat.enemies.reduce<"T1" | "T2" | "T3">(
+      (m, e) => (LOOT_BAND[e.tier][1] > LOOT_BAND[m][1] ? e.tier : m),
+      "T1",
+    );
+    const [lo, hi] = LOOT_BAND[tier];
+    const loot = rt.rng.int(lo, hi);
+    const pc = pcOf(rt)!;
+    rt.state = {
+      ...rt.state,
+      characters: rt.state.characters.map((x) => (x.id === pc.id ? { ...x, credits: (x.credits ?? 0) + loot } : x)),
+    };
+    lines.push(`💰 Cleared them out — recovered ¢${loot}.`);
+    return { combat: { ...combat, enemies, active: false }, lines, outcome: "victory", loot };
+  }
+
+  // Enemy volley (halts if the player drops) — SKIPPED on the surprise round.
+  const next: CombatState = {
+    ...combat, enemies, playerAimBonus: aim, playerCoverAc: cover, fleeAttempts, playerSurprise: false,
+  };
+  if (surpriseRound) {
+    lines.push("You struck from surprise — they don't get to answer this round.");
+    next.round += 1;
+    return { combat: next, lines, outcome: "continue", loot: 0 };
+  }
+  const outcome = enemyVolley(rt, next, lines);
+  if (outcome === "continue") {
+    next.round += 1;
+    return { combat: next, lines, outcome, loot: 0 };
+  }
+  return { combat: { ...next, active: false }, lines, outcome, loot: 0 };
+}
+
+/** Apply hull damage to the player's ship. Hull 0 = DISABLED (adrift), not death. */
+export function applyShipDamage(rt: CombatRT, amount: number) {
+  const s = rt.state.ship;
+  if (!s || amount <= 0) return { hpAfter: s?.hp ?? 0, taken: 0, disabled: false };
+  const before = s.hp;
+  const hp = Math.max(0, before - amount);
+  rt.state = { ...rt.state, ship: { ...s, hp } };
+  const disabled = hp === 0 && before > 0;
+  rt.events.push({
+    type: "resource",
+    breakdown: `${s.name} hull ${before}→${hp}${disabled ? " · DISABLED" : ""}`,
+    field: "hp",
+    delta: -amount,
+  });
+  return { hpAfter: hp, taken: amount, disabled };
+}
+
+/** Enemy ships fire on the player's hull; halts the instant it's disabled. */
+function enemyShipVolley(rt: CombatRT, combat: CombatState, evasive: boolean, lines: string[]): CombatOutcome {
+  const pc = pcOf(rt);
+  for (const enemy of combat.enemies) {
+    const swings = enemy.multiAttack ? 2 : 1;
+    for (let i = 0; i < swings; i++) {
+      const s = rt.state.ship;
+      if (!s || s.hp <= 0) return "disabled";
+      const res = resolveShipAttack(
+        {
+          attackerSide: "enemy",
+          attackMod: enemy.atk,
+          weaponType: enemy.weaponType ?? "kinetic",
+          damage: enemy.damage,
+          target: {
+            id: s.id,
+            name: s.name,
+            hp: s.hp,
+            ac: s.ac,
+            armored: s.damageReduction > 0,
+            shieldReady: s.hasShield && s.shieldReady,
+            isEvasive: evasive,
+            hasPointDefense: s.hasPointDefense,
+          },
+        },
+        rt.rng,
+      );
+      lines.push(`💢 ${enemy.name}: ${res.breakdown}`);
+      if (res.targetShieldReadyAfter !== (s.hasShield && s.shieldReady)) {
+        rt.state = { ...rt.state, ship: { ...s, shieldReady: res.targetShieldReadyAfter } };
+      }
+      if (res.hit && res.damageDealt > 0) {
+        const harm = applyShipDamage(rt, res.damageDealt);
+        lines.push(`💥 Hull takes ${harm.taken}${harm.disabled ? " · DISABLED" : ""}`);
+        if (harm.disabled) return "disabled";
+      }
+    }
+  }
+  // Combat left the PC untouched — an environment threat (E-6) never triggers here.
+  void pc;
+  return "continue";
+}
+
+function resolveShipRound(
+  rt: CombatRT,
+  combat: CombatState,
+  action: CombatAction,
+): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
+  const lines: string[] = [];
+  const s = rt.state.ship;
+  if (!s) {
+    return { combat: { ...combat, active: false }, lines: ["You have no ship to fight in."], outcome: "escaped", loot: 0 };
+  }
+  const pc = pcOf(rt)!;
+  const gunneryMod = computeModifier(pc, "gunnery");
+  const combatLevel = Math.max(
+    0,
+    ...["gunnery", "piloting"].map((k) => pc.skills.find((x) => x.name === k)?.level ?? 0),
+  );
+  let enemies = combat.enemies.map((e) => ({ ...e }));
+  let evasive = combat.playerCoverAc > 0;
+  let fleeAttempts = combat.fleeAttempts;
+
+  switch (action.type) {
+    case "attack": {
+      const enemy = enemies.find((e) => e.id === action.enemyId && e.hp > 0) ?? enemies.find((e) => e.hp > 0);
+      if (enemy) {
+        const w = s.weapons[0];
+        if (w?.type === "missile" && (w.ammo ?? 0) <= 0) {
+          lines.push("Missile racks are dry.");
+        } else {
+          const res = resolveShipAttack(
+            {
+              attackerSide: "player",
+              attackMod: gunneryMod,
+              weaponType: (w?.type as "kinetic") ?? "kinetic",
+              damage: w?.damage ?? "1d8",
+              target: {
+                id: enemy.id,
+                name: enemy.name,
+                hp: enemy.hp,
+                ac: enemy.ac,
+                armored: enemy.armored,
+                shieldReady: enemy.shieldReady,
+                isEvasive: enemy.isEvasive,
+                hasPointDefense: enemy.hasPointDefense,
+              },
+            },
+            rt.rng,
+          );
+          lines.push(`🎯 ${res.breakdown}`);
+          enemy.hp = res.targetHpAfter;
+          enemy.shieldReady = res.targetShieldReadyAfter;
+          if (res.targetHpAfter <= 0) lines.push(`☠ ${enemy.name} is wrecked.`);
+          if (w?.type === "missile") {
+            rt.state = {
+              ...rt.state,
+              ship: { ...s, weapons: s.weapons.map((x) => (x.type === "missile" ? { ...x, ammo: Math.max(0, (x.ammo ?? 0) - 1) } : x)) },
+            };
+          }
+        }
+      }
+      evasive = false;
+      break;
+    }
+    case "cover":
+      evasive = true;
+      lines.push("🛡 Evasive maneuvers — throwing off their targeting.");
+      break;
+    case "item": {
+      const item = catalogItem(action.itemId ?? "");
+      if (item?.effect?.kind === "restoreShield" && itemCount(pc, item.id) > 0) {
+        rt.state = { ...rt.state, ship: { ...rt.state.ship!, shieldReady: true } };
+        consumeItem(rt, pc.id, item.id);
+        lines.push(`⛨ ${item.name} — shields back online.`);
+      } else {
+        lines.push("Nothing to use.");
+      }
+      evasive = false;
+      break;
+    }
+    case "flee": {
+      if (s.burstDriveReady) {
+        lines.push("💨 Burst drive fires — you punch clear of the engagement.");
+        rt.state = { ...rt.state, ship: { ...s, burstDriveReady: false } };
+        return { combat: { ...combat, active: false }, lines, outcome: "escaped", loot: 0 };
+      }
+      const dc = fleeDC(threatLevel(enemies), combatLevel, fleeAttempts);
+      const mod = computeModifier(pc, "piloting");
+      const d20 = rt.rng.int(1, 20);
+      const total = d20 + mod;
+      fleeAttempts += 1;
+      const escaped = total >= dc;
+      lines.push(`🎲 Break off: d20(${d20})+${mod} = ${total} vs DC ${dc} → ${escaped ? "clear" : "they stay on you"}`);
+      if (escaped) return { combat: { ...combat, active: false }, lines, outcome: "escaped", loot: 0 };
+      evasive = false;
+      break;
+    }
+  }
+
+  enemies = enemies.filter((e) => e.hp > 0);
+  if (enemies.length === 0) {
+    const [lo, hi] = LOOT_BAND[combat.enemies[0]?.tier ?? "T2"];
+    const loot = rt.rng.int(lo, hi);
+    rt.state = {
+      ...rt.state,
+      characters: rt.state.characters.map((x) => (x.id === pc.id ? { ...x, credits: (x.credits ?? 0) + loot } : x)),
+    };
+    lines.push(`💰 Enemy driven off / destroyed — salvage worth ¢${loot}.`);
+    return { combat: { ...combat, enemies, active: false }, lines, outcome: "victory", loot };
+  }
+
+  const next: CombatState = { ...combat, enemies, playerCoverAc: evasive ? 1 : 0, playerAimBonus: 0, fleeAttempts };
+  const outcome = enemyShipVolley(rt, next, evasive, lines);
+  if (outcome === "continue") {
+    next.round += 1;
+    return { combat: next, lines, outcome, loot: 0 };
+  }
+  return { combat: { ...next, active: false }, lines, outcome, loot: 0 };
+}

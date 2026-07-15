@@ -28,14 +28,20 @@ import {
  * services (bodyMod/respec/setAppearance). Pure engine logic; the runtime is the
  * only mutator.
  */
-export interface NarrativeRT {
+/** The narrow surface the relationship helpers need — a subset satisfied by both
+ *  NarrativeRT and runtimeCombat's CombatRT (rollCheck moves standing on a passed
+ *  social check, so it must be able to call nudgeStandingFromCheck). */
+export interface RelationRT {
   state: CampaignState;
   events: EngineEvent[];
-  worldEvents: WorldEvent[];
   sceneCard: SceneCard;
   npcRelations: NpcRelations;
-  clockAdvances: { clockId: string; amount: number; reason: string }[];
   nudgedThisTurn: Set<string>;
+}
+
+export interface NarrativeRT extends RelationRT {
+  worldEvents: WorldEvent[];
+  clockAdvances: { clockId: string; amount: number; reason: string }[];
   tickedThisScene: Set<string>;
   sceneEndReport: ReturnType<typeof runSceneEnd> | null;
   questCompletedThisTurn: boolean;
@@ -301,7 +307,7 @@ export function refreshSituation(rt: NarrativeRT, narration: string) {
 
 /** Append a beat to a relationship's history log (oldest→newest, capped), so the
  *  People panel shows how things DEVELOPED. Skips a repeat of the most recent note. */
-function pushRelationLog(rt: NarrativeRT, rel: NpcRelation, note: string): void {
+function pushRelationLog(rt: RelationRT, rel: NpcRelation, note: string): void {
   const trimmed = note.trim().slice(0, 160);
   if (!trimmed) return;
   const log = rel.log ?? [];
@@ -317,7 +323,7 @@ function pushRelationLog(rt: NarrativeRT, rel: NpcRelation, note: string): void 
  * (0 or >1 present), already nudged this turn, or at the cap. Returns a display line.
  */
 export function nudgeStandingFromCheck(
-  rt: NarrativeRT,
+  rt: RelationRT,
   outcome: string,
   critical: boolean,
   criticalFailure: boolean,
