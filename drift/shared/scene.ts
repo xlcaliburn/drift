@@ -193,3 +193,24 @@ export function relationHistory(rel: NpcRelation | undefined, max = 6): string {
     .map((e) => (e.scene ? `[s${e.scene}] ${e.note}` : e.note))
     .join(" · ");
 }
+
+/** Append a dated beat to a relationship's log (oldest→newest, deduped, capped) —
+ *  the pure counterpart of the engine's pushRelationLog, used by the background
+ *  scene analyst to enrich the history after a scene closes. */
+export function appendRelationLog(rel: NpcRelation, note: string, scene?: number): void {
+  const trimmed = note.trim().slice(0, 160);
+  if (!trimmed) return;
+  const log = rel.log ?? [];
+  if (log.length && log[log.length - 1].note === trimmed) return; // no consecutive dupes
+  log.push({ note: trimmed, scene });
+  rel.log = log.slice(-MAX_RELATION_LOG);
+}
+
+/** Is an NPC's oneBreath a thin/placeholder line (the dialogue-registration
+ *  fallbacks, or too short to be real canon)? Only these get upgraded by the scene
+ *  analyst — a hand-authored description is never clobbered. */
+export function isPlaceholderOneBreath(oneBreath: string | undefined): boolean {
+  const s = (oneBreath ?? "").trim();
+  if (s.length < 24) return true;
+  return /^spoke with the player\.?$/i.test(s) || /the player is dealing with\.?$/i.test(s);
+}

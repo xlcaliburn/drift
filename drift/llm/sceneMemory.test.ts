@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import type { CampaignState } from "@/shared/schemas";
 import { TurnRuntime } from "./engineBridge";
-import { freshSceneCard, carryScene, MAX_BEATS, dispositionLabel, relationSuffix, relationHistory } from "@/shared/scene";
+import { freshSceneCard, carryScene, MAX_BEATS, dispositionLabel, relationSuffix, relationHistory, appendRelationLog, isPlaceholderOneBreath } from "@/shared/scene";
+import type { NpcRelation } from "@/shared/scene";
 import type { RNG } from "@/engine";
 
 const rng: RNG = { int: (min) => min };
@@ -246,5 +247,32 @@ describe("npc relations (tier CANON)", () => {
   it("relationHistory stays quiet for a brand-new relationship (≤1 beat)", () => {
     expect(relationHistory({ disposition: 0, log: [{ note: "just met", scene: 1 }] })).toBe("");
     expect(relationHistory({ disposition: 0 })).toBe("");
+  });
+});
+
+describe("scene analyst helpers (CONTINUITY — the Sera fix)", () => {
+  it("isPlaceholderOneBreath flags the junk fallbacks + thin lines, spares real canon", () => {
+    expect(isPlaceholderOneBreath("Spoke with the player.")).toBe(true);
+    expect(isPlaceholderOneBreath("Sera the player is dealing with.")).toBe(true);
+    expect(isPlaceholderOneBreath("a fixer")).toBe(true); // too short
+    expect(isPlaceholderOneBreath(undefined)).toBe(true);
+    expect(
+      isPlaceholderOneBreath("A Ledger fixer — a ghost in heels — who warmed to Dresch and became his partner."),
+    ).toBe(false); // real canon is preserved
+  });
+
+  it("appendRelationLog builds history, dedupes consecutively, and caps", () => {
+    const rel: NpcRelation = { disposition: 2 };
+    appendRelationLog(rel, "met at the bar", 5);
+    appendRelationLog(rel, "met at the bar", 5); // consecutive dupe → ignored
+    appendRelationLog(rel, "she gave you the Dock-14 job", 6);
+    expect(rel.log).toEqual([
+      { note: "met at the bar", scene: 5 },
+      { note: "she gave you the Dock-14 job", scene: 6 },
+    ]);
+    // Cap: pushing past MAX_RELATION_LOG trims the oldest.
+    for (let i = 0; i < 12; i++) appendRelationLog(rel, `beat ${i}`, 7 + i);
+    expect(rel.log!.length).toBeLessThanOrEqual(8);
+    expect(rel.log![rel.log!.length - 1].note).toBe("beat 11"); // newest kept
   });
 });

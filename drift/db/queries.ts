@@ -111,6 +111,12 @@ export async function upsertNpcs(db: SupabaseClient, npcs: Npc[]): Promise<void>
   await db.from("npcs").upsert(npcs.map((n) => toRow(n)));
 }
 
+/** Refresh a shared NPC's one-line identity (scene analyst — upgrading a thin or
+ *  placeholder description once a scene has revealed who they really are). */
+export async function updateNpcOneBreath(db: SupabaseClient, id: string, oneBreath: string): Promise<void> {
+  await db.from("npcs").update({ one_breath: oneBreath }).eq("id", id);
+}
+
 /** Persist the mutable slices of a CampaignState after a turn / scene end. */
 export async function saveCampaignState(db: SupabaseClient, state: CampaignState): Promise<void> {
   await db.from("campaigns").upsert(toRow(state.campaign));
