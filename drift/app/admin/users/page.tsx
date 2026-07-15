@@ -10,13 +10,17 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 const fmtTokens = (n: number) =>
-  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n);
+  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n);
 
-/** Manage players: approve/suspend + per-user monthly budget caps. */
+const fmtDate = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+
+/** Manage players: approve/suspend, and see who's active and what they've cost. */
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   async function refresh() {
     const res = await fetch("/api/admin/users");
@@ -30,164 +34,105 @@ export default function AdminUsersPage() {
     refresh();
   }, []);
 
-  async function patch(id: string, body: Record<string, unknown>) {
+  async function setStatus(id: string, status: string) {
     setError(null);
+    setBusy(id);
     const res = await fetch("/api/admin/users", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, ...body }),
+      body: JSON.stringify({ id, status }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       setError(data.error ?? "update failed");
     }
-    refresh();
+    await refresh();
+    setBusy(null);
   }
 
-  const pending = users.filter((u) => u.status === "pending");
-  const rest = users.filter((u) => u.status !== "pending");
+  // Most-recently-active first (never-played sink to the bottom).
+  const sorted = [...users].sort((a, b) => (b.lastActive ?? "").localeCompare(a.lastActive ?? ""));
+  const totalCost = users.reduce((s, u) => s + u.totalCostUsd, 0);
 
   return (
     <div>
-      <p className="text-sm text-neutral-400">
-        New sign-ins land pending. Approve to let them play; suspend to cut access.
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-neutral-400">
+          New sign-ins land pending. Approve to let them play; suspend to cut access.
+        </p>
+        {loaded && users.length > 0 && (
+          <p className="text-xs text-neutral-500">
+            {users.length} users · <span className="text-neutral-300">${totalCost.toFixed(2)}</span> all-time
+          </p>
+        )}
+      </div>
       {error && <p className="mt-3 text-sm text-bad">{error}</p>}
       {!loaded && <p className="mt-8 text-sm text-neutral-500">Loading…</p>}
       {loaded && users.length === 0 && (
-        <p className="mt-8 text-sm text-neutral-500">
-          No users yet (or Supabase isn&apos;t configured).
-        </p>
+        <p className="mt-8 text-sm text-neutral-500">No users yet (or Supabase isn&apos;t configured).</p>
       )}
 
-      {pending.length > 0 && (
-        <section className="mt-6">
-          <h2 className="text-xs uppercase tracking-widest text-neutral-500">
-            Awaiting approval ({pending.length})
-          </h2>
-          <div className="mt-3 space-y-3">
-            {pending.map((u) => (
-              <UserCard key={u.id} u={u} onPatch={patch} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {rest.length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-xs uppercase tracking-widest text-neutral-500">Players</h2>
-          <div className="mt-3 space-y-3">
-            {rest.map((u) => (
-              <UserCard key={u.id} u={u} onPatch={patch} />
-            ))}
-          </div>
-        </section>
-      )}
-    </div>
-  );
-}
-
-function UserCard({
-  u,
-  onPatch,
-}: {
-  u: AdminUserRow;
-  onPatch: (id: string, body: Record<string, unknown>) => Promise<void>;
-}) {
-  const [tokenCap, setTokenCap] = useState(String(u.monthlyTokenBudget));
-  const [costCap, setCostCap] = useState(u.monthlyCostBudgetUsd.toFixed(2));
-  const dirty =
-    Number(tokenCap) !== u.monthlyTokenBudget || Number(costCap) !== u.monthlyCostBudgetUsd;
-
-  return (
-    <div className="rounded-lg border border-edge bg-panel/50 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="font-semibold text-neutral-100">
-            {u.displayName}
-            {u.role === "admin" && (
-              <span className="ml-2 rounded-full border border-accent/60 px-2 py-0.5 text-xs text-accent">
-                admin
-              </span>
-            )}
-          </div>
-          <div className="mt-0.5 text-xs text-neutral-500">
-            {u.email}
-            {u.createdAt ? ` · joined ${new Date(u.createdAt).toLocaleDateString()}` : ""}
-          </div>
+      {loaded && users.length > 0 && (
+        <div className="mt-4 overflow-x-auto rounded-lg border border-edge">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead>
+              <tr className="border-b border-edge text-left text-[11px] uppercase tracking-wide text-neutral-500">
+                <th className="px-3 py-2 font-medium">Player</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 text-right font-medium">Last active</th>
+                <th className="px-3 py-2 text-right font-medium">Turns</th>
+                <th className="px-3 py-2 text-right font-medium">Tokens</th>
+                <th className="px-3 py-2 text-right font-medium">Est. cost</th>
+                <th className="px-3 py-2 text-right font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((u) => (
+                <tr key={u.id} className="border-b border-edge/50 last:border-0 hover:bg-panel/30">
+                  <td className="px-3 py-2">
+                    <div className="font-medium text-neutral-100">
+                      {u.displayName}
+                      {u.role === "admin" && <span className="ml-1.5 text-[10px] uppercase text-accent">admin</span>}
+                    </div>
+                    <div className="text-[11px] text-neutral-500">{u.email}</div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className={`rounded-full border px-2 py-0.5 text-[11px] ${STATUS_STYLE[u.status] ?? ""}`}>
+                      {u.status}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-neutral-400">{fmtDate(u.lastActive)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-neutral-300">{u.totalTurns}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-neutral-300">{fmtTokens(u.totalTokens)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-neutral-200">${u.totalCostUsd.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right">
+                    <div className="flex justify-end gap-1">
+                      {u.status !== "approved" && (
+                        <button
+                          disabled={busy === u.id}
+                          onClick={() => setStatus(u.id, "approved")}
+                          className="rounded-md bg-good/15 px-2 py-1 text-[11px] font-semibold text-good hover:bg-good/25 disabled:opacity-50"
+                        >
+                          Approve
+                        </button>
+                      )}
+                      {u.status !== "suspended" && u.role !== "admin" && (
+                        <button
+                          disabled={busy === u.id}
+                          onClick={() => setStatus(u.id, u.status === "pending" ? "suspended" : "suspended")}
+                          className="rounded-md bg-bad/15 px-2 py-1 text-[11px] font-semibold text-bad hover:bg-bad/25 disabled:opacity-50"
+                        >
+                          {u.status === "pending" ? "Reject" : "Suspend"}
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <span className={`rounded-full border px-2 py-0.5 text-xs ${STATUS_STYLE[u.status] ?? ""}`}>
-          {u.status}
-        </span>
-      </div>
-
-      <div className="mt-2 text-xs text-neutral-400">
-        This month: {u.monthTurns} turns · {fmtTokens(u.monthTokens)} tok · $
-        {u.monthCostUsd.toFixed(3)}
-        <span className="text-neutral-600">
-          {" "}
-          / caps {fmtTokens(u.monthlyTokenBudget)} tok · ${u.monthlyCostBudgetUsd.toFixed(2)}
-        </span>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-end gap-2">
-        {u.status !== "approved" && (
-          <button
-            onClick={() => onPatch(u.id, { status: "approved" })}
-            className="rounded-md bg-good/20 px-3 py-1.5 text-sm font-semibold text-good hover:bg-good/30"
-          >
-            Approve
-          </button>
-        )}
-        {u.status === "approved" && u.role !== "admin" && (
-          <button
-            onClick={() => onPatch(u.id, { status: "suspended" })}
-            className="rounded-md bg-bad/20 px-3 py-1.5 text-sm font-semibold text-bad hover:bg-bad/30"
-          >
-            Suspend
-          </button>
-        )}
-        {u.status === "pending" && (
-          <button
-            onClick={() => onPatch(u.id, { status: "suspended" })}
-            className="rounded-md bg-bad/20 px-3 py-1.5 text-sm font-semibold text-bad hover:bg-bad/30"
-          >
-            Reject
-          </button>
-        )}
-
-        <label className="ml-auto flex items-center gap-1 text-xs text-neutral-500">
-          tok cap
-          <input
-            value={tokenCap}
-            onChange={(e) => setTokenCap(e.target.value)}
-            inputMode="numeric"
-            className="w-24 rounded-md border border-edge bg-ink px-2 py-1 text-xs text-neutral-200 focus:border-accent focus:outline-none"
-          />
-        </label>
-        <label className="flex items-center gap-1 text-xs text-neutral-500">
-          $ cap
-          <input
-            value={costCap}
-            onChange={(e) => setCostCap(e.target.value)}
-            inputMode="decimal"
-            className="w-16 rounded-md border border-edge bg-ink px-2 py-1 text-xs text-neutral-200 focus:border-accent focus:outline-none"
-          />
-        </label>
-        {dirty && (
-          <button
-            onClick={() =>
-              onPatch(u.id, {
-                monthlyTokenBudget: Math.max(0, Math.floor(Number(tokenCap) || 0)),
-                monthlyCostBudgetUsd: Math.max(0, Number(costCap) || 0),
-              })
-            }
-            className="rounded-md border border-accent/60 px-3 py-1.5 text-sm font-semibold text-accent hover:bg-accent/10"
-          >
-            Save caps
-          </button>
-        )}
-      </div>
+      )}
     </div>
   );
 }
