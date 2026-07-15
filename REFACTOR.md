@@ -319,16 +319,13 @@ form `consumeItem(this, …)`.
 
 - ✅ **`runtimeHeal.ts`** — applyHeal, clearInjury, reviveDowned, consumeItem,
   useItem, resolveDeathSave. Surface `{state, rng}`. (2118→1927)
-- ⬜ **`runtimeEconomy.ts`** — quoteOffer, awardPayout, adjustResource, setGear +
-  bestArmor(static), applyGearChange, resolveSwap, declineSwap, grantSceneItem,
-  currentPlace, acquiredDetail, buyItem, sellItem, repairShip, restWithPatron,
-  syncDockDebt (~450 lines). Wider surface: `{state, rng, events, sceneCard,
-  markQuestCompleted()}`; INLINE the 2-line `isShipTarget` into adjustResource.
-  Scattered (money handlers at ~521-604 sit ABOVE the narrative handlers; gear at
-  ~827-1010; shops at ~1013-1227) — multiple non-contiguous moves. Convert
-  execute()'s `this.awardPayout/adjustResource` dispatch + delegating methods for
-  buyItem/sellItem/repairShip/restWithPatron/applyGearChange/resolveSwap/
-  declineSwap/grantSceneItem/quoteOffer (all have external/execute callers).
+- ✅ **`runtimeEconomy.ts`** — quoteOffer, awardPayout, adjustResource, setGear +
+  bestArmor, looksLikeGear, applyGearChange, resolveSwap, declineSwap,
+  grantSceneItem, currentPlace, acquiredDetail, buyItem, sellItem, repairShip,
+  restWithPatron, syncDockDebt. Surface `{state, rng, events, sceneCard,
+  lootedThisTurn, questCompletedThisTurn, markQuestCompleted()}` (the two flags
+  went public); `isShipTarget` inlined. execute() calls awardPayout/adjustResource
+  as free fns; the rest keep delegating methods. (1927→1493)
 - ⬜ **`runtimeNarrative.ts`** — advanceClock, adjustRep, updateThread,
   logWorldEvent, endScene, registerNpc, setNpcOneBreath, markPresent, updateScene,
   refreshSituation, pushRelationLog, nudgeStandingFromCheck, updateNpcRelation,

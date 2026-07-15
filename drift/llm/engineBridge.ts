@@ -26,12 +26,24 @@ import {
 } from "@/engine/combatEngine";
 import { fleeDC, threatLevel, weaponSkill } from "@/shared/combat";
 import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
-import { catalogItem, itemCount, allItems, slotsUsed, maxSlotsFor, resolveGearItemId } from "@/shared/items";
+import { catalogItem, itemCount, slotsUsed, maxSlotsFor } from "@/shared/items";
 import { applyHeal, consumeItem, useItem, resolveDeathSave } from "./runtimeHeal";
-import { marketStock, repPriceFactor, localRep, SELL_RATE, marketTierFor } from "@/engine/market";
-import { gearValue } from "@/shared/netWorth";
+import {
+  quoteOffer,
+  awardPayout,
+  adjustResource,
+  bestArmor,
+  grantSceneItem,
+  applyGearChange,
+  resolveSwap,
+  declineSwap,
+  buyItem,
+  sellItem,
+  repairShip,
+  restWithPatron,
+  syncDockDebt,
+} from "./runtimeEconomy";
 import { validateAttributes } from "@/shared/respec";
-import { patronHelp, PATRON_STIM_FLOOR } from "@/shared/netWorth";
 import type { Attributes } from "@/shared/schemas";
 import {
   freshSceneCard,
@@ -78,12 +90,6 @@ const RAPPORT_SKILLS = new Set(["negotiation"]);
  *  stay gated to a legit loot/quest source even when they don't match the catalog,
  *  so the model can't hand out a free "rocket launcher"; inert flavor props (a
  *  keepsake, a rose bouquet) fall through and are always allowed. */
-function looksLikeGear(norm: string): boolean {
-  return /\b(rifle|pistol|gun|launcher|cannon|blaster|carbine|shotgun|revolver|sidearm|sword|blade|knife|baton|axe|spear|armou?r|vest|plate|carapace|shield|grenade|explosive|rocket|missile|ammo|rounds?|magazine|mag|scope|silencer|holster)\b/i.test(
-    norm,
-  );
-}
-
 /**
  * Bridges narrator tool calls to deterministic engine functions, accumulating
  * the scene bookkeeping (tick-eligible rolls, clock advances, costs, world
@@ -114,8 +120,9 @@ export class TurnRuntime {
   private nudgedThisTurn = new Set<string>();
   /** True once a quest/job concluded THIS turn (a payout was awarded, or a thread
    *  resolved). Disposition only moves on such turns — standing is earned by
-   *  completing work, not by chatting (built-in engine gate, not a prompt rule). */
-  private questCompletedThisTurn = false;
+   *  completing work, not by chatting (built-in engine gate, not a prompt rule).
+   *  Public so runtimeEconomy's gear gate can read it. */
+  questCompletedThisTurn = false;
 
   /** Unlock disposition movement for this turn — called when a job/quest actually
    *  completes (payout awarded, thread resolved). Public so any completion path
@@ -126,8 +133,9 @@ export class TurnRuntime {
 
   /** True once the engine rolled loot this turn (a successful scavenge/loot check).
    *  Also lets the narrator's own items[] gains through — they corroborate what the
-   *  engine just generated rather than conjuring something new. */
-  private lootedThisTurn = false;
+   *  engine just generated rather than conjuring something new. Public so
+   *  runtimeEconomy's gear gate can read it. */
+  lootedThisTurn = false;
 
   constructor(
     state: CampaignState,
@@ -216,7 +224,7 @@ export class TurnRuntime {
       case "spawn_encounter":
         return this.spawnEncounter(input);
       case "adjust_resource":
-        return this.adjustResource(input);
+        return adjustResource(this, input);
       case "advance_clock":
         return this.advanceClock(input);
       case "adjust_rep":
@@ -228,7 +236,7 @@ export class TurnRuntime {
       case "end_scene":
         return this.endScene(input);
       case "award_payout":
-        return this.awardPayout(input);
+        return awardPayout(this, input);
       case "use_item":
         return this.useItem(String(input.itemId ?? ""), input.characterId ? String(input.characterId) : undefined);
       case "offer_choices":
@@ -510,97 +518,10 @@ export class TurnRuntime {
    * rolls the credits inside that tier's band. A negotiation check resolved this
    * turn shades the roll: success → upper half, failure → lower half.
    */
-  /**
-   * Roll a QUOTE inside a job tier's band — a monetary bid/offer the model
-   * PRESENTS (a job's posted pay, a rival buyer's counter). Unlike awardPayout
-   * this grants NOTHING: an offer is a figure the player is looking at, not a
-   * transfer. `mood` shades the roll exactly like a payout — a negotiation
-   * success this turn → upper half of the band, failure → lower half. Returns
-   * null for an unknown tier. (ECONOMY.md — engine-owned negotiation figures.)
-   */
+  /** A negotiation-shaded QUOTE inside a job tier's band — a bid the model presents
+   *  (grants nothing). runtimeEconomy.quoteOffer. */
   quoteOffer(tier: "T0" | "T1" | "T2" | "T3", mood?: "high" | "low"): number | null {
-    const band = economy.jobPayouts[tier];
-    if (!Array.isArray(band)) return null;
-    const [lo, hi] = band as [number, number];
-    const mid = Math.round((lo + hi) / 2);
-    return this.rng.int(mood === "high" ? mid : lo, mood === "low" ? mid : hi);
-  }
-
-  private awardPayout(input: Record<string, unknown>) {
-    const tier = String(input.tier) as "T0" | "T1" | "T2" | "T3";
-    const band = economy.jobPayouts[tier];
-    if (!Array.isArray(band)) return { error: `unknown payout tier ${input.tier}` };
-    const pc = this.state.characters.find((c) => c.kind === "pc");
-    if (!pc) return { error: "no player character" };
-    // A payout means a job/quest concluded — unlock disposition movement this turn.
-    this.markQuestCompleted();
-    const mood = input.mood === "high" ? "high" : input.mood === "low" ? "low" : undefined;
-    const amount = this.quoteOffer(tier, mood)!; // band validated above → non-null
-    this.state = {
-      ...this.state,
-      characters: this.state.characters.map((c) =>
-        c.id === pc.id ? { ...c, credits: (c.credits ?? 0) + amount } : c,
-      ),
-    };
-    const reason = input.reason ? ` — ${String(input.reason)}` : "";
-    this.events.push({
-      type: "resource",
-      breakdown: `Payment: +¢${amount} (${tier}${reason})`,
-      field: "credits",
-      delta: amount,
-    });
-    return { amount, tier };
-  }
-
-  private adjustResource(input: Record<string, unknown>) {
-    const targetId = String(input.targetId);
-    const field = String(input.field);
-    let delta = Number(input.delta);
-    // Money moves through the engine: model credit GRANTS above the flavor cap
-    // are clamped (real income goes through award_payout's tier bands), and a
-    // single debit can't exceed the per-turn cap (prevents wallet-zeroing).
-    if (field === "credits") {
-      const { flavorGrantCap, maxDebitPerTurn } = economy.jobPayouts;
-      if (delta > flavorGrantCap) delta = flavorGrantCap;
-      if (delta < -maxDebitPerTurn) delta = -maxDebitPerTurn;
-    }
-
-    if (this.isShipTarget(targetId)) {
-      const s = this.state.ship!;
-      if (field === "hp") {
-        const hp = Math.max(0, Math.min(s.maxHp, s.hp + delta));
-        this.state = { ...this.state, ship: { ...s, hp } };
-        this.events.push({ type: "resource", breakdown: `${s.name} HP ${s.hp}→${hp}`, field, delta });
-        return { field, value: hp };
-      }
-      if (field === "missiles") {
-        const pod = s.weapons.find((w) => w.type === "missile");
-        const val = Math.max(0, (pod?.ammo ?? 0) + delta);
-        this.state = {
-          ...this.state,
-          ship: { ...s, weapons: s.weapons.map((w) => (w.type === "missile" ? { ...w, ammo: val } : w)) },
-        };
-        this.events.push({ type: "resource", breakdown: `${s.name} missiles → ${val}`, field, delta });
-        return { field, value: val };
-      }
-    }
-
-    const c = this.char(targetId);
-    if (!c) return { error: `unknown target ${targetId}` };
-    let value: number;
-    const patch: Partial<Character> = {};
-    if (field === "hp") value = (patch.hp = Math.max(0, Math.min(c.maxHp, c.hp + delta)));
-    else if (field === "credits") value = (patch.credits = (c.credits ?? 0) + delta);
-    else if (field === "stims") value = (patch.stims = Math.max(0, c.stims + delta));
-    else if (field === "loyalty") value = (patch.loyalty = Math.max(0, Math.min(5, (c.loyalty ?? 0) + delta)));
-    else return { error: `unsupported field ${field}` };
-
-    this.state = {
-      ...this.state,
-      characters: this.state.characters.map((x) => (x.id === c.id ? { ...x, ...patch } : x)),
-    };
-    this.events.push({ type: "resource", breakdown: `${c.name} ${field} → ${value}`, field, delta });
-    return { field, value };
+    return quoteOffer(this, tier, mood);
   }
 
   private advanceClock(input: Record<string, unknown>) {
@@ -822,408 +743,51 @@ export class TurnRuntime {
    *  a keepsake, a document). The engine still OWNS gear: a catalog item or a
    *  weapon/armor-ish name is ignored here (those only come from loot/purchase/
    *  quest). Deduped by name; skipped silently if the pack is full. */
+  /** A flavor scene item (a keepsake, a note) — runtimeEconomy.grantSceneItem. */
   grantSceneItem(name: string, note?: string): string | null {
-    const pc = this.pc();
-    const trimmed = name.trim();
-    if (!pc || !trimmed) return null;
-    const norm = trimmed.toLowerCase().replace(/^(a|an|the)\s+/, "");
-    if (resolveGearItemId({ name: trimmed }) || looksLikeGear(norm)) return null; // engine owns real gear
-    if (pc.gear.some((g) => g.name.toLowerCase() === trimmed.toLowerCase())) return null; // already carried
-    const gear = [...pc.gear, { name: trimmed, detail: this.acquiredDetail(note?.trim() || `picked up at ${this.currentPlace()}`) }];
-    if (slotsUsed({ ...pc, gear }) > maxSlotsFor(pc)) return null; // no room — drop silently (background)
-    this.setGear(pc.id, gear, false);
-    return `🎒 ${trimmed}`;
+    return grantSceneItem(this, name, note);
   }
 
-  /**
-   * Narrative item pickup/loss (a looted facemask, a confiscated pistol): the
-   * model proposes, the engine writes it into the PC's GEAR so it persists in
-   * state, context, and the sidebar — it can never vanish with old messages.
-   * Gains dedupe by name (flavor items, no catalog id — ITEMS.md IT-1); losses
-   * only remove non-catalog gear (catalog stacks are spent via useItem, and the
-   * model may not delete mechanical items). Returns a display line, or null.
-   */
-  /** Best armor bonus in a gear list — worn AC is the single best piece, never a
-   *  stack of vests (ITEMS.md slice W). */
-  private static bestArmor(gear: Character["gear"]): number {
-    return Math.max(0, ...gear.map((g) => g.acBonus ?? (g.itemId ? catalogItem(g.itemId)?.acBonus ?? 0 : 0)));
-  }
-
-  /** Write a character's gear; when the change touched armor, AC is recomputed
-   *  (10 + reflex + best piece) so a bought vest actually protects and a
-   *  confiscated one actually stops. */
-  private setGear(characterId: string, gear: Character["gear"], armorChanged: boolean) {
-    this.state = {
-      ...this.state,
-      characters: this.state.characters.map((c) => {
-        if (c.id !== characterId) return c;
-        const ac = armorChanged ? 10 + (c.attributes?.reflex ?? 0) + TurnRuntime.bestArmor(gear) : c.ac;
-        return { ...c, gear, ac };
-      }),
-    };
-  }
-
-  /** Where the player is right now — the scene's free-text place, else the fixed
-   *  location name — for stamping onto an acquired item's description. */
-  private currentPlace(): string {
-    const place = this.sceneCard.place?.trim();
-    if (place) return place;
-    const loc = this.state.locations.find((l) => l.id === this.state.campaign.currentLocationId);
-    return loc?.name ?? "the lanes";
-  }
-
-  /** An acquisition description: how it was got + WHEN (the in-game tenday), so the
-   *  inventory records the story of each item (the user's "items should say when/how
-   *  they were acquired"). Starting kit is exempt (spawned in, no line). */
-  private acquiredDetail(how: string): string {
-    const t = this.state.campaign.tendaysElapsed ?? 0;
-    return `${how} · tenday ${t}`;
-  }
-
+  /** Narrative item pickup/loss written into the PC's gear (runtimeEconomy). */
   applyGearChange(name: string, action: "gain" | "lose", note?: string): string | null {
-    const pc = this.pc();
-    if (!pc) return null;
-    const trimmed = name.trim();
-    if (!trimmed) return null;
-    // A gained item that IS a catalog item (a looted "medkit") must become the
-    // MECHANICAL item — with itemId — or useItem's possession check will fail
-    // and the model will narrate heals that never happen (the medkit bug).
-    const norm = trimmed.toLowerCase().replace(/^(a|an|the)\s+/, "");
-    const cat =
-      action === "gain"
-        ? allItems().find((it) => it.name.toLowerCase() === norm || it.id.toLowerCase() === norm)
-        : undefined;
-    // GEAR gains are engine-authored, not player-authored: real WEAPONS/ARMOR (a
-    // catalog item with damage/AC, or a weapon/armor-ish name) may only be handed
-    // over on a turn with a legit source — a scavenge/loot roll (lootedThisTurn) or a
-    // quest reward (questCompletedThisTurn) — so the model can't grant a free rifle.
-    // CONSUMABLES (a stim, a medkit — low value, no damage/AC) are legitimate, common
-    // NPC GIFTS ("Draven tosses you a stim"), so they pass freely — blocking them left
-    // the player unable to use a stim the fiction just handed them. FLAVOR props (no
-    // catalog match, no weapon/armor name, inert) are always allowed too. Losses stay open.
-    const isConsumableGift = !!cat && !cat.damage && !cat.acBonus;
-    if (
-      action === "gain" &&
-      !isConsumableGift &&
-      (cat || looksLikeGear(norm)) &&
-      !this.lootedThisTurn &&
-      !this.questCompletedThisTurn
-    ) {
-      return null;
-    }
-    const existing = pc.gear.find((g) =>
-      cat ? g.itemId === cat.id : g.name.toLowerCase() === trimmed.toLowerCase(),
-    );
-    if (action === "gain") {
-      let gear: Character["gear"];
-      let label: string;
-      // Every ADDED item carries a description of how/when it was acquired (the
-      // model's note, else a generic "acquired at <place>, tenday N") — starting
-      // gear is the only kit that's just "spawned in" with no acquisition line.
-      const gainDetail = this.acquiredDetail(note?.trim() || `acquired at ${this.currentPlace()}`);
-      if (cat) {
-        // Catalog item: stack it (a second medkit is +1, not a no-op). The entry
-        // carries the catalog's damage/AC so combat + the sheet see the mechanics.
-        gear = existing
-          ? pc.gear.map((g) => (g === existing ? { ...g, qty: (g.qty ?? 1) + 1 } : g))
-          : [
-              ...pc.gear,
-              {
-                name: cat.name,
-                itemId: cat.id,
-                qty: 1,
-                detail: gainDetail,
-                ...(cat.damage ? { damage: cat.damage } : {}),
-                ...(cat.acBonus ? { acBonus: cat.acBonus } : {}),
-              },
-            ];
-        const n = (existing?.qty ?? 0) + 1;
-        label = `${cat.name}${n > 1 ? ` (×${n})` : ""}`;
-      } else {
-        if (existing) return null; // flavor item already carried — nothing to do
-        gear = [...pc.gear, { name: trimmed, detail: gainDetail }];
-        label = trimmed;
-      }
-      // Inventory capacity (ITEMS.md slice B): a gain that doesn't fit is NOT lost
-      // silently — it's PARKED as a pending pickup so next turn can offer swap chips
-      // ("drop X to take it"). A stack that merely grows (existing) always fits.
-      const cap = maxSlotsFor(pc);
-      if (!existing && slotsUsed({ ...pc, gear }) > cap) {
-        this.sceneCard.pendingPickup = { name: cat?.name ?? trimmed, itemId: cat?.id, note: note?.trim() || undefined };
-        return `🎒 Pack full (${slotsUsed(pc)}/${cap} slots) — ${label} won't fit. Drop something to take it.`;
-      }
-      this.setGear(pc.id, gear, Boolean(cat?.acBonus));
-      return `🎒 Gained: ${label}`;
-    }
-    if (!existing) return null;
-    // Losing catalog gear decrements the stack (drop ONE stim, not the pouch);
-    // the entry goes when the last one does. Flavor gear is removed whole.
-    const gear =
-      existing.itemId && (existing.qty ?? 1) > 1
-        ? pc.gear.map((g) => (g === existing ? { ...g, qty: (g.qty ?? 1) - 1 } : g))
-        : pc.gear.filter((g) => g !== existing);
-    const hadArmor = Boolean(
-      existing.acBonus ?? (existing.itemId ? catalogItem(existing.itemId)?.acBonus : 0),
-    );
-    this.setGear(pc.id, gear, hadArmor);
-    return `🎒 Lost: ${existing.name}`;
+    return applyGearChange(this, name, action, note);
   }
 
-  /**
-   * Resolve a full-pack SWAP (ITEMS.md slice B): drop the named carried item to
-   * make room, then take the parked pending pickup. Recomputes AC if either piece
-   * was armor. Returns the visible line (or an error if the drop/pending is gone).
-   */
+  /** Full-pack swap: drop to take the parked pickup (runtimeEconomy.resolveSwap). */
   resolveSwap(dropName: string): { line?: string; error?: string } {
-    const pc = this.pc();
-    const pending = this.sceneCard.pendingPickup;
-    if (!pc || !pending) return { error: "nothing to swap" };
-    const norm = dropName.trim().toLowerCase().replace(/^(a|an|the)\s+/, "");
-    const dropped = pc.gear.find((g) => g.name.toLowerCase() === norm) ?? pc.gear.find((g) => g.name.toLowerCase().includes(norm));
-    if (!dropped) return { error: `not carrying "${dropName.trim()}"` };
-
-    // Drop one (a stack decrements; flavor/last goes whole), then append the pending.
-    let gear =
-      dropped.itemId && (dropped.qty ?? 1) > 1
-        ? pc.gear.map((g) => (g === dropped ? { ...g, qty: (g.qty ?? 1) - 1 } : g))
-        : pc.gear.filter((g) => g !== dropped);
-    const cat = pending.itemId ? catalogItem(pending.itemId) : undefined;
-    gear = [
-      ...gear,
-      cat
-        ? { name: cat.name, itemId: cat.id, qty: 1, ...(cat.damage ? { damage: cat.damage } : {}), ...(cat.acBonus ? { acBonus: cat.acBonus } : {}) }
-        : { name: pending.name, ...(pending.note ? { detail: pending.note } : {}) },
-    ];
-    const armorTouched =
-      Boolean(dropped.acBonus ?? (dropped.itemId ? catalogItem(dropped.itemId)?.acBonus : 0)) || Boolean(cat?.acBonus);
-    this.setGear(pc.id, gear, armorTouched);
-    this.sceneCard.pendingPickup = undefined;
-    return { line: `🎒 Dropped ${dropped.name}, took ${pending.name}.` };
+    return resolveSwap(this, dropName);
   }
 
-  /** Walk away from a parked pending pickup — leave it behind for good. */
+  /** Leave a parked pending pickup behind (runtimeEconomy.declineSwap). */
   declineSwap(): { line?: string } {
-    const pending = this.sceneCard.pendingPickup;
-    this.sceneCard.pendingPickup = undefined;
-    return pending ? { line: `🎒 Left ${pending.name} behind.` } : {};
+    return declineSwap(this);
   }
 
-  // ── Shops (ITEMS.md slice E) — the ENGINE owns the whole transaction ────────
+  // ── Shops + dock services (ITEMS.md E / ECONOMY E-3) — runtimeEconomy.ts ─────
 
-  /** Buy from the local market. Validates the shelf, the price (catalog ±20% by
-   *  local-faction rep), credits, and pack space; prints the only figures the
-   *  player sees. Returns an error string for a VISIBLE ⚠ line — a narrated
-   *  purchase that didn't really happen must never pass silently. */
+  /** Buy from the local market (runtimeEconomy.buyItem). */
   buyItem(itemId: string, qty = 1): { line?: string; error?: string } {
-    const pc = this.pc();
-    if (!pc) return { error: "no character" };
-    const n = Math.max(1, Math.min(5, Math.floor(qty)));
-    const loc = this.state.locations.find((l) => l.id === this.state.campaign.currentLocationId);
-    const tier = marketTierFor(loc);
-    if (!loc || !tier) return { error: "no market here" };
-    // Resolve the request leniently — cheap models emit a name or a near-id, and a
-    // buy REJECTED after the narrator offered it (the reported bug) is worse than a
-    // loose match. Then gate by the market's TIER, not the rotated "featured" subset:
-    // buying was failing because the model offered a tier-appropriate item that just
-    // wasn't in that window's random stock. Consumables sell at any market.
-    const wantId = catalogItem(itemId) ? itemId : resolveGearItemId({ name: itemId }) ?? itemId;
-    const cat = catalogItem(wantId);
-    if (!cat) return { error: `no such item "${itemId}"` };
-    const order = { T1: 1, T2: 2, T3: 3 } as const;
-    if (cat.type !== "consumable" && !(cat.marketTier && order[cat.marketTier] <= order[tier])) {
-      return { error: `${cat.name} is above what this market carries` };
-    }
-    const rep = localRep(loc, this.state.factions, this.state.factionRep);
-    const price = Math.round(cat.price * repPriceFactor(rep)) * n;
-    if ((pc.credits ?? 0) < price) return { error: `can't afford it (¢${price}, holding ¢${pc.credits ?? 0})` };
-    const existing = pc.gear.find((g) => g.itemId === cat.id);
-    const gear = existing
-      ? pc.gear.map((g) => (g === existing ? { ...g, qty: (g.qty ?? 1) + n } : g))
-      : [
-          ...pc.gear,
-          {
-            name: cat.name,
-            itemId: cat.id,
-            qty: n,
-            detail: this.acquiredDetail(`bought at ${loc.name}`),
-            ...(cat.damage ? { damage: cat.damage } : {}),
-            ...(cat.acBonus ? { acBonus: cat.acBonus } : {}),
-          },
-        ];
-    const cap = maxSlotsFor(pc);
-    if (slotsUsed({ ...pc, gear }) > cap) {
-      return { error: `pack full (${slotsUsed(pc)}/${cap} slots) — drop something first` };
-    }
-    this.setGear(pc.id, gear, Boolean(cat.acBonus));
-    const after = (pc.credits ?? 0) - price;
-    this.state = {
-      ...this.state,
-      characters: this.state.characters.map((c) => (c.id === pc.id ? { ...c, credits: after } : c)),
-    };
-    const line = `🛒 Bought ${cat.name}${n > 1 ? ` ×${n}` : ""} — ¢${price}. ¢${after} left.`;
-    this.events.push({ type: "note", breakdown: line });
-    return { line };
+    return buyItem(this, itemId, qty);
   }
 
-  /** Sell carried gear at the flat 40% rate (catalog price, else the netWorth
-   *  heuristic). Decrements a stack by one; flavor gear goes whole. */
+  /** Sell carried gear at the flat 40% rate (runtimeEconomy.sellItem). */
   sellItem(name: string): { line?: string; error?: string } {
-    const pc = this.pc();
-    if (!pc) return { error: "no character" };
-    const norm = name.trim().toLowerCase().replace(/^(a|an|the)\s+/, "");
-    const existing =
-      pc.gear.find((g) => g.name.toLowerCase() === norm) ??
-      pc.gear.find((g) => g.itemId && g.itemId.toLowerCase() === norm) ??
-      pc.gear.find((g) => g.name.toLowerCase().includes(norm));
-    if (!existing) return { error: `not carrying "${name.trim()}"` };
-    const unitValue = existing.itemId
-      ? catalogItem(existing.itemId)?.price ?? 0
-      : gearValue({ ...existing, qty: 1 });
-    const paid = Math.max(1, Math.round(unitValue * SELL_RATE));
-    const gear =
-      existing.itemId && (existing.qty ?? 1) > 1
-        ? pc.gear.map((g) => (g === existing ? { ...g, qty: (g.qty ?? 1) - 1 } : g))
-        : pc.gear.filter((g) => g !== existing);
-    const hadArmor = Boolean(
-      existing.acBonus ?? (existing.itemId ? catalogItem(existing.itemId)?.acBonus : 0),
-    );
-    this.setGear(pc.id, gear, hadArmor);
-    const after = (this.pc()?.credits ?? 0) + paid;
-    this.state = {
-      ...this.state,
-      characters: this.state.characters.map((c) => (c.id === pc.id ? { ...c, credits: after } : c)),
-    };
-    const line = `💰 Sold ${existing.name} — +¢${paid}. ¢${after} total.`;
-    this.events.push({ type: "note", breakdown: line });
-    return { line };
+    return sellItem(this, name);
   }
 
-  /**
-   * Dock hull repair (ECONOMY E-3): patch the hull at ¢12/HP. NEVER refused for
-   * lack of funds — the balance goes NEGATIVE (the dock extends credit), and the
-   * Dock debt thread + payoff loop kicks in (syncDockDebt). Gated to a serviced
-   * dock (the tags a market needs). `hpWanted` caps a partial patch; omit for full.
-   */
+  /** Dock hull repair at ¢12/HP, credit extended (runtimeEconomy.repairShip). */
   repairShip(hpWanted?: number): { line?: string; error?: string } {
-    const s = this.state.ship;
-    if (!s) return { error: "no ship to repair" };
-    const loc = this.state.locations.find((l) => l.id === this.state.campaign.currentLocationId);
-    if (!marketTierFor(loc)) return { error: "no dock with services here" };
-    const deficit = s.maxHp - s.hp;
-    if (deficit <= 0) return { error: "the hull is already fully patched" };
-    const hp = hpWanted ? Math.max(1, Math.min(Math.floor(hpWanted), deficit)) : deficit;
-    const cost = hp * economy.constants.repairCostPerHp;
-    const pc = this.pc();
-    const before = pc?.credits ?? 0;
-    const after = before - cost;
-    this.state = {
-      ...this.state,
-      ship: { ...s, hp: s.hp + hp },
-      characters: this.state.characters.map((c) => (c.id === pc?.id ? { ...c, credits: after } : c)),
-    };
-    this.events.push({ type: "cost", breakdown: `Dock repair: +${hp} hull, -¢${cost}`, amount: -cost });
-    this.syncDockDebt();
-    const tail = after < 0 ? ` The dock runs a tab — you're ¢${-after} in the hole.` : ` ¢${after} left.`;
-    return { line: `🔧 Hull patched +${hp} (${s.hp}→${s.hp + hp}) — ¢${cost}.${tail}` };
+    return repairShip(this, hpWanted);
   }
 
-  /**
-   * The faction PATRON's free safety net (STARTER.md) — keeps a struggling rookie
-   * afloat: rest to full HP, repair the hull, top stims to a floor, and float a
-   * small credit stipend when broke. Gated to net worth still in the T1 band AND
-   * being with the patron; it cuts off once the player is established. Idempotent-
-   * ish (only touches what's actually depleted).
-   */
+  /** The faction PATRON's free safety net (runtimeEconomy.restWithPatron). */
   restWithPatron(): { line?: string; error?: string } {
-    const pc = this.pc();
-    if (!pc) return { error: "no character" };
-    // `present` is the ONLY thing that makes the patron "here" — matching just the
-    // current STATION was the reported bug (a station covers the whole map, so the
-    // free-rest chip and this action fired everywhere on it, for a patron the story
-    // may never have introduced). `patronHelp` is the single source of truth shared
-    // with the chip + prompt, so all three agree on what "here" means.
-    const { patron, present, underCap } = patronHelp(this.state, this.sceneCard.presentNpcIds);
-    if (!patron) return { error: "you have no patron to fall back on" };
-    if (!present) return { error: `${patron.name} isn't here right now` };
-    if (!underCap) {
-      return { error: `you're on your feet now — ${patron.name}'s free help is for those still scraping by` };
-    }
-    const CREDIT_FLOOR = 40;
-    const CREDIT_STIPEND = 120;
-    const parts: string[] = [];
-
-    // Rest to full HP (and clear Downed) — free.
-    if (pc.hp < pc.maxHp) parts.push(`patched up (+${pc.maxHp - pc.hp} HP)`);
-    // Top stims up to the floor.
-    const haveStims = itemCount(pc, "stim");
-    const addStims = Math.max(0, PATRON_STIM_FLOOR - haveStims);
-    if (addStims) parts.push(`+${addStims} stim${addStims > 1 ? "s" : ""}`);
-    // A small stipend when genuinely broke.
-    const broke = (pc.credits ?? 0) < CREDIT_FLOOR;
-    if (broke) parts.push(`spotted you ¢${CREDIT_STIPEND - (pc.credits ?? 0)}`);
-
-    this.state = {
-      ...this.state,
-      characters: this.state.characters.map((c) =>
-        c.id === pc.id
-          ? {
-              ...c,
-              hp: c.maxHp,
-              injuries: (c.injuries ?? []).filter((i) => i.name !== "Downed"),
-              deathSaves: undefined,
-              stims: (c.stims ?? 0) + addStims,
-              credits: broke ? CREDIT_STIPEND : c.credits,
-            }
-          : c,
-      ),
-    };
-
-    // Free hull repair too.
-    const s = this.state.ship;
-    if (s && s.hp < s.maxHp) {
-      parts.push(`hull mended (+${s.maxHp - s.hp})`);
-      this.state = { ...this.state, ship: { ...s, hp: s.maxHp } };
-    }
-
-    if (!parts.length) return { line: `🛟 ${patron.name} looks you over — you're already squared away.` };
-    this.events.push({ type: "note", breakdown: `${patron.name} helped: ${parts.join(", ")}` });
-    return { line: `🛟 ${patron.name} sets you right — ${parts.join(", ")}. Get back out there.` };
+    return restWithPatron(this);
   }
 
-  /**
-   * Reconcile the "Dock debt" thread with the wallet (ECONOMY E-3). A negative
-   * balance ensures the thread (the narrator is steered to offer a T0/T1 payoff
-   * job); clearing the balance resolves it. Payouts auto-clear debt because it's
-   * one running balance. Idempotent via a stable id — call it after any money move.
-   */
+  /** Reconcile the Dock-debt thread with the wallet (runtimeEconomy.syncDockDebt). */
   syncDockDebt() {
-    const credits = this.pc()?.credits ?? 0;
-    const id = "th-dock-debt";
-    const existing = this.state.threads.find((t) => t.id === id);
-    if (credits < 0) {
-      const body = `You owe the dock ¢${-credits}. Any job's pay comes off the debt first — take a quick run to clear it.`;
-      if (!existing) {
-        this.state = {
-          ...this.state,
-          threads: [
-            ...this.state.threads,
-            { id, campaignId: this.state.campaign.id, title: "Dock debt", body, status: "active", entityRefs: [] },
-          ],
-        };
-      } else if (existing.status !== "active" || existing.body !== body) {
-        this.state = {
-          ...this.state,
-          threads: this.state.threads.map((t) => (t.id === id ? { ...t, body, status: "active" } : t)),
-        };
-      }
-    } else if (existing && existing.status === "active") {
-      this.state = {
-        ...this.state,
-        threads: this.state.threads.map((t) =>
-          t.id === id ? { ...t, status: "resolved", body: "Square with the dock — debt cleared." } : t,
-        ),
-      };
-    }
+    syncDockDebt(this);
   }
 
   /**
@@ -1292,7 +856,7 @@ export class TurnRuntime {
       attributes = input.attributes;
       maxHp = Math.max(1, 18 + attributes.vitality);
       hp = Math.min(pc.hp, maxHp); // remade, not healed — clamp to the new cap
-      ac = 10 + attributes.reflex + TurnRuntime.bestArmor(pc.gear);
+      ac = 10 + attributes.reflex + bestArmor(pc.gear);
     }
 
     const after = (pc.credits ?? 0) - cost;
