@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkFromVerb, verbFromLabel, verbRolls, ACTION_VERBS, FREE_VERBS, VERB_LIST } from "./actions";
+import { checkFromVerb, verbFromLabel, verbRolls, inferAttemptVerb, ACTION_VERBS, FREE_VERBS, VERB_LIST } from "./actions";
 import skills from "@/content/skills.json";
 
 describe("action verbs → engine checks", () => {
@@ -74,5 +74,35 @@ describe("action verbs → engine checks", () => {
     // Both kinds are valid schema values.
     expect(VERB_LIST).toContain("go");
     expect(VERB_LIST).toContain("force");
+  });
+});
+
+describe("inferAttemptVerb — a typed custom action gets a check even without a model roll", () => {
+  it("catches attempts buried under first-person filler", () => {
+    expect(inferAttemptVerb("I sneak past the guards")).toBe("sneak");
+    expect(inferAttemptVerb("I'll persuade the dockmaster to look the other way")).toBe("persuade");
+    expect(inferAttemptVerb("I try to hack the door panel")).toBe("hack");
+    expect(inferAttemptVerb("let me search the body")).toBe("loot");
+    expect(inferAttemptVerb("I'm gonna carefully climb the gantry")).toBe("climb");
+    expect(inferAttemptVerb("sweet-talk the guard")).toBe("persuade");
+    expect(inferAttemptVerb("I want to intimidate him into talking")).toBe("threaten");
+    expect(inferAttemptVerb("bluff my way past the checkpoint")).toBe("lie");
+  });
+
+  it("returns null for pure dialogue and free actions — no false checks", () => {
+    expect(inferAttemptVerb("I greet the bartender")).toBeNull();
+    expect(inferAttemptVerb("ask the bartender about the job")).toBeNull(); // 'ask' is free (talk)
+    expect(inferAttemptVerb("I head back to the ship")).toBeNull();
+    expect(inferAttemptVerb("wait and watch the crowd")).toBeNull();
+    expect(inferAttemptVerb("tell him my name")).toBeNull();
+  });
+
+  it("never manufactures a FIGHT — combat verbs route themselves", () => {
+    expect(inferAttemptVerb("I shoot the guard")).toBeNull();
+    expect(inferAttemptVerb("open fire on them")).toBeNull();
+  });
+
+  it("'ask around' (streetwise) still beats bare 'ask' (dialogue)", () => {
+    expect(inferAttemptVerb("ask around the docks about the courier")).toBe("network");
   });
 });

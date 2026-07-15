@@ -34,7 +34,7 @@ export const ACTION_VERBS: Record<string, ActionVerbDef> = {
   pilot: { skill: "piloting", defaultDc: 13, aliases: ["fly", "dock", "burn", "evade", "thread"], hint: "fly/dock/evade at the stick" },
   spacewalk: { skill: "zeroG", defaultDc: 13, hazard: true, aliases: ["float", "eva", "tether", "drift"], hint: "move in vacuum / zero-g / EVA" },
   plot: { skill: "navigation", defaultDc: 13, aliases: ["navigate", "chart", "jump"], hint: "plot a course / FTL jump" },
-  persuade: { skill: "negotiation", defaultDc: 13, aliases: ["convince", "talk", "charm", "haggle", "negotiate", "reason"], hint: "win someone over / haggle" },
+  persuade: { skill: "negotiation", defaultDc: 13, aliases: ["convince", "talk", "charm", "haggle", "negotiate", "reason", "sweet-talk", "sweettalk", "plead", "coax", "appeal", "flatter"], hint: "win someone over / haggle" },
   network: { skill: "streetwise", defaultDc: 13, aliases: ["ask around", "work", "canvass", "fence", "case", "sniff around"], hint: "work the underworld — rumors, contacts, fences, the word on the street" },
   lie: { skill: "deception", defaultDc: 13, aliases: ["bluff", "con", "deceive", "disguise", "feign"], hint: "lie / bluff / con" },
   threaten: { skill: "intimidation", defaultDc: 13, aliases: ["intimidate", "menace", "press", "strong-arm"], hint: "threaten / strong-arm" },
@@ -139,6 +139,36 @@ export function verbFromLabel(label: string): string | null {
     .replace(/^(try to|attempt to|carefully|quietly|quickly)\s+/, "")
     .slice(0, 40);
   for (const [alias, verb] of ALIAS_TO_VERB) {
+    if (head.startsWith(alias + " ") || head === alias) return verb;
+  }
+  return null;
+}
+
+/** Leading filler stripped off a TYPED action before matching its verb — first-
+ *  person framing ("I'll", "let me", "I try to") + soft adverbs, peeled a few
+ *  times so "I'm gonna carefully sneak…" reduces to "sneak…". */
+const TYPED_FILLER_RE =
+  /^(i['’]?ll|i['’]?m going to|i am going to|i['’]?d like to|i['’]?m gonna|i want to|i wanna|i will|i try to|i attempt to|i'?m trying to|let me|let['’]?s|i|we['’]?ll|we|then|and|first|now|just|try to|attempt to|carefully|quietly|quickly|slowly|cautiously|quick)\s+/;
+
+/**
+ * Infer a NON-COMBAT attempt verb from a player's TYPED action, so a custom action
+ * that reads as an attempt (persuade / sneak / force / hack / lie / threaten …)
+ * gets a check even when the model forgets to set `roll`. Strips first-person
+ * filler, then matches an attempt verb/alias at the head of the phrase. Returns
+ * null for pure dialogue / free verbs ("greet the bartender") and for combat
+ * (which has its own routing) — so it never manufactures a false check or a fight.
+ */
+export function inferAttemptVerb(text: string): string | null {
+  let head = (text ?? "").toLowerCase().replace(/^["'“”\s]+/, "");
+  for (let i = 0; i < 4; i++) {
+    const stripped = head.replace(TYPED_FILLER_RE, "");
+    if (stripped === head) break;
+    head = stripped;
+  }
+  head = head.slice(0, 50);
+  for (const [alias, verb] of ALIAS_TO_VERB) {
+    if (!(verb in ACTION_VERBS)) continue; // free verbs carry no check
+    if (ACTION_VERBS[verb].combat) continue; // combat routes itself, never here
     if (head.startsWith(alias + " ") || head === alias) return verb;
   }
   return null;

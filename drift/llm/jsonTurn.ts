@@ -15,7 +15,7 @@ import {
   type ChoiceOption,
 } from "@/shared/turnPlan";
 import { SCENE_TURN_CAP, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
-import { checkFromVerb, verbFromLabel, verbRolls } from "@/shared/actions";
+import { checkFromVerb, verbFromLabel, verbRolls, inferAttemptVerb } from "@/shared/actions";
 import { dcForRisk, difficultyToRisk, type RiskTier } from "@/shared/risk";
 import type { Character } from "@/shared/schemas";
 import { extractDialogueNpcs, knownEntityNames, isPlausibleNpcName } from "@/shared/npcExtract";
@@ -411,24 +411,38 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     return cbt.active ? cbt : null;
   }
 
-  // The clicked check's skill: verb-derived when tagged (engine owns the mapping),
-  // else the explicit skill. A check with neither is skipped (nothing to roll).
-  const preVerb = input.preCheck?.verb ? checkFromVerb(input.preCheck.verb) : null;
-  const preSkill = preVerb?.skill ?? input.preCheck?.skill ?? null;
-  if (input.preCheck && preSkill && pc) {
+  // Typed-action check inference: the model too often forgets to set `roll` on a
+  // custom action, so a TYPED action (not a clicked chip) that READS as an attempt
+  // gets a check inferred from the player's own words and PRE-ROLLED here — exactly
+  // like a clicked choice — so the model narrates a KNOWN result in a single pass
+  // (no post-hoc re-narration, no dice/prose desync). Pure dialogue / free verbs
+  // infer nothing, so "I greet the bartender" never manufactures a false check.
+  const impliedCheck: CheckSpec | undefined = (() => {
+    if (input.fromChoice || input.preCheck) return undefined;
+    const v = inferAttemptVerb(input.playerText);
+    const vc = v ? checkFromVerb(v) : null;
+    return v && vc ? ({ verb: v, dc: vc.dc, stakes: true } as CheckSpec) : undefined;
+  })();
+  const preCheck = input.preCheck ?? impliedCheck;
+
+  // The clicked/inferred check's skill: verb-derived when tagged (engine owns the
+  // mapping), else the explicit skill. A check with neither is skipped.
+  const preVerb = preCheck?.verb ? checkFromVerb(preCheck.verb) : null;
+  const preSkill = preVerb?.skill ?? preCheck?.skill ?? null;
+  if (preCheck && preSkill && pc) {
     if (COMBAT_SKILLS.has(preSkill)) {
       toolCalls.push("combat_start");
-      combat = openFightFromSkill(preSkill, input.preCheck.dc);
+      combat = openFightFromSkill(preSkill, preCheck.dc);
     } else {
       toolCalls.push("roll_check");
       const res = runtime.execute("roll_check", {
         characterId: pc.id,
         skill: preSkill,
-        dc: input.preCheck.dc,
-        stakes: input.preCheck.stakes,
-        failDamage: input.preCheck.failDamage,
-        hazardLevel: input.preCheck.hazardLevel ?? preVerb?.hazardLevel,
-        target: input.preCheck.target ?? undefined,
+        dc: preCheck.dc,
+        stakes: preCheck.stakes,
+        failDamage: preCheck.failDamage,
+        hazardLevel: preCheck.hazardLevel ?? preVerb?.hazardLevel,
+        target: preCheck.target ?? undefined,
         // Scavenging IS the loot skill: a clicked choice's badge round-trips only the
         // skill (not the verb), so recover the loot intent from the skill itself —
         // else a successful "search the body" grants nothing and the narrator's
@@ -631,7 +645,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     !p.combatStart &&
     !p.sceneEnd &&
     !p.roll;
-  if (!input.preCheck && wantsCheck(plan)) {
+  if (!preCheck && wantsCheck(plan)) {
     toolCalls.push("enforce_check");
     messages.push({ role: "assistant", content: JSON.stringify({ narration: plan.narration, choices: plan.choices }) });
     messages.push({
@@ -654,7 +668,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   // it rolled" bug. Typed free text stays unconstrained (no chip to contradict). An
   // explicit combatStart is still allowed (a deliberate ambush beat); only the
   // plan.roll skill/reroute path is gated here.
-  if (plan.roll && rollSkill && !input.preCheck && !input.fromChoice && pc && !combat && COMBAT_SKILLS.has(rollSkill)) {
+  if (plan.roll && rollSkill && !preCheck && !input.fromChoice && pc && !combat && COMBAT_SKILLS.has(rollSkill)) {
     toolCalls.push("combat_start");
     combat = openFightFromSkill(rollSkill, plan.roll.dc);
     // The narration above described the player's INTENT and was written BEFORE the
@@ -675,7 +689,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
         plan = { ...outcome, narration };
       }
     }
-  } else if (plan.roll && rollSkill && !input.preCheck && !input.fromChoice && pc && !combat) {
+  } else if (plan.roll && rollSkill && !preCheck && !input.fromChoice && pc && !combat) {
     toolCalls.push("roll_check");
     const res = runtime.execute("roll_check", {
       characterId: pc.id,
