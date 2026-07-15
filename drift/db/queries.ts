@@ -20,6 +20,7 @@ import type { EngineEvent } from "@/engine";
 import type { CombatState } from "@/shared/combat";
 import type { SceneCard, NpcRelations, SceneMemory } from "@/shared/scene";
 import type { ChoiceOption } from "@/shared/turnPlan";
+import type { Job } from "@/shared/quests";
 import type { Dossier } from "@/shared/multiplayer";
 
 /**
@@ -182,6 +183,9 @@ export interface CampaignRuntime {
   npcRelations: NpcRelations;
   /** Last offered suggested actions, so a refresh restores the chips. */
   lastChoices: ChoiceOption[];
+  /** The procedural job board — offered + active + recently-completed scores
+   *  (QUESTS.md). Engine-owned; a session slice like npcs/sceneCard. */
+  jobs: Job[];
   updatedAt?: string;
 }
 
@@ -192,7 +196,7 @@ export async function loadCampaignRuntime(
 ): Promise<CampaignRuntime | null> {
   const { data, error } = await db
     .from("campaign_runtime")
-    .select("transcript,history,log,focus_ids,ticked_this_scene,combat,npcs,scene_card,npc_relations,last_choices,updated_at")
+    .select("transcript,history,log,focus_ids,ticked_this_scene,combat,npcs,scene_card,npc_relations,last_choices,jobs,updated_at")
     .eq("campaign_id", campaignId)
     .maybeSingle();
   if (error || !data) return null;
@@ -207,6 +211,7 @@ export async function loadCampaignRuntime(
     sceneCard: (data.scene_card as SceneCard | null) ?? null,
     npcRelations: (data.npc_relations as NpcRelations) ?? {},
     lastChoices: (data.last_choices as ChoiceOption[]) ?? [],
+    jobs: (data.jobs as Job[]) ?? [],
     updatedAt: data.updated_at ? String(data.updated_at) : undefined,
   };
 }
@@ -217,7 +222,7 @@ export async function saveCampaignRuntime(
   campaignId: string,
   rt: Pick<
     CampaignRuntime,
-    "transcript" | "history" | "log" | "focusIds" | "tickedThisScene" | "combat" | "npcs" | "sceneCard" | "npcRelations" | "lastChoices"
+    "transcript" | "history" | "log" | "focusIds" | "tickedThisScene" | "combat" | "npcs" | "sceneCard" | "npcRelations" | "lastChoices" | "jobs"
   >,
 ): Promise<void> {
   await db.from("campaign_runtime").upsert({
@@ -232,6 +237,7 @@ export async function saveCampaignRuntime(
     scene_card: rt.sceneCard,
     npc_relations: rt.npcRelations,
     last_choices: rt.lastChoices,
+    jobs: rt.jobs,
     updated_at: new Date().toISOString(),
   });
 }

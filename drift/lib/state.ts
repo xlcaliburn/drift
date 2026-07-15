@@ -10,6 +10,7 @@ import { isShareableNpcName, isPlausibleNpcName } from "@/shared/npcExtract";
 import { mapLegacyGear } from "@/shared/items";
 import { ensureStartingGun, ensurePatronSeed } from "@/engine/creation";
 import type { ChoiceOption } from "@/shared/turnPlan";
+import type { Job } from "@/shared/quests";
 import type { Dossier } from "@/shared/multiplayer";
 
 /** Campaign-scoped NPCs (narrator-introduced or creation relations) carry these id
@@ -47,6 +48,8 @@ export interface SessionData {
   recentScenes: SceneMemory[];
   /** Last offered suggested actions, restored on refresh. */
   lastChoices: ChoiceOption[];
+  /** The procedural job board (QUESTS.md) — offered + active + completed scores. */
+  jobs: Job[];
 }
 
 const store = new Map<string, SessionData>();
@@ -115,6 +118,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               },
               recentScenes,
               lastChoices: runtime.lastChoices ?? [],
+              jobs: runtime.jobs ?? [],
             }
           : {
               state,
@@ -129,6 +133,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               npcRelations: patronSeed ? { [patronSeed.id]: patronSeed.relation } : {},
               recentScenes,
               lastChoices: [],
+              jobs: [],
             };
       store.set(campaignId, session);
       return session;
@@ -201,6 +206,7 @@ export async function persistSession(campaignId: string, session: SessionData): 
       sceneCard: session.sceneCard,
       npcRelations: session.npcRelations,
       lastChoices: session.lastChoices,
+      jobs: session.jobs ?? [],
     });
     // Build this PC's PUBLIC dossier and promote it into the UNIVERSE-scoped
     // dossiers table so other campaigns in the same world can cameo the character

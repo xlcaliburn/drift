@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
     npcRelations: { [patron.id]: patron.relation },
     recentScenes: [],
     lastChoices: [],
+    jobs: [], // the board seeds on first load (QUESTS.md)
   };
   setSession(campaignId, session0);
   await persistSession(campaignId, session0);
