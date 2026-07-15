@@ -177,3 +177,19 @@ export function relationSuffix(rel: NpcRelation | undefined): string {
   if (rel.lastNote) bits.push(`last: ${rel.lastNote}`);
   return bits.length ? ` [${bits.join(" · ")}]` : "";
 }
+
+/**
+ * The full relationship HISTORY with an NPC, rendered for the prompt so the
+ * narrator remembers what has actually passed between them (not just the single
+ * last note — the "forgot the whole scene with Sera" bug). Recent beats,
+ * oldest→newest, scene-tagged. Empty when there's ≤1 beat (the suffix's `last:`
+ * already covers a brand-new relationship). Fed for NPCs the player is with now.
+ */
+export function relationHistory(rel: NpcRelation | undefined, max = 6): string {
+  const log = rel?.log;
+  if (!log || log.length < 2) return "";
+  return log
+    .slice(-max)
+    .map((e) => (e.scene ? `[s${e.scene}] ${e.note}` : e.note))
+    .join(" · ");
+}

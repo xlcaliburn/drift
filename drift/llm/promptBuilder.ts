@@ -5,7 +5,7 @@ import { skills } from "@/content";
 import { backgrounds, ambitions } from "@/content/creation";
 import { itemReference, allItems, itemCount } from "@/shared/items";
 import { verbReference, freeVerbReference } from "@/shared/actions";
-import { relationSuffix, RECENT_SCENES_IN_PROMPT, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
+import { relationSuffix, relationHistory, RECENT_SCENES_IN_PROMPT, type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/scene";
 import { generateQuirk } from "@/shared/npcFlavor";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { playerThreatTier } from "@/shared/netWorth";
@@ -555,11 +555,17 @@ export function buildContextSlice(
     ...(bodyModLine ? [bodyModLine] : []),
     ``,
     npcs.length
-      ? `NPCs in play (proximity = how close; standing = their history; "plays:" = their canon personality — play it CONSISTENTLY; "hook:" = a backstory thread you can pull into a quest):\n${npcs
+      ? `NPCs in play (proximity = how close; standing = their history; "plays:" = their canon personality — play it CONSISTENTLY; "hook:" = a backstory thread you can pull into a quest; "history:" = what has ALREADY passed between you and them — treat it as fact and NEVER act as if it didn't happen):\n${npcs
           .map((n) => {
             const quirk = n.quirk ?? generateQuirk(n.id);
             const hook = presentSet.has(n.id) && n.backstory ? ` [hook: ${n.backstory}]` : "";
-            return `  - ${n.name} (id: ${n.id})${proximityTag(n, presentSet, loc?.id)}: ${n.oneBreath} (plays: ${quirk})${relationSuffix(rels[n.id])}${hook}`;
+            // Feed the full relationship history for any NPC relevant this turn (present
+            // OR surfaced by the player's text) so an extensive prior scene with them
+            // can't be forgotten — the "Agnes forgot her whole scene with Sera" bug.
+            // relationHistory is quiet for a brand-new tie (the suffix's `last:` covers it).
+            const hist = relationHistory(rels[n.id]);
+            const histLine = hist ? `\n      history: ${hist}` : "";
+            return `  - ${n.name} (id: ${n.id})${proximityTag(n, presentSet, loc?.id)}: ${n.oneBreath} (plays: ${quirk})${relationSuffix(rels[n.id])}${hook}${histLine}`;
           })
           .join("\n")}`
       : `NPCs in play: none flagged`,

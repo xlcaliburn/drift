@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { CampaignState } from "@/shared/schemas";
 import { TurnRuntime } from "./engineBridge";
-import { freshSceneCard, carryScene, MAX_BEATS, dispositionLabel, relationSuffix } from "@/shared/scene";
+import { freshSceneCard, carryScene, MAX_BEATS, dispositionLabel, relationSuffix, relationHistory } from "@/shared/scene";
 import type { RNG } from "@/engine";
 
 const rng: RNG = { int: (min) => min };
@@ -222,5 +222,29 @@ describe("npc relations (tier CANON)", () => {
     );
     expect(relationSuffix({ disposition: 0 })).toBe("");
     expect(dispositionLabel(-3)).toBe("hostile");
+  });
+
+  it("ACCUMULATES a history log across turns and RENDERS it for the prompt (the 'forgot the scene' fix)", () => {
+    const card = freshSceneCard(5);
+    const rt = new TurnRuntime(baseState(), rng, { sceneCard: card, npcRelations: {} });
+    const { id } = rt.registerNpc("Sera");
+    // An extensive scene: several distinct developments over the turns.
+    rt.updateNpcRelation(id, { note: "met at the bar; she's a Sable courier" });
+    rt.updateNpcRelation(id, { note: "she told you about her missing sister" });
+    rt.updateNpcRelation(id, { note: "she asked you to look into the Rook manifests" });
+    rt.updateNpcRelation(id, { note: "she asked you to look into the Rook manifests" }); // dupe → no new entry
+    const rel = rt.npcRelations[id];
+    expect(rel.log?.length).toBe(3); // deduped, all three distinct beats kept
+    const hist = relationHistory(rel);
+    // The whole arc is in the prompt string, scene-tagged — not just the last line.
+    expect(hist).toContain("met at the bar");
+    expect(hist).toContain("missing sister");
+    expect(hist).toContain("Rook manifests");
+    expect(hist).toContain("[s5]");
+  });
+
+  it("relationHistory stays quiet for a brand-new relationship (≤1 beat)", () => {
+    expect(relationHistory({ disposition: 0, log: [{ note: "just met", scene: 1 }] })).toBe("");
+    expect(relationHistory({ disposition: 0 })).toBe("");
   });
 });
