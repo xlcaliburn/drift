@@ -1,7 +1,19 @@
 # CREW.md — Recruitment & Scaling Upkeep Design
 
-*Spun off from COMBAT.md review round 1 (I-5). Status: designed, not yet built —
-this is the remaining crew v1 work. Combat v1 (its dependency) has shipped.*
+*SLICE 1 SHIPPED (2026-07-16): recruitment + per-tenday wages. Locked decisions:
+(1) recruitment flows through the RELATIONSHIPS trust tier — a trusted (+2) PRESENT
+NPC surfaces an engine-generated `Hire <name> (tier role — ¢X/tenday)` chip
+(`shared/crew.recruitOffer` → `llm/runtimeCrew.recruitCrew`); +3 hires at T2; T3 is
+never a routine hire. No model `recruit` field in v1 (every model-emitted field so
+far has under-fired). (2) Per-tenday wages REPLACE the old flat ¢50-per-paying-job
+wage (which would double-charge) — upkeep = wages + superlinear overhead, charged by
+the turn route as the ENGINE-OWNED tenday clock advances (`engine/time.ts` — travel
+costs a tenday, every 4th in-place scene close ticks one; before this every campaign
+sat frozen at tenday 0). (3) The nonpayment cascade v1 is TRIMMED to loyalty decay +
+desertion (mutiny deferred). Tables live in `content/crew.json` (C-1: tune from play
+data); crew metadata on characters via migration 022 (`crew_role`/`crew_tier`/`wage`).
+STILL TO BUILD: combat participation (§4 roles/auto-act/medic stabilize — crew do
+NOT fight yet), the trimmed nonpayment cascade itself, role passives, UI crew cards.*
 
 ---
 

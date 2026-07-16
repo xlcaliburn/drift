@@ -9,6 +9,7 @@ import {
 import type { SpawnSpec, ShipSpawnSpec } from "@/engine/combatEngine";
 import type { CombatState, CombatAction, CombatOutcome } from "@/shared/combat";
 import { useItem, resolveDeathSave } from "./runtimeHeal";
+import { recruitCrew } from "./runtimeCrew";
 import {
   rollCheck,
   resolveAttack,
@@ -244,6 +245,11 @@ export class TurnRuntime {
   /** The faction PATRON's free safety net (runtimeEconomy.restWithPatron). */
   restWithPatron(): { line?: string; error?: string } {
     return restWithPatron(this);
+  }
+
+  /** Hire a trusted, present NPC onto the crew (runtimeCrew.recruitCrew — CREW.md). */
+  recruitCrew(npcId: string): { line?: string; error?: string } {
+    return recruitCrew(this, npcId);
   }
 
   /** Reconcile the Dock-debt thread with the wallet (runtimeEconomy.syncDockDebt). */

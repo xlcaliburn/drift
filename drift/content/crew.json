@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "note": "Crew tier + role tables (CREW.md). The ENGINE builds every crew member from these — model-supplied stats are ignored. Wages are per TENDAY (engine/time.ts advances the clock); overheadFactor makes upkeep superlinear in headcount: upkeep = wages + ceil(wages × overheadFactor × (crewCount − 1)). Berths cap crew size by hull (PC + crew). C-1: tune all of this from play data.",
+  "tiers": {
+    "T1": { "label": "hand", "hpRange": [8, 12], "skillLevel": 1, "wage": 25 },
+    "T2": { "label": "professional", "hpRange": [14, 18], "skillLevel": 2, "wage": 60 },
+    "T3": { "label": "elite", "hpRange": [22, 26], "skillLevel": 3, "wage": 150 }
+  },
+  "overheadFactor": 0.15,
+  "startingLoyalty": 3,
+  "roles": {
+    "muscle": { "label": "muscle", "skill": "melee", "gear": [{ "name": "Shock baton", "itemId": "shockBaton", "damage": "1d8" }] },
+    "gunner": { "label": "gunner", "skill": "smallArms", "gear": [{ "name": "Sidearm", "itemId": "sidearm", "damage": "1d8" }] },
+    "medic": { "label": "medic", "skill": "survival", "gear": [{ "name": "Medkit", "itemId": "medkit" }, { "name": "Holdout pistol", "itemId": "holdout", "damage": "1d6" }] },
+    "engineer": { "label": "engineer", "skill": "mechanics", "gear": [{ "name": "Heavy wrench", "itemId": "lightBlade", "damage": "1d6" }] },
+    "pilot": { "label": "pilot", "skill": "piloting", "gear": [{ "name": "Holdout pistol", "itemId": "holdout", "damage": "1d6" }] },
+    "face": { "label": "face", "skill": "negotiation", "gear": [{ "name": "Holdout pistol", "itemId": "holdout", "damage": "1d6" }] }
+  },
+  "berths": { "none": 2, "scout": 2, "fighter": 2, "hauler": 5, "gunship": 4, "corvette": 6 }
+}

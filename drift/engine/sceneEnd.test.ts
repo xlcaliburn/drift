@@ -4,9 +4,9 @@ import { runSceneEnd } from "./sceneEnd";
 import { buildCampaignState } from "@/engine/__fixtures__/vessCampaign";
 
 describe("economy", () => {
-  it("paying job with 2 crew + 1 docking = -¢115", () => {
+  it("1 docking = -¢15 (crew wages moved to per-tenday upkeep — CREW.md §6)", () => {
     const r = applySceneCosts({ paying: true, crewWithWages: 2, dockings: 1 });
-    expect(r.creditsDelta).toBe(-115);
+    expect(r.creditsDelta).toBe(-15); // dock fee only; no per-job wage
   });
   it("non-paying, no docking = ¢0", () => {
     expect(applySceneCosts({ paying: false, crewWithWages: 2, dockings: 0 }).creditsDelta).toBe(0);
@@ -28,9 +28,9 @@ describe("runSceneEnd — full DM checklist pipeline", () => {
     clockAdvances: [{ clockId: "clk-sable", amount: 1, reason: "bulk run completed" }],
   });
 
-  it("deducts crew wages + dock fee from the PC (2008 -> 1893)", () => {
+  it("deducts the dock fee from the PC (2008 -> 1993; wages are per-tenday now)", () => {
     const vess = report.state.characters.find((c) => c.id === "vess")!;
-    expect(vess.credits).toBe(1893);
+    expect(vess.credits).toBe(1993);
   });
 
   it("awards the gunnery tick (5 -> 6)", () => {

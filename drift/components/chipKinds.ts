@@ -38,6 +38,11 @@ export const CHIP_KINDS: ChipKind[] = [
     icon: "☠",
     tip: "End this character for good — their story is over and you can start a new one. This cannot be undone.",
   },
+  {
+    match: (c) => !!c.recruitNpc,
+    icon: "🤝",
+    tip: "Sign them onto your crew — they fight beside you and draw a wage every tenday. Berths are limited by your hull.",
+  },
 ];
 
 /** The engine-chip kind a choice belongs to, or undefined for a plain narrative

@@ -121,6 +121,9 @@ export const ChoiceOption = z.object({
    *  the engine ends the character DETERMINISTICALLY (a real death, not a narrated
    *  one). Only ever engine-generated, never model-authored. */
   confirmDeath: optionalNullable(z.boolean()),
+  /** Set on an engine-generated "Hire <name>" crew chip (CREW.md): the npc id to
+   *  sign on. The engine builds the member from the tier/role tables. */
+  recruitNpc: optionalNullable(z.string()),
 });
 export type ChoiceOption = z.infer<typeof ChoiceOption>;
 

@@ -17,6 +17,7 @@ import { resolveJobsTurn } from "@/shared/jobsRuntime";
 import { personalJobAvailable, TRUST_THRESHOLD } from "@/shared/scene";
 import { liveRng } from "@/engine/rng";
 import { advanceTendays, tendaysForSceneClose } from "@/engine/time";
+import { recruitOffer, chargeCrewUpkeep } from "@/shared/crew";
 import { getSession, setSession, persistSession, loadReachableDossiers } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
@@ -148,6 +149,8 @@ export async function POST(req: NextRequest) {
   // A trusted NPC's personal-favor chip (RELATIONSHIPS.md): their npc id.
   const acceptPersonalNpcId =
     typeof body.acceptPersonalJob === "string" && body.acceptPersonalJob ? body.acceptPersonalJob : undefined;
+  // A clicked "Hire <name>" crew chip (CREW.md): the npc id to sign on.
+  const recruitNpcId = typeof body.recruitNpc === "string" && body.recruitNpc ? body.recruitNpc : undefined;
   // A clicked full-pack swap chip: the gear to drop, or "__decline__" to leave it.
   const preSwap = Boolean(body.swapDecline)
     ? "__decline__"
@@ -478,6 +481,7 @@ export async function POST(req: NextRequest) {
                 preUseItem: useItemId,
                 preRepair,
                 preRest,
+                preRecruit: recruitNpcId,
                 preSwap,
                 fromChoice,
                 // Scene memory (mutated in place by the runtime; session owns it).
@@ -550,13 +554,17 @@ export async function POST(req: NextRequest) {
         const sceneClosed = (result.sceneEnded || moved) && !pcDied && !resultCombat?.active;
         const timeLines: string[] = [];
         if (sceneClosed) {
-          const t = advanceTendays(
-            result.state,
-            tendaysForSceneClose({ moved, sceneSeq: session.sceneCard.seq }),
-          );
+          const tendaysDelta = tendaysForSceneClose({ moved, sceneSeq: session.sceneCard.seq });
+          const t = advanceTendays(result.state, tendaysDelta);
           result.state = t.state;
           result.events = [...result.events, ...t.events];
           timeLines.push(...t.lines);
+          // Crew wages charge as the clock runs (CREW.md §6 — wages + superlinear
+          // overhead per tenday). Credits may go negative; the dock-debt loop bites.
+          const upkeep = chargeCrewUpkeep(result.state, tendaysDelta);
+          result.state = upkeep.state;
+          result.events = [...result.events, ...upkeep.events];
+          timeLines.push(...upkeep.lines);
         }
 
         // Bleeding Out is engine-owned end to end now (runDownedTurn resolves the
@@ -632,6 +640,13 @@ export async function POST(req: NextRequest) {
                     return npc && (session.npcRelations[giverId]?.disposition ?? 0) >= TRUST_THRESHOLD
                       ? [{ label: `Hear ${npc.name} out — take on their personal favor`, acceptPersonalJob: giverId } as ChoiceOption]
                       : [];
+                  })(),
+                  // A trusted PRESENT NPC can be HIRED onto the crew when a berth is
+                  // free (CREW.md §3) — the chip shows tier/role/wage; clicking it IS
+                  // the confirmation, and the engine builds the member from the tables.
+                  ...(() => {
+                    const offer = recruitOffer(result.state, session.npcRelations, session.sceneCard.presentNpcIds);
+                    return offer ? [{ label: offer.label, recruitNpc: offer.npcId } as ChoiceOption] : [];
                   })(),
                   // Then the model's choices — or free next moves if it gave none
                   // (incl. right after a scene ends) so there's never a dead end.

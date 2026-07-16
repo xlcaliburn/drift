@@ -11,28 +11,20 @@ export interface CostResult {
 
 /**
  * Standard per-scene costs from the DM checklist:
- * - after a PAYING job: -¢50 wage per crew member with a wage
  * - each docking: -¢15 dock fee
- * Missiles fired are NOT charged here (only when re-bought); ammo is tracked
- * separately via resource deltas.
+ * Crew wages are NO LONGER charged here — they moved to per-TENDAY upkeep charged
+ * as the clock advances (CREW.md §6, shared/crew.chargeCrewUpkeep; the old flat
+ * ¢50-per-paying-job wage would double-charge). Missiles fired are NOT charged
+ * here (only when re-bought); ammo is tracked separately via resource deltas.
  */
 export function applySceneCosts(input: {
   paying: boolean;
-  crewWithWages: number;
+  /** @deprecated wages are per-tenday now (kept so old call sites type-check). */
+  crewWithWages?: number;
   dockings: number;
 }): CostResult {
   const events: EngineEvent[] = [];
   let delta = 0;
-
-  if (input.paying && input.crewWithWages > 0) {
-    const wages = C.crewWagePerPayingJob * input.crewWithWages;
-    delta -= wages;
-    events.push({
-      type: "cost",
-      breakdown: `Crew wages: -¢${wages} (¢${C.crewWagePerPayingJob} × ${input.crewWithWages})`,
-      amount: -wages,
-    });
-  }
 
   if (input.dockings > 0) {
     const fees = C.dockFee * input.dockings;

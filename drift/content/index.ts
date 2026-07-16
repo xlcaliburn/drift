@@ -4,6 +4,7 @@ import matrixJson from "./matrix.json";
 import shipClassesJson from "./shipClasses.json";
 import enemyTiersJson from "./enemyTiers.json";
 import skillsJson from "./skills.json";
+import crewJson from "./crew.json";
 
 export const economy = economyJson;
 export const weapons = weaponsJson;
@@ -11,6 +12,7 @@ export const matrix = matrixJson;
 export const shipClasses = shipClassesJson;
 export const enemyTiers = enemyTiersJson;
 export const skills = skillsJson;
+export const crew = crewJson;
 
 export type DamageType = "kinetic" | "energy" | "missile" | "ion";
 export type DefenseType = "armor" | "shields" | "evasion" | "pd";

@@ -95,6 +95,13 @@ export const Character = z.object({
   stims: z.number().int().min(0).default(0),
   credits: z.number().int().optional(),
   loyalty: z.number().int().min(0).max(5).optional(),
+  // ── Crew metadata (CREW.md — kind "party" recruits; absent on PCs/legacy) ──
+  /** The role they were hired for (muscle/gunner/medic/engineer/pilot/face). */
+  crewRole: z.string().optional(),
+  /** Crew tier they were built from (wage + stats table). */
+  crewTier: z.enum(["T1", "T2", "T3"]).optional(),
+  /** Wage per TENDAY (engine-charged as the clock advances). */
+  wage: z.number().int().optional(),
   /** Vitality-based death save penalty is derived from attributes.vitality; this
    *  flag documents fragile crew (e.g. Josen at -4) for the UI. */
   fragile: z.boolean().default(false),

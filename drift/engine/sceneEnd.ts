@@ -68,13 +68,10 @@ export function runSceneEnd(
     }
   }
 
-  // --- Step 3: costs ---
-  const crewWithWages = characters.filter(
-    (c) => c.kind === "party" && c.loyalty !== undefined,
-  ).length;
+  // --- Step 3: costs --- (crew wages moved to per-TENDAY upkeep — CREW.md §6,
+  // charged as the clock advances; the scene-end checklist keeps only dock fees.)
   const cost = applySceneCosts({
     paying: input.paying ?? false,
-    crewWithWages,
     dockings: input.dockings ?? 0,
   });
   if (cost.creditsDelta !== 0) {

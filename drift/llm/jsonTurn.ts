@@ -57,6 +57,9 @@ export interface JsonTurnInput {
   /** A clicked "Rest up with <patron>" chip — the engine applies the free safety
    *  net (rest/stims/stipend/repair) before narrating (STARTER.md). */
   preRest?: boolean;
+  /** A clicked "Hire <name>" chip (CREW.md) — the npc id; the engine instantiates
+   *  the crew member deterministically before narrating. */
+  preRecruit?: string;
   /** A clicked full-pack SWAP chip: drop this carried item to take the pending
    *  pickup. `"__decline__"` leaves the pending item behind (ITEMS.md slice B). */
   preSwap?: string;
@@ -543,6 +546,17 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   if (input.preRest && pc) {
     toolCalls.push("rest_patron");
     const res = runtime.restWithPatron();
+    if (res.line) {
+      engineLines.push(`ENGINE RESULT: ${res.line}`);
+      emit([res.line]);
+    } else if (res.error) {
+      emit([`⚠ ${res.error}`]);
+    }
+  }
+  // A clicked "Hire <name>" chip — the engine signs the crew member on (CREW.md).
+  if (input.preRecruit && pc) {
+    toolCalls.push("recruit_crew");
+    const res = runtime.recruitCrew(input.preRecruit);
     if (res.line) {
       engineLines.push(`ENGINE RESULT: ${res.line}`);
       emit([res.line]);
