@@ -149,8 +149,8 @@ export default function AdminAuditsPage() {
               </button>
             </div>
             <p className="mt-1 text-xs text-neutral-500">
-              Campaigns that played in the last day. Untick any to leave them out — each audit is one strong-model read
-              (~$0.15–0.35).
+              Campaigns that played in the last day. Untick any to leave them out — each audit is one Sonnet read
+              (~$0.05–0.10).
             </p>
 
             {candidates.length === 0 ? (

@@ -1,13 +1,6 @@
 import "server-only";
 import { getSession, setSession, persistSession, hasSupabase, type SessionData } from "@/lib/state";
-import {
-  runDailyAudit,
-  defaultAuditModel,
-  escalationAuditModel,
-  RECENTLY_FIXED_NOTE,
-  type AuditInputs,
-  type DailyAuditResult,
-} from "@/llm/dailyAudit";
+import { runDailyAudit, RECENTLY_FIXED_NOTE, type AuditInputs, type DailyAuditResult } from "@/llm/dailyAudit";
 import { applyAnalystUpdates } from "@/lib/analystRun";
 import { recordAiCall } from "@/lib/audit";
 import { dispositionLabel } from "@/shared/scene";
@@ -250,10 +243,7 @@ export async function auditCampaign(campaignId: string): Promise<AuditRunSummary
     // so a quiet day still gives the auditor enough to judge continuity against.
     const turnsToday = await dayTurnCount(campaignId).catch(() => 0);
     const inputs = buildAuditInputs(live, appeals, Math.max(40, turnsToday * 3));
-    // Model tiering: Sonnet by default; a day the player FILED AN APPEAL is a day
-    // something went wrong enough to escalate to the strong model for diagnosis.
-    const model = appeals.includes("APPEAL") ? escalationAuditModel() : defaultAuditModel();
-    const res = await runDailyAudit(inputs, { model });
+    const res = await runDailyAudit(inputs);
 
     // Fold the safe continuity fills into the live session via the SAME guarded
     // machinery as the scene analyst (dedup, name guards, engine-owned ids). The

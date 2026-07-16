@@ -17,9 +17,10 @@ A fourth layer above the per-scene analyst: once a day (~3am cron), a strong
 model reads each campaign that PLAYED that day — the day-sliced transcript,
 the LIVE sheet, cast + standings, open threads, jobs, scene summaries, and the
 day's APPEAL calls/errors — and produces what a scene-scoped pass can't.
-Model tiering: **Sonnet by default** (`DAILY_AUDIT_MODEL`, ~$0.05-0.09 per
-campaign day-sliced), **auto-escalated to Opus** (`DAILY_AUDIT_ESCALATION_MODEL`)
-for a campaign that filed an APPEAL that day — the days deep diagnosis pays.
+Model: **Sonnet across the board** (`DAILY_AUDIT_MODEL`, ~$0.05-0.09 per
+campaign day-sliced) — no Opus tier; the pattern taxonomy + live sheet in the
+prompt make this classification-with-evidence, and Opus proved overkill at
+playtest scale. Fallback chain on provider error: deepseek-reasoner → Haiku.
 
 - **Inconsistencies** — cross-scene contradictions (a fact asserted then
   contradicted, an NPC playing stranger to a friend), severity-ranked.
