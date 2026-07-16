@@ -39,14 +39,25 @@ export default function AdminAuditsPage() {
       });
   }, [reloadNonce]);
 
+  // A serverless failure (timeout, crash) comes back as PLAIN TEXT, not JSON —
+  // surface the status + first line instead of a raw JSON.parse error.
+  async function safeJson(res: Response): Promise<Record<string, unknown>> {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`${res.status} — ${text.slice(0, 120) || "empty response"}`);
+    }
+  }
+
   // Step 1 — open the modal with tonight's would-be roster (everyone pre-checked).
   async function openPicker() {
     setPickerLoading(true);
     setRunNote("");
     try {
       const res = await fetch("/api/cron/daily-audit?preview=1");
-      const data = await res.json();
-      const list: AuditCandidate[] = data.candidates ?? [];
+      const data = await safeJson(res);
+      const list = (data.candidates ?? []) as AuditCandidate[];
       setCandidates(list);
       setSelected(new Set(list.map((c) => c.campaignId)));
     } catch (e) {
@@ -56,30 +67,40 @@ export default function AdminAuditsPage() {
     }
   }
 
-  // Step 2 — run only the checked campaigns (same pass the 3am cron does).
+  // Step 2 — run the checked campaigns ONE REQUEST EACH. A single request for
+  // the whole pass dies on the serverless wall clock (one strong-model read is
+  // 30-90s); per-campaign requests keep each call inside the limit and give
+  // real progress. Failures don't stop the rest.
   async function runSelected() {
     const ids = [...selected];
+    const names = new Map((candidates ?? []).map((c) => [c.campaignId, c.name || c.campaignId]));
     setCandidates(null);
     setRunning(true);
-    setRunNote(`Auditing ${ids.length} campaign${ids.length === 1 ? "" : "s"} — a strong-model read each; this can take a few minutes…`);
-    try {
-      const res = await fetch("/api/cron/daily-audit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaignIds: ids }),
-      });
-      const data = await res.json();
-      setRunNote(
-        res.ok
-          ? `Audited ${data.audited}/${data.total} campaigns · $${(data.costUsd ?? 0).toFixed(3)}`
-          : `⚠ ${data.error ?? "run failed"}`,
-      );
-      setReloadNonce((n) => n + 1);
-    } catch (e) {
-      setRunNote(`⚠ ${e instanceof Error ? e.message : "run failed"}`);
-    } finally {
-      setRunning(false);
+    let ok = 0;
+    let cost = 0;
+    const failures: string[] = [];
+    for (let i = 0; i < ids.length; i++) {
+      setRunNote(`Auditing ${i + 1}/${ids.length} — ${names.get(ids[i])} (a strong-model read; ~1 min each)…`);
+      try {
+        const res = await fetch(`/api/cron/daily-audit?campaignId=${encodeURIComponent(ids[i])}`, { method: "POST" });
+        const data = await safeJson(res);
+        const r = (data.results as { ok?: boolean; costUsd?: number; error?: string }[] | undefined)?.[0];
+        if (res.ok && r?.ok) {
+          ok++;
+          cost += r.costUsd ?? 0;
+        } else {
+          failures.push(`${names.get(ids[i])}: ${r?.error ?? (data.error as string) ?? "failed"}`);
+        }
+      } catch (e) {
+        failures.push(`${names.get(ids[i])}: ${e instanceof Error ? e.message : "failed"}`);
+      }
+      setReloadNonce((n) => n + 1); // each finished report shows up as it lands
     }
+    setRunNote(
+      `Audited ${ok}/${ids.length} campaigns · $${cost.toFixed(3)}` +
+        (failures.length ? ` · ⚠ ${failures.join(" · ")}` : ""),
+    );
+    setRunning(false);
   }
 
   function toggle(id: string) {

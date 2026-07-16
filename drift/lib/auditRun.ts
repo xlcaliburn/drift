@@ -259,18 +259,54 @@ export async function auditCampaign(campaignId: string): Promise<AuditRunSummary
   }
 }
 
-/** The full nightly pass: every campaign that played today, one at a time.
- *  `onlyIds` (the admin modal's selection) scopes the run — ids are still
- *  intersected with the ACTIVE set, so a stale/foreign id can't force an audit. */
-export async function runNightlyAudits(onlyIds?: string[]): Promise<AuditRunSummary[]> {
+/** Campaigns that already have a report for TODAY (a cron re-invocation skips
+ *  them — that's what makes the split cron schedule resumable). */
+async function auditedTodayIds(ids: string[]): Promise<Set<string>> {
+  if (!hasSupabase() || !ids.length) return new Set();
+  const { getServiceClient } = await import("@/db/queries");
+  const { data } = await getServiceClient()
+    .from("daily_audits")
+    .select("campaign_id")
+    .eq("audit_date", new Date().toISOString().slice(0, 10))
+    .in("campaign_id", ids);
+  return new Set((data ?? []).map((r) => r.campaign_id as string));
+}
+
+/**
+ * The full nightly pass: every campaign that played today, one at a time.
+ * `onlyIds` (the admin modal's selection) scopes the run — ids are still
+ * intersected with the ACTIVE set, so a stale/foreign id can't force an audit.
+ *
+ * SERVERLESS REALITY: one strong-model read is 30-90s, and the function that
+ * hosts this has a hard wall-clock cap (Vercel kills it mid-run and returns a
+ * PLAIN-TEXT error). So a no-selection run (the cron) SKIPS campaigns already
+ * audited today and STOPS STARTING new audits once `timeBudgetMs` is spent —
+ * the schedule invokes the route more than once, and each invocation picks up
+ * where the last left off. An explicit selection ignores both (reruns are the
+ * point) — the admin UI drives those one campaign per request instead.
+ */
+export async function runNightlyAudits(
+  onlyIds?: string[],
+  timeBudgetMs = Number(process.env.AUDIT_TIME_BUDGET_MS) || 240_000,
+): Promise<AuditRunSummary[]> {
+  const started = Date.now();
   let ids = await activeCampaignIds();
   if (onlyIds) {
     // An explicit selection is honored exactly — [] runs nothing (deselect-all),
     // undefined (the cron, no body) runs everyone active.
     const wanted = new Set(onlyIds);
     ids = ids.filter((id) => wanted.has(id));
+  } else {
+    const done = await auditedTodayIds(ids);
+    ids = ids.filter((id) => !done.has(id));
   }
   const out: AuditRunSummary[] = [];
-  for (const id of ids) out.push(await auditCampaign(id));
+  for (const id of ids) {
+    if (Date.now() - started > timeBudgetMs) {
+      out.push({ campaignId: id, ok: false, error: "skipped — time budget spent (next cron invocation picks it up)" });
+      continue;
+    }
+    out.push(await auditCampaign(id));
+  }
   return out;
 }
