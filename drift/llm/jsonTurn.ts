@@ -284,6 +284,24 @@ export function redactMoney(narration: string): string {
 }
 
 /**
+ * The engine's ACTUAL combat roster, collapsed to a human list for the opening
+ * re-narration (COMBAT alignment): identical foes group by base name so "Thug 1",
+ * "Thug 2" reads as "2× Thug"; a named boss stays as itself. This is the ground
+ * truth the narrator must match — the model narrated the fight BEFORE the engine
+ * placed the foes (clamped to the net-worth band, capped at 5), so its prose drifts
+ * ("two guards + a broker" while the engine spawned one "Thug"). Feeding the resolved
+ * roster back makes the opening beat match the mechanics by construction.
+ */
+export function combatRoster(combat: CombatState): string {
+  const groups = new Map<string, number>();
+  for (const e of combat.enemies) {
+    const base = e.name.replace(/\s+\d+$/, "").trim() || e.name; // "Thug 2" → "Thug"
+    groups.set(base, (groups.get(base) ?? 0) + 1);
+  }
+  return [...groups.entries()].map(([name, n]) => (n > 1 ? `${n}× ${name}` : name)).join(", ");
+}
+
+/**
  * A blunt, outcome-specific coda appended to the "narrate this result" directive so
  * the cheap model can't narrate a SUCCESS the engine just denied — the exact desync
  * that let a MISSED stealth kill read as a clean assassination, then flip-flop a
@@ -652,10 +670,13 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     // lines are already shown; the client commits this replacement on `done`.
     const openingLine = engineLines[engineLines.length - 1];
     if (openingLine) {
+      // Feed the RESOLVED roster too so the names/count match the engine, not just
+      // the dice (COMBAT alignment — the prose is written before the foes are placed).
+      const roster = combat ? combatRoster(combat) : "";
       messages.push({ role: "assistant", content: JSON.stringify({ narration: plan.narration }) });
       messages.push({
         role: "user",
-        content: `${openingLine}\nThat is the ACTUAL outcome of the opening exchange — the dice are authoritative. Re-narrate THIS beat to match it, REPLACING your previous narration.${outcomeDirective(openingLine)} Do not request another roll.`,
+        content: `${openingLine}\nThat is the ACTUAL outcome of the opening exchange — the dice are authoritative.${roster ? ` The engine placed EXACTLY these combatants: ${roster} — use these names and this exact count, no unnamed extras.` : ""} Re-narrate THIS beat to match it, REPLACING your previous narration.${outcomeDirective(openingLine)} Do not request another roll.`,
       });
       const outcome = await plannedCall(false);
       if (outcome.narration.trim()) {
@@ -717,9 +738,30 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   //    NPC registration + relations, gear items, scene card, world events, quest
   //    threads, clock advances, scene end, and combatStart. Pure engine calls —
   //    the whole block is unit-tested without a model call (applyPlan.test.ts). ──
+  const combatBeforeApply = combat;
   const applyCtx: ApplyCtx = { runtime, preState: input.state, pc, emit, toolCalls, lastRoll, combat };
   applyPlan(plan, applyCtx);
   combat = applyCtx.combat;
+
+  // ── Engine-first combat opening (COMBAT alignment): the model's explicit
+  //    combatStart just spawned the AUTHORITATIVE roster (count clamped to the
+  //    net-worth band, names finalized). The narration was written BEFORE that, so
+  //    it drifts — the "narrated two guards + a broker, engine placed one Thug" bug.
+  //    Re-narrate the opening beat to MATCH the resolved roster exactly (same idiom
+  //    as the reroute/roll re-narration above). One extra call, only when a fight
+  //    opens this way; the gun-skill reroute already re-narrated with the roster. ──
+  if (!combatBeforeApply && combat?.active && plan.combatStart) {
+    const roster = combatRoster(combat);
+    const openers = engineLines.slice(-2).join("\n"); // "⚔ Combat — …" + any surprise strike
+    toolCalls.push("combat_open_realign");
+    messages.push({ role: "assistant", content: JSON.stringify({ narration: plan.narration }) });
+    messages.push({
+      role: "user",
+      content: `A fight just broke out. The engine placed EXACTLY these combatants: ${roster}.${openers ? `\n${openers}\nThat opening exchange is the authoritative result — honor it.` : ""}\nRe-narrate the opening beat to match this roster PRECISELY: use these names and this exact count — no more, no fewer, no unnamed extras. 2-3 vivid sentences, present tense; no dice, no options, no new roll. REPLACE your previous narration.`,
+    });
+    const outcome = await plannedCall(false);
+    if (outcome.narration.trim()) narration = outcome.narration;
+  }
 
   // Reconcile the Dock debt thread with the wallet after every money move this
   // turn (repair, a purchase, scene-end wages, a payout) — a payout auto-clears

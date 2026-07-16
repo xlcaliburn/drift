@@ -19,6 +19,19 @@ reroute clamp every group's tier to the band (a `major` boss may exceed it), the
 prompt feeds the current threat band, the narrated-foe-count backstop tops the spawn
 up to match the fiction (capped at 5), and shields are a T3/`major`-only defense.
 
+**Engine-first combat opening — SHIPPED.** The prose used to be authored BEFORE the
+engine placed the foes, so it drifted from the roster (a live fight narrated "two
+guards + a broker" while the engine spawned one "Thug", named nothing the story
+used). The narrated-foe-count backstop only patched *count*, and only when the prose
+used a recognized foe-noun preceded by a number ("the guards" → 0 → no top-up); names
+never reconciled at all. Fix (`llm/jsonTurn.ts`): once `combatStart` spawns the
+authoritative roster, the engine RE-NARRATES the opening beat to match it — feeding
+the resolved roster (`combatRoster()` collapses "Thug 1/2" → "2× Thug") + the opening
+exchange back to the narrator with "use these names and this exact count." The
+gun-skill reroute's existing re-narration got the same roster feed (free — that call
+already happened); the explicit-`combatStart` path adds one re-narration call when a
+fight opens. Count AND names now align by construction. `combatRoster.test.ts`.
+
 ## Remaining work
 
 ### I-2 backstop — model under-fires `combatStart`
