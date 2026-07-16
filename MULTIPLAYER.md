@@ -13,9 +13,9 @@ bring other players' characters in as NPCs), and **§2 the relationship ledger**
 (`shared/ledger.ts` — a per-campaign Rolodex that GATES cameos to what the character
 actually knows: firsthand = met them, secondhand = heard of them, unknown = dropped;
 promoted to firsthand on a real in-scene encounter, persisted on `campaign_runtime.
-player_ledger`, migration 020). What remains: the **break-away trigger** (§4) and
-**seasons** (§5 — fixed end date + reckoning), plus a Rolodex UI + the deferred
-canon-review queue (§6).*
+player_ledger`, migration 020; the **Rolodex UI** — a details-modal tab of your met
+contacts). What remains: the **break-away trigger** (§4), **seasons** (§5 — fixed
+end date + reckoning), stance/warmth evolution, and the deferred canon-review queue (§6).*
 
 ## The concept in one breath
 
@@ -75,9 +75,10 @@ prompt gate + persistence on `campaign_runtime.player_ledger` (migration 020).
 Knowledge model: you've HEARD of someone (secondhand) if they have a public deed or
 share your faction; you KNOW them (firsthand) once the GM brings them into your scene
 (here-now + named in the narration promotes the entry); a true stranger is dropped
-from the cameo pool. Only firsthand is stored — secondhand is derived. Still open:
-stance/warmth evolution from actual interactions (currently seeded neutral) and a
-Rolodex UI (the entries persist; the sidebar view isn't built yet). Original design:*
+from the cameo pool. Only firsthand is stored — secondhand is derived. The Rolodex
+UI ships too: a "Rolodex" tab in the details modal lists your firsthand contacts as
+cards (name / stance / warmth / notes / deeds-known). Still open: stance/warmth
+EVOLUTION from actual interactions (entries currently seed neutral). Original design:*
 
 A dossier being *public* doesn't mean every character *knows* it. Each character
 carries a **relationship ledger**: a per-character log of who they've met or
