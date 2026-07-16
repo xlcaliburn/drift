@@ -5,6 +5,7 @@ exports[`golden — buildContextSlice output is byte-stable across configs > doc
 
 CURRENT SCENE
 Location: Meridian Ring — Crown territory, legitimate commerce. [T1 · secure] — this is a FIXED, canonical place; scenes play out WITHIN it (a specific dock, office, alley), and the danger tier sets the mood: T1 secure hub, T2 rough/lawless, T3 deadly frontier.
+Time: tenday 0 of the season. Travel between stations takes days (the engine advances the clock and prints a 🕐 line when time passes); keep the prose consistent with that passage — supplies run, rumors age, deadlines approach.
 
 PC skills (id: vess): piloting (lvl 4): 6/30 · zeroG (lvl 2): 0/18 · streetwise (lvl 3): 0/24 · negotiation (lvl 2): 4/18 · mechanics (lvl 1): 5/12 · gunnery (lvl 2): 5/18 · electronics (lvl 1): 3/12 · navigation (lvl 1): 2/12 · smallArms (lvl 1): 0/12 · melee (lvl 0): 2/6 · deception (lvl 0): 2/6 · intimidation (lvl 0): 2/6 · stealth (lvl 0): 1/6
 PC gear (they carry EXACTLY this): Dart pistol (1d6), Sidearm (1d8), Combat rifle (2d6), Multitool, Rations ×3 + military case, Cracked datapad, Reinforced plating, Enforcer's personal data chip.
@@ -39,6 +40,7 @@ exports[`golden — buildContextSlice output is byte-stable across configs > dow
 
 CURRENT SCENE
 Location: Meridian Ring — Crown territory, legitimate commerce. [T1 · secure] — this is a FIXED, canonical place; scenes play out WITHIN it (a specific dock, office, alley), and the danger tier sets the mood: T1 secure hub, T2 rough/lawless, T3 deadly frontier.
+Time: tenday 0 of the season. Travel between stations takes days (the engine advances the clock and prints a 🕐 line when time passes); keep the prose consistent with that passage — supplies run, rumors age, deadlines approach.
 
 PC skills (id: vess): piloting (lvl 4): 6/30 · zeroG (lvl 2): 0/18 · streetwise (lvl 3): 0/24 · negotiation (lvl 2): 4/18 · mechanics (lvl 1): 5/12 · gunnery (lvl 2): 5/18 · electronics (lvl 1): 3/12 · navigation (lvl 1): 2/12 · smallArms (lvl 1): 0/12 · melee (lvl 0): 2/6 · deception (lvl 0): 2/6 · intimidation (lvl 0): 2/6 · stealth (lvl 0): 1/6
 PC gear (they carry EXACTLY this): Dart pistol (1d6), Sidearm (1d8), Combat rifle (2d6), Multitool, Rations ×3 + military case, Cracked datapad, Reinforced plating, Enforcer's personal data chip.
@@ -74,6 +76,7 @@ exports[`golden — buildContextSlice output is byte-stable across configs > gra
 
 CURRENT SCENE
 Location: Meridian Ring — Crown territory, legitimate commerce. [T1 · secure] — this is a FIXED, canonical place; scenes play out WITHIN it (a specific dock, office, alley), and the danger tier sets the mood: T1 secure hub, T2 rough/lawless, T3 deadly frontier.
+Time: tenday 0 of the season. Travel between stations takes days (the engine advances the clock and prints a 🕐 line when time passes); keep the prose consistent with that passage — supplies run, rumors age, deadlines approach.
 SCENE NOW (scene 4, turn 3)
 Where: Meridian Ring — the broker's back office (the player is HERE now, not necessarily the station above)
 Situation: The broker is counting out the cargo manifest
@@ -118,6 +121,7 @@ exports[`golden — buildContextSlice output is byte-stable across configs > no 
 
 CURRENT SCENE
 Location: Meridian Ring — Crown territory, legitimate commerce. [T1 · secure] — this is a FIXED, canonical place; scenes play out WITHIN it (a specific dock, office, alley), and the danger tier sets the mood: T1 secure hub, T2 rough/lawless, T3 deadly frontier.
+Time: tenday 0 of the season. Travel between stations takes days (the engine advances the clock and prints a 🕐 line when time passes); keep the prose consistent with that passage — supplies run, rumors age, deadlines approach.
 
 PC skills (id: vess): piloting (lvl 4): 6/30 · zeroG (lvl 2): 0/18 · streetwise (lvl 3): 0/24 · negotiation (lvl 2): 4/18 · mechanics (lvl 1): 5/12 · gunnery (lvl 2): 5/18 · electronics (lvl 1): 3/12 · navigation (lvl 1): 2/12 · smallArms (lvl 1): 0/12 · melee (lvl 0): 2/6 · deception (lvl 0): 2/6 · intimidation (lvl 0): 2/6 · stealth (lvl 0): 1/6
 PC gear (they carry EXACTLY this): Dart pistol (1d6), Sidearm (1d8), Combat rifle (2d6), Multitool, Rations ×3 + military case, Cracked datapad, Reinforced plating, Enforcer's personal data chip.
@@ -150,6 +154,7 @@ exports[`golden — buildContextSlice output is byte-stable across configs > pat
 
 CURRENT SCENE
 Location: Meridian Ring — Crown territory, legitimate commerce. [T1 · secure] — this is a FIXED, canonical place; scenes play out WITHIN it (a specific dock, office, alley), and the danger tier sets the mood: T1 secure hub, T2 rough/lawless, T3 deadly frontier.
+Time: tenday 0 of the season. Travel between stations takes days (the engine advances the clock and prints a 🕐 line when time passes); keep the prose consistent with that passage — supplies run, rumors age, deadlines approach.
 SCENE NOW (scene 1, turn 1)
 
 PC skills (id: vess): piloting (lvl 4): 6/30 · zeroG (lvl 2): 0/18 · streetwise (lvl 3): 0/24 · negotiation (lvl 2): 4/18 · mechanics (lvl 1): 5/12 · gunnery (lvl 2): 5/18 · electronics (lvl 1): 3/12 · navigation (lvl 1): 2/12 · smallArms (lvl 1): 0/12 · melee (lvl 0): 2/6 · deception (lvl 0): 2/6 · intimidation (lvl 0): 2/6 · stealth (lvl 0): 1/6
@@ -183,6 +188,7 @@ exports[`golden — buildContextSlice output is byte-stable across configs > too
 
 CURRENT SCENE
 Location: Meridian Ring — Crown territory, legitimate commerce. [T1 · secure] — this is a FIXED, canonical place; scenes play out WITHIN it (a specific dock, office, alley), and the danger tier sets the mood: T1 secure hub, T2 rough/lawless, T3 deadly frontier.
+Time: tenday 0 of the season. Travel between stations takes days (the engine advances the clock and prints a 🕐 line when time passes); keep the prose consistent with that passage — supplies run, rumors age, deadlines approach.
 
 PC skills (id: vess): piloting (lvl 4): 6/30 · zeroG (lvl 2): 0/18 · streetwise (lvl 3): 0/24 · negotiation (lvl 2): 4/18 · mechanics (lvl 1): 5/12 · gunnery (lvl 2): 5/18 · electronics (lvl 1): 3/12 · navigation (lvl 1): 2/12 · smallArms (lvl 1): 0/12 · melee (lvl 0): 2/6 · deception (lvl 0): 2/6 · intimidation (lvl 0): 2/6 · stealth (lvl 0): 1/6
 PC gear (they carry EXACTLY this): Dart pistol (1d6), Sidearm (1d8), Combat rifle (2d6), Multitool, Rations ×3 + military case, Cracked datapad, Reinforced plating, Enforcer's personal data chip.
@@ -220,6 +226,7 @@ PREVIOUSLY (older scenes, oldest first — this HAPPENED; stay consistent with i
 
 CURRENT SCENE
 Location: Meridian Ring — Crown territory, legitimate commerce. [T1 · secure] — this is a FIXED, canonical place; scenes play out WITHIN it (a specific dock, office, alley), and the danger tier sets the mood: T1 secure hub, T2 rough/lawless, T3 deadly frontier.
+Time: tenday 0 of the season. Travel between stations takes days (the engine advances the clock and prints a 🕐 line when time passes); keep the prose consistent with that passage — supplies run, rumors age, deadlines approach.
 SCENE NOW (scene 4, turn 3)
 Where: Meridian Ring — the broker's back office (the player is HERE now, not necessarily the station above)
 Situation: The broker is counting out the cargo manifest
@@ -268,6 +275,7 @@ PLAYER'S OWN AIM (what THIS player wants from the game — weight this heavily):
 
 CURRENT SCENE
 Location: Meridian Ring — Crown territory, legitimate commerce. [T1 · secure] — this is a FIXED, canonical place; scenes play out WITHIN it (a specific dock, office, alley), and the danger tier sets the mood: T1 secure hub, T2 rough/lawless, T3 deadly frontier.
+Time: tenday 0 of the season. Travel between stations takes days (the engine advances the clock and prints a 🕐 line when time passes); keep the prose consistent with that passage — supplies run, rumors age, deadlines approach.
 
 PC skills (id: vess): piloting (lvl 4): 6/30 · zeroG (lvl 2): 0/18 · streetwise (lvl 3): 0/24 · negotiation (lvl 2): 4/18 · mechanics (lvl 1): 5/12 · gunnery (lvl 2): 5/18 · electronics (lvl 1): 3/12 · navigation (lvl 1): 2/12 · smallArms (lvl 1): 0/12 · melee (lvl 0): 2/6 · deception (lvl 0): 2/6 · intimidation (lvl 0): 2/6 · stealth (lvl 0): 1/6
 PC gear (they carry EXACTLY this): Dart pistol (1d6), Sidearm (1d8), Combat rifle (2d6), Multitool, Rations ×3 + military case, Cracked datapad, Reinforced plating, Enforcer's personal data chip.

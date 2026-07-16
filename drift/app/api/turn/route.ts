@@ -16,6 +16,7 @@ import { acceptJob, abandonJob, generatePersonalJob } from "@/shared/quests";
 import { resolveJobsTurn } from "@/shared/jobsRuntime";
 import { personalJobAvailable, TRUST_THRESHOLD } from "@/shared/scene";
 import { liveRng } from "@/engine/rng";
+import { advanceTendays, tendaysForSceneClose } from "@/engine/time";
 import { getSession, setSession, persistSession, loadReachableDossiers } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
@@ -537,6 +538,27 @@ export async function POST(req: NextRequest) {
         // place by the turn) so the deepened bond persists + rides the done payload.
         session.npcRelations = jobsRes.npcRelations;
 
+        // ── ENGINE-OWNED TIME (engine/time.ts): a station hop, or every Nth scene
+        //    close in place, advances the tenday clock — deterministic, never model-
+        //    dependent (every live campaign sat frozen at tenday 0, so markets never
+        //    rotated and job offers never expired). Computed HERE so the 🕐 line rides
+        //    this turn's transcript; `moved`/`sceneClosed` are reused below for the
+        //    scene lifecycle. A move is a scene boundary even without a model sceneEnd.
+        const moved =
+          !wasCombatTurn &&
+          isSceneMove(prevPlace, session.sceneCard.place, prevLoc, result.state.campaign.currentLocationId);
+        const sceneClosed = (result.sceneEnded || moved) && !pcDied && !resultCombat?.active;
+        const timeLines: string[] = [];
+        if (sceneClosed) {
+          const t = advanceTendays(
+            result.state,
+            tendaysForSceneClose({ moved, sceneSeq: session.sceneCard.seq }),
+          );
+          result.state = t.state;
+          result.events = [...result.events, ...t.events];
+          timeLines.push(...t.lines);
+        }
+
         // Bleeding Out is engine-owned end to end now (runDownedTurn resolves the
         // death saves), so the route only needs to detect the state for the chips:
         // a PC that's Downed & alive & out of combat is offered the desperate-act
@@ -618,10 +640,10 @@ export async function POST(req: NextRequest) {
                     : normalized),
                 ];
 
-        // Engine display lines (dice/ticks/damage/payment/combat) — the handlers
+        // Engine display lines (dice/ticks/damage/payment/combat/time) — the handlers
         // return them pre-prefixed; they become system transcript lines so a
         // refresh shows the same mechanics seen live.
-        const engineLineTexts = [...(result.engineLines ?? []), ...jobsRes.lines];
+        const engineLineTexts = [...(result.engineLines ?? []), ...jobsRes.lines, ...timeLines];
         const engineLines = engineLineTexts.map((text) => ({ role: "system" as const, text }));
 
         const transcriptAdds = [
@@ -653,19 +675,11 @@ export async function POST(req: NextRequest) {
           ? { ...result.state, campaign: { ...result.state.campaign, status: "deceased" as const } }
           : result.state;
         const newTranscript = [...session.transcript, ...transcriptAdds].slice(-400);
-        // Did the player MOVE to a new place/location this turn? A move is a scene
-        // boundary too — the memory tier turns over even though the model didn't fire
-        // sceneEnd. (Only on the non-combat JSON path; combat never moves place. The
-        // sceneCard was mutated in place by the turn, so it holds the post-turn place.)
-        const moved =
-          !wasCombatTurn &&
-          isSceneMove(prevPlace, session.sceneCard.place, prevLoc, result.state.campaign.currentLocationId);
-        // Scene closed this turn → snapshot the card for the background summarizer
-        // and start a fresh one at the new transcript tail (CONTINUITY lifecycle).
-        // A move closes the MEMORY tier only — it does NOT run the economic scene-end
-        // checklist (wages/dock fees); that fires solely via the model's sceneEnd
-        // (already handled inside the turn). Never carry mid-combat.
-        const sceneClosed = (result.sceneEnded || moved) && !pcDied && !resultCombat?.active;
+        // Scene closed this turn (`moved`/`sceneClosed` computed with the time advance
+        // above) → snapshot the card for the background summarizer and start a fresh
+        // one at the new transcript tail (CONTINUITY lifecycle). A move closes the
+        // MEMORY tier only — the economic scene-end checklist (wages/dock fees) fires
+        // solely via the model's sceneEnd (already handled inside the turn).
         const closedCard = sceneClosed
           ? { ...session.sceneCard, presentNpcIds: [...session.sceneCard.presentNpcIds], beats: [...session.sceneCard.beats] }
           : null;

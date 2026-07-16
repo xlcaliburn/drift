@@ -57,11 +57,14 @@ export const directive: Section = ({ state }) =>
       ]
     : [];
 
-export const sceneHeader: Section = ({ loc }) => [
+export const sceneHeader: Section = ({ state, loc }) => [
   `CURRENT SCENE`,
   `Location: ${loc ? `${loc.name} — ${loc.description} [${locationDangerLabel(locationTier(loc))}]` : "unknown"}${
     loc ? ` — this is a FIXED, canonical place; scenes play out WITHIN it (a specific dock, office, alley), and the danger tier sets the mood: T1 secure hub, T2 rough/lawless, T3 deadly frontier.` : ""
   }`,
+  // In-world time — ENGINE-owned: travel costs a tenday, downtime accrues (the 🕐
+  // lines). The narrator writes prose consistent with it, never advances it itself.
+  `Time: tenday ${state.campaign.tendaysElapsed ?? 0} of the season. Travel between stations takes days (the engine advances the clock and prints a 🕐 line when time passes); keep the prose consistent with that passage — supplies run, rumors age, deadlines approach.`,
 ];
 
 /** The Fault Line — the season's shared pressure. Surface its current phase every

@@ -192,6 +192,14 @@ export function StatusTab({
         {sceneCard?.place && loc?.name && !sceneCard.place.includes(loc.name) && (
           <div className="text-[11px] text-neutral-600">near {loc.name}</div>
         )}
+        {/* In-world time — travel and downtime advance it (engine/time.ts); markets
+            rotate, job offers expire, and crew upkeep charges against it. */}
+        <div
+          className="mt-0.5 cursor-help text-[11px] text-neutral-600"
+          title="In-world time. A hop between stations costs a tenday (10 days); staying put passes time more slowly. Markets restock and job offers expire as tendays pass."
+        >
+          🕐 Tenday {state.campaign.tendaysElapsed ?? 0}
+        </div>
 
         {/* The live scene: what's happening, who's here, what's been established. */}
         {sceneCard?.situation && (
