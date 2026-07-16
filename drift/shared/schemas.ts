@@ -209,6 +209,9 @@ export const Location = z.object({
   name: z.string(),
   description: z.string().optional(),
   tags: z.array(z.string()).default([]),
+  /** Danger band (LOCATIONS.md). Optional — when unset it's derived from `tags`
+   *  (shared/locations.ts `locationTier`), so existing seed rows need no migration. */
+  tier: z.enum(["T1", "T2", "T3"]).optional(),
 });
 export type Location = z.infer<typeof Location>;
 

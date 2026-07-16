@@ -1,5 +1,6 @@
 import { inTutorial, TUTORIAL_CHOICE_DIRECTIVE, TUTORIAL_JSON_DIRECTIVE } from "@/shared/tutorial";
 import { RECENT_SCENES_IN_PROMPT } from "@/shared/scene";
+import { locationTier, locationDangerLabel } from "@/shared/locations";
 import { tokenize } from "../retrieval";
 import type { Section } from "./types";
 
@@ -58,7 +59,9 @@ export const directive: Section = ({ state }) =>
 
 export const sceneHeader: Section = ({ loc }) => [
   `CURRENT SCENE`,
-  `Location: ${loc ? `${loc.name} — ${loc.description}` : "unknown"}`,
+  `Location: ${loc ? `${loc.name} — ${loc.description} [${locationDangerLabel(locationTier(loc))}]` : "unknown"}${
+    loc ? ` — this is a FIXED, canonical place; scenes play out WITHIN it (a specific dock, office, alley), and the danger tier sets the mood: T1 secure hub, T2 rough/lawless, T3 deadly frontier.` : ""
+  }`,
 ];
 
 /** The Fault Line — the season's shared pressure. Surface its current phase every
