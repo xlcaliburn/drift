@@ -10,6 +10,7 @@ import {
   itemCount,
   outOfCombatItemChips,
   inferConsumableUse,
+  describeEffect,
 } from "./items";
 import type { Character } from "./schemas";
 
@@ -56,6 +57,38 @@ describe("legacy gear mapping (IT-1)", () => {
     expect(m.gear[2].qty).toBe(2); // untouched
     // Idempotent: a second pass is a no-op (same object back).
     expect(mapLegacyGear(m)).toBe(m);
+  });
+});
+
+describe("catalogue traits (weapons/armor, ITEMS.md status system)", () => {
+  it("effect weapons carry a damageType + onHit; describeEffect surfaces them", () => {
+    const incin = catalogItem("incinerator")!;
+    expect(incin.damageType).toBe("thermal");
+    expect(incin.onHit).toBe("burning");
+    expect(describeEffect(incin)).toMatch(/thermal/);
+    expect(describeEffect(incin)).toMatch(/burns/);
+  });
+
+  it("low-variance guns use a flat modifier; armorPen weapons carry it", () => {
+    expect(catalogItem("machinePistol")!.damage).toBe("1d4+2");
+    expect(catalogItem("serviceCarbine")!.damage).toBe("1d6+3");
+    expect(catalogItem("railRifle")!.armorPen).toBe(3);
+  });
+
+  it("armor traits: resist/vuln/statusGuard/mobilityPenalty read + describe", () => {
+    const abl = catalogItem("ablativePlating")!;
+    expect(abl.resist).toBe("thermal");
+    expect(abl.vuln).toBe("shock");
+    expect(describeEffect(abl)).toMatch(/resists thermal/);
+    expect(catalogItem("sealedHardsuit")!.statusGuard).toEqual(["burning", "corroded"]);
+    expect(catalogItem("poweredCarapace")!.mobilityPenalty).toBe(true);
+  });
+
+  it("legacy freeform names map to the new mechanical items", () => {
+    expect(legacyItemId("SMG")).toBe("machinePistol");
+    expect(legacyItemId("a plasma rifle")).toBe("plasmaCarbine");
+    expect(legacyItemId("ion pistol")).toBe("ionLance");
+    expect(legacyItemId("ablative armor")).toBe("ablativePlating");
   });
 });
 

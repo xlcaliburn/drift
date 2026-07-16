@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "note": "Item catalog (ITEMS.md). Every mechanical item has an effect the ENGINE executes — the narrator never applies an effect. Prices in credits; slot = inventory slot cost; combat = usable as a combat action. Effect kinds: heal | aoe | autoFlee | autoCheck | restoreShield | healShip | reloadMissiles. marketTier gates which markets shelve the item (blackmarket T3 > commerce T2 > backwater T1); prices are calibrated so a fresh creation loadout + starting credits stays under the ~600 T2 net-worth cutoff (COMBAT.md).",
+  "version": 3,
+  "note": "Item catalog (ITEMS.md). Every mechanical item has an effect the ENGINE executes — the narrator never applies an effect. Prices in credits; slot = inventory slot cost; combat = usable as a combat action. Consumable effect kinds: heal | aoe | autoFlee | autoCheck | restoreShield | healShip | reloadMissiles. WEAPONS carry a damageType (absent = kinetic: thermal | shock | chemical), an optional onHit status (burning | bleeding | shocked | corroded), and optional armorPen. ARMOR carries acBonus plus optional resist/vuln (a damageType), statusGuard (immunities), and mobilityPenalty. marketTier gates shelving (blackmarket T3 > commerce T2 > backwater T1); a fresh creation loadout + starting credits stays under the ~600 T2 net-worth cutoff (COMBAT.md).",
   "items": {
     "stim": {
       "name": "Stim", "type": "consumable", "scale": "personal", "slot": 1, "price": 30,
@@ -39,17 +39,29 @@
       "name": "Holdout pistol", "type": "weapon", "scale": "personal", "slot": 1, "price": 50,
       "combat": false, "verb": "Carry", "damage": "1d6", "marketTier": "T1"
     },
-    "sidearm": {
-      "name": "Sidearm", "type": "weapon", "scale": "personal", "slot": 1, "price": 90,
-      "combat": false, "verb": "Carry", "damage": "1d8", "marketTier": "T1"
-    },
     "lightBlade": {
       "name": "Combat knife", "type": "weapon", "scale": "personal", "slot": 1, "price": 35,
       "combat": false, "verb": "Carry", "damage": "1d6", "marketTier": "T1"
     },
+    "machinePistol": {
+      "name": "Machine pistol", "type": "weapon", "scale": "personal", "slot": 1, "price": 85,
+      "combat": false, "verb": "Carry", "damage": "1d4+2", "marketTier": "T1"
+    },
+    "sidearm": {
+      "name": "Sidearm", "type": "weapon", "scale": "personal", "slot": 1, "price": 90,
+      "combat": false, "verb": "Carry", "damage": "1d8", "marketTier": "T1"
+    },
+    "serratedBlade": {
+      "name": "Serrated blade", "type": "weapon", "scale": "personal", "slot": 1, "price": 80,
+      "combat": false, "verb": "Carry", "damage": "1d6", "onHit": "bleeding", "marketTier": "T1"
+    },
     "shockBaton": {
       "name": "Shock baton", "type": "weapon", "scale": "personal", "slot": 1, "price": 70,
-      "combat": false, "verb": "Carry", "damage": "1d8", "marketTier": "T1"
+      "combat": false, "verb": "Carry", "damage": "1d8", "damageType": "shock", "marketTier": "T1"
+    },
+    "serviceCarbine": {
+      "name": "Service carbine", "type": "weapon", "scale": "personal", "slot": 2, "price": 185,
+      "combat": false, "verb": "Carry", "damage": "1d6+3", "marketTier": "T1"
     },
     "scattergun": {
       "name": "Scattergun", "type": "weapon", "scale": "personal", "slot": 2, "price": 130,
@@ -61,7 +73,19 @@
     },
     "marksmanRifle": {
       "name": "Marksman rifle", "type": "weapon", "scale": "personal", "slot": 2, "price": 240,
-      "combat": false, "verb": "Carry", "damage": "1d12", "marketTier": "T2"
+      "combat": false, "verb": "Carry", "damage": "1d12", "armorPen": 2, "marketTier": "T2"
+    },
+    "burstRifle": {
+      "name": "Burst rifle", "type": "weapon", "scale": "personal", "slot": 2, "price": 330,
+      "combat": false, "verb": "Carry", "damage": "2d4+2", "marketTier": "T2"
+    },
+    "incinerator": {
+      "name": "Incinerator", "type": "weapon", "scale": "personal", "slot": 2, "price": 300,
+      "combat": false, "verb": "Carry", "damage": "1d8", "damageType": "thermal", "onHit": "burning", "marketTier": "T2"
+    },
+    "corroder": {
+      "name": "Corroder", "type": "weapon", "scale": "personal", "slot": 1, "price": 280,
+      "combat": false, "verb": "Carry", "damage": "1d6", "damageType": "chemical", "onHit": "corroded", "marketTier": "T2"
     },
     "assaultRifle": {
       "name": "Assault rifle", "type": "weapon", "scale": "personal", "slot": 2, "price": 380,
@@ -69,11 +93,15 @@
     },
     "plasmaCarbine": {
       "name": "Plasma carbine", "type": "weapon", "scale": "personal", "slot": 2, "price": 650,
-      "combat": false, "verb": "Carry", "damage": "2d10", "marketTier": "T3"
+      "combat": false, "verb": "Carry", "damage": "1d12", "damageType": "thermal", "onHit": "burning", "marketTier": "T3"
+    },
+    "ionLance": {
+      "name": "Ion lance", "type": "weapon", "scale": "personal", "slot": 2, "price": 700,
+      "combat": false, "verb": "Carry", "damage": "1d6", "damageType": "shock", "onHit": "shocked", "marketTier": "T3"
     },
     "railRifle": {
       "name": "Rail rifle", "type": "weapon", "scale": "personal", "slot": 3, "price": 900,
-      "combat": false, "verb": "Carry", "damage": "3d6", "marketTier": "T3"
+      "combat": false, "verb": "Carry", "damage": "3d6", "armorPen": 3, "marketTier": "T3"
     },
 
     "paddedJacket": {
@@ -88,9 +116,17 @@
       "name": "Combat armor", "type": "armor", "scale": "personal", "slot": 2, "price": 340,
       "combat": false, "verb": "Wear", "acBonus": 3, "marketTier": "T2"
     },
+    "ablativePlating": {
+      "name": "Ablative plating", "type": "armor", "scale": "personal", "slot": 2, "price": 320,
+      "combat": false, "verb": "Wear", "acBonus": 2, "resist": "thermal", "vuln": "shock", "marketTier": "T2"
+    },
+    "sealedHardsuit": {
+      "name": "Sealed hardsuit", "type": "armor", "scale": "personal", "slot": 2, "price": 360,
+      "combat": false, "verb": "Wear", "acBonus": 2, "statusGuard": ["burning", "corroded"], "marketTier": "T2"
+    },
     "poweredCarapace": {
       "name": "Powered carapace", "type": "armor", "scale": "personal", "slot": 3, "price": 750,
-      "combat": false, "verb": "Wear", "acBonus": 4, "marketTier": "T3"
+      "combat": false, "verb": "Wear", "acBonus": 4, "mobilityPenalty": true, "marketTier": "T3"
     },
 
     "scanner": {

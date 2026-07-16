@@ -20,6 +20,11 @@ import type { RNG } from "@/engine/rng";
 
 export type StatusKind = "burning" | "bleeding" | "shocked" | "corroded";
 
+/** A weapon's damage TYPE — drives armor interactions (resist/vuln) and the
+ *  shock-vs-shields rule. Independent of `onHit` (a serrated kinetic round can
+ *  still bleed). */
+export type DamageType = "kinetic" | "thermal" | "shock" | "chemical";
+
 export interface StatusEffect {
   kind: StatusKind;
   /** Rounds remaining; ticked down at the afflicted's turn start. */

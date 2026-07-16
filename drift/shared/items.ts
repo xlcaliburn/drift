@@ -6,6 +6,7 @@
  */
 import itemsJson from "@/content/items.json";
 import type { Character } from "./schemas";
+import type { DamageType, StatusKind } from "./status";
 
 export type ItemEffectKind =
   | "heal"
@@ -38,10 +39,25 @@ export interface CatalogItem {
   /** Chip verb — "Use", "Throw", "Pop", "Divert". */
   verb: string;
   effect?: ItemEffect;
-  /** Weapons: damage dice ("2d6"). */
+  /** Weapons: damage dice ("2d6", "1d6+3"). */
   damage?: string;
+  /** Weapons: damage TYPE — drives armor resist/vuln + the shock-vs-shields rule.
+   *  Absent = kinetic. */
+  damageType?: DamageType;
+  /** Weapons: a status applied on a hit (independent of `damageType`). */
+  onHit?: StatusKind;
+  /** Weapons: ignores this much of the target's AC (armor-piercing). */
+  armorPen?: number;
   /** Armor: AC bonus while carried (best single piece counts). */
   acBonus?: number;
+  /** Armor: incoming damage of this type is HALVED. */
+  resist?: DamageType;
+  /** Armor: incoming damage of this type is increased by half. */
+  vuln?: DamageType;
+  /** Armor: the wearer can't be afflicted by these statuses. */
+  statusGuard?: StatusKind[];
+  /** Armor: heavy — the wearer loses the evasive/flee bonus (a tradeoff for the AC). */
+  mobilityPenalty?: boolean;
   /** Lowest market tier that shelves this item (ITEMS.md slice E). Consumables
    *  without one are T1 (sold everywhere a market exists). */
   marketTier?: "T1" | "T2" | "T3";
@@ -172,12 +188,33 @@ export function inferConsumableUse(text: string, c: Character): string | undefin
   return undefined;
 }
 
+/** How a weapon's damage type + on-hit status reads on the sheet ("thermal · burns"). */
+const STATUS_BLURB: Record<StatusKind, string> = {
+  burning: "burns (damage over time)",
+  bleeding: "bleeds (stacking damage)",
+  shocked: "shocks (skips their turn, drops shields)",
+  corroded: "corrodes (melts armor / −AC)",
+};
+
 /** One-line effect description for the narrator/UI. */
 export function describeEffect(i: CatalogItem): string {
   const e = i.effect;
   if (!e) {
-    if (i.damage) return `${i.damage} damage`;
-    if (i.acBonus) return `+${i.acBonus} AC`;
+    if (i.damage) {
+      const bits = [`${i.damage} damage`];
+      if (i.damageType && i.damageType !== "kinetic") bits.push(i.damageType);
+      if (i.armorPen) bits.push(`armor-piercing ${i.armorPen}`);
+      if (i.onHit) bits.push(STATUS_BLURB[i.onHit]);
+      return bits.join(" · ");
+    }
+    if (i.acBonus) {
+      const bits = [`+${i.acBonus} AC`];
+      if (i.resist) bits.push(`resists ${i.resist}`);
+      if (i.vuln) bits.push(`weak to ${i.vuln}`);
+      if (i.statusGuard?.length) bits.push(`immune: ${i.statusGuard.join("/")}`);
+      if (i.mobilityPenalty) bits.push("heavy (no evasion)");
+      return bits.join(" · ");
+    }
     return "no mechanical effect";
   }
   switch (e.kind) {
@@ -221,11 +258,37 @@ const LEGACY_ALIASES: Record<string, string> = {
   "combat rifle": "combatRifle",
   "riot gun": "combatRifle",
   "hunting rifle": "combatRifle",
-  "marksman carbine": "combatRifle",
+  "marksman carbine": "marksmanRifle",
+  "marksman rifle": "marksmanRifle",
+  "smg": "machinePistol",
+  "submachine gun": "machinePistol",
+  "machine pistol": "machinePistol",
+  "carbine": "serviceCarbine",
+  "service carbine": "serviceCarbine",
+  "burst rifle": "burstRifle",
+  "assault rifle": "assaultRifle",
+  "flamer": "incinerator",
+  "flamethrower": "incinerator",
+  "incinerator": "incinerator",
+  "plasma rifle": "plasmaCarbine",
+  "plasma gun": "plasmaCarbine",
+  "ion pistol": "ionLance",
+  "ion gun": "ionLance",
+  "emp gun": "ionLance",
+  "railgun": "railRifle",
+  "rail gun": "railRifle",
+  "gauss rifle": "railRifle",
   "combat knife": "lightBlade",
   "cutting tool": "lightBlade",
   "cutting torch": "lightBlade",
   "heavy wrench": "lightBlade",
+  "serrated blade": "serratedBlade",
+  "serrated knife": "serratedBlade",
+  "machete": "serratedBlade",
+  "acid gun": "corroder",
+  "corroder": "corroder",
+  "stun baton": "shockBaton",
+  "shock baton": "shockBaton",
   // armor
   "heavy plate": "ballisticVest",
   "armored coat": "ballisticVest",
@@ -234,6 +297,14 @@ const LEGACY_ALIASES: Record<string, string> = {
   "patched coveralls": "paddedJacket",
   "fine clothes": "paddedJacket",
   "hardened vac suit": "paddedJacket",
+  "combat armor": "combatArmor",
+  "ablative plating": "ablativePlating",
+  "ablative armor": "ablativePlating",
+  "sealed hardsuit": "sealedHardsuit",
+  "hardsuit": "sealedHardsuit",
+  "powered carapace": "poweredCarapace",
+  "powered armor": "poweredCarapace",
+  "power armor": "poweredCarapace",
   // tools
   "sealed vac suit": "vacSuit",
   "salvage scanner": "scanner",
