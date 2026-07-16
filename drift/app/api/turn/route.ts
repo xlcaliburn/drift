@@ -23,7 +23,7 @@ import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { buildFallbackChoices } from "@/shared/recap";
 import { CheckSpec, CombatActionSpec, DownedActionSpec, type ChoiceOption } from "@/shared/turnPlan";
 import { carryScene, isSceneMove, type SceneCard, type SceneMemory } from "@/shared/scene";
-import { analyzeScene, type NpcAnalysis, type ItemAnalysis } from "@/llm/summarizer";
+import { analyzeScene, type NpcAnalysis, type ItemAnalysis, type ThreadAnalysis } from "@/llm/summarizer";
 import { applyAnalystUpdates, runOpenSceneAnalyst, ANALYST_INTERVAL } from "@/lib/analystRun";
 import type { ChatEntry } from "@/shared/chat";
 import { hasSupabase } from "@/lib/state";
@@ -42,6 +42,7 @@ async function compressClosedScene(
   locationId: string | undefined,
   knownEntityIds: string[],
   sceneNpcs: { id: string; name: string; oneBreath: string }[] = [],
+  openThreads: { id: string; title: string }[] = [],
 ): Promise<void> {
   const slice = transcript.slice(closedCard.startTranscriptIdx);
   if (slice.length === 0) return;
@@ -55,12 +56,14 @@ async function compressClosedScene(
   let entityRefs: string[] = [];
   let npcUpdates: NpcAnalysis[] = [];
   let itemUpdates: ItemAnalysis[] = [];
+  let threadUpdates: ThreadAnalysis[] = [];
   try {
-    const res = await analyzeScene(text + beatsNote, sceneNpcs, knownEntityIds);
+    const res = await analyzeScene(text + beatsNote, sceneNpcs, knownEntityIds, openThreads);
     summary = res.summary.trim();
     entityRefs = res.entityRefs;
     npcUpdates = res.npcs;
     itemUpdates = res.items;
+    threadUpdates = res.threads;
   } catch {
     /* fall through to the deterministic fallback */
   }
@@ -95,7 +98,7 @@ async function compressClosedScene(
   live.recentScenes = [...live.recentScenes.filter((s) => s.seq !== scene.seq), scene]
     .sort((a, b) => a.seq - b.seq)
     .slice(-20);
-  const changed = await applyAnalystUpdates(live, npcUpdates, itemUpdates);
+  const changed = await applyAnalystUpdates(live, npcUpdates, itemUpdates, threadUpdates);
   setSession(campaignId, live);
   if (changed) await persistSession(campaignId, live);
 }
@@ -600,7 +603,12 @@ export async function POST(req: NextRequest) {
             .map((n) => ({ id: n.id, name: n.name, oneBreath: n.oneBreath }));
           const locId = result.state.campaign.currentLocationId;
           const title = result.sceneTitle ?? `Scene ${closedCard.seq}`;
-          after(() => compressClosedScene(campaignId, closedCard, newTranscript, title, locId, entityIds, sceneNpcs));
+          // Open threads at scene close — the analyst reconciles them (opens an
+          // objective the live turn's threads[] missed, resolves a finished one).
+          const openThreads = result.state.threads
+            .filter((t) => t.status !== "resolved")
+            .map((t) => ({ id: t.id, title: t.title }));
+          after(() => compressClosedScene(campaignId, closedCard, newTranscript, title, locId, entityIds, sceneNpcs, openThreads));
         } else if (
           !resultCombat?.active &&
           session.sceneCard.turnCount > 0 &&

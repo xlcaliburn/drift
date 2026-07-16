@@ -78,6 +78,20 @@ economy ramp wouldn't allow.
 Objectives complete **in order**, one step per turn — a two-step bounty (track →
 kill) needs arrival first, then the won fight.
 
+## Emergent-quest continuity backstop (SHIPPED 2026-07-15)
+
+The procedural board is engine-owned, but EMERGENT quests — an NPC hands the player
+a multi-step job in conversation — still ride the narrator's `threads:[]`, and the
+cheap model under-fires it. A live case (Silas Cray) ran a Fingers→Yarl→loot-a-ship
+chain for dozens of turns with ZERO threads opened, so it fell out of the history
+window and was lost. Fix: the **scene analyst** (`llm/summarizer.ts`) now also
+reconciles quest threads — it's fed the OPEN THREADS list and, reviewing the closed
+(or mid-) scene, emits `threads:[{op:"open",title,body}]` for an objective the player
+committed to that isn't tracked, and `{op:"resolve",id}` for one the scene finished.
+Applied via `llm/threadReconcile.ts` (`applyThreadUpdates`) with the same light dedup
+as the live path (`applyPlan/world.ts`). A reasoning model reviewing concrete
+outcomes → low false-positive; the live `threads:[]` path stays primary.
+
 ## What's LEFT (Phase 1b+)
 
 - **Model-signalled steps** — a `report`/`deliver-to-NPC` objective the narrator can

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { CampaignState } from "@/shared/schemas";
 import { TurnRuntime } from "./engineBridge";
+import { applyThreadUpdates } from "./threadReconcile";
 import { isPlaceholderOneBreath } from "@/shared/scene";
 import type { RNG } from "@/engine";
 
@@ -59,6 +60,40 @@ describe("scene analyst — applying continuity updates (the Yuri/Calvo fixes)",
     expect(rt.state.npcs.find((n) => n.id === "npc-gen-yuri-0")!.oneBreath).toContain("dockmaster");
     // The caller gates on isPlaceholderOneBreath — real canon (the Ledger) is left alone.
     expect(isPlaceholderOneBreath("Rook's symbol-marked courier-fixer, trusted by all sides.")).toBe(false);
+  });
+
+  it("QUEST backstop: opens an objective the live turn never tracked (the Fingers/Yarl bug)", () => {
+    const rt = new TurnRuntime(state(), rng);
+    const n = applyThreadUpdates(rt, [
+      { op: "open", title: "Loot the derelict for Yarl", body: "Fingers set you on a ship worth boarding; she wants a cut." },
+    ]);
+    expect(n).toBe(1);
+    const th = rt.state.threads.find((t) => t.title.includes("Yarl"));
+    expect(th).toBeTruthy();
+    expect(th!.status).not.toBe("resolved");
+  });
+
+  it("dedupes an OPEN that overlaps an existing open thread", () => {
+    const rt = new TurnRuntime(
+      { ...state(), threads: [{ id: "th-loot", campaignId: "c", title: "Loot the derelict", body: "", status: "active", entityRefs: [] }] } as unknown as CampaignState,
+      rng,
+    );
+    const n = applyThreadUpdates(rt, [{ op: "open", title: "Loot the derelict for Yarl" }]);
+    expect(n).toBe(0); // overlaps "Loot the derelict" → skipped
+    expect(rt.state.threads.length).toBe(1);
+  });
+
+  it("resolves a real open thread by id; ignores an unknown/closed id", () => {
+    const rt = new TurnRuntime(
+      { ...state(), threads: [{ id: "th-a", campaignId: "c", title: "Deliver the cargo", body: "", status: "active", entityRefs: [] }] } as unknown as CampaignState,
+      rng,
+    );
+    const n = applyThreadUpdates(rt, [
+      { op: "resolve", id: "th-a" }, // real + open → resolved
+      { op: "resolve", id: "th-ghost" }, // unknown → ignored
+    ]);
+    expect(n).toBe(1);
+    expect(rt.state.threads.find((t) => t.id === "th-a")!.status).toBe("resolved");
   });
 
   it("grantSceneItem adds a FLAVOR prop but refuses real gear (engine-owned)", () => {

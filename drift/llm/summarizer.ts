@@ -37,9 +37,18 @@ export interface ItemAnalysis {
   note?: string;
 }
 
+/** A quest the analyst found the player took on (or finished) this scene — the
+ *  retrospective backstop for the cheap model under-firing threads:[] live (the
+ *  emergent Fingers→Yarl→loot chain that never got tracked). "open" adds an
+ *  objective not already tracked; "resolve" closes a tracked one by id. */
+export type ThreadAnalysis =
+  | { op: "open"; title: string; body?: string }
+  | { op: "resolve"; id: string };
+
 export interface SceneAnalysis extends SceneSummary {
   npcs: NpcAnalysis[];
   items: ItemAnalysis[];
+  threads: ThreadAnalysis[];
 }
 
 const SYSTEM =
@@ -57,8 +66,9 @@ const ANALYST_SYSTEM =
   '{"summary": string (2-3 sentences, past tense, concrete outcomes),\n' +
   ' "entityRefs": string[] (ids from the KNOWN list that appeared),\n' +
   ' "npcs": [ EVERY distinct CHARACTER who figured in the scene — whether or not they are in the KNOWN list, and whether they were PRESENT or only TALKED ABOUT. For each: {"name": string (their name or a short handle if unnamed — REQUIRED), "id": string (the KNOWN id ONLY if this is clearly that same person; OMIT for anyone new), "presence": "present" (physically in the immediate area — someone the player spoke to or faced) or "mentioned" (referenced/off-screen — talked ABOUT but not here, e.g. a target named by a contact), "role": string (their job/handle — "dockmaster", "fixer" — if shown), "oneBreath": string (one vivid line: who this person REALLY is, as the scene revealed them), "note": string (ONE concrete beat of what passed between THEM and the PLAYER this scene — omit for a merely-mentioned figure), "relationship": string (a SHORT label for who they are to the player — only if clear)} ],\n' +
-  ' "items": [ props the PLAYER clearly came away with this scene — a gift, a token, a keepsake, a document: {"name": string, "note": string}. Do NOT list weapons, armor, ammo, or valuable gear (the game grants those separately); do NOT list things the player merely saw or wanted. Usually empty. ]}\n' +
-  'Ground EVERY field in what actually happened — never invent a person, item, or fact. Do NOT list the player\'s own character. Omit any field you cannot fill.';
+  ' "items": [ props the PLAYER clearly came away with this scene — a gift, a token, a keepsake, a document: {"name": string, "note": string}. Do NOT list weapons, armor, ammo, or valuable gear (the game grants those separately); do NOT list things the player merely saw or wanted. Usually empty. ],\n' +
+  ' "threads": [ QUEST tracking. Compare what happened against the OPEN THREADS list. If the player COMMITTED to a real objective this scene that is NOT already an open thread — a job accepted, a hunt begun, a delivery promised, a debt taken on, a target set — add {"op": "open", "title": string (short, concrete: "Loot the derelict for Yarl"), "body": string (one line: who set it and what it needs)}. If an OPEN THREAD was clearly COMPLETED or ABANDONED this scene, add {"op": "resolve", "id": string (its id from the OPEN THREADS list, exactly)}. ONLY concrete commitments or outcomes — never a vague idea or something the player merely considered. Usually 0-1 entries; omit when nothing changed. ]}\n' +
+  'Ground EVERY field in what actually happened — never invent a person, item, quest, or fact. Do NOT list the player\'s own character. Omit any field you cannot fill.';
 
 function defaultSummarizerModel() {
   return (
@@ -154,6 +164,7 @@ export async function analyzeScene(
   transcript: string,
   npcs: { id: string; name: string; oneBreath: string }[],
   entityIds: string[],
+  openThreads: { id: string; title: string }[] = [],
   opts: { apiKey?: string; model?: string } = {},
 ): Promise<SceneAnalysis> {
   const primary = resolveModel(opts.model ?? defaultAnalystModel());
@@ -166,8 +177,12 @@ export async function analyzeScene(
   const roster = npcs.length
     ? npcs.map((n) => `${n.id} = ${n.name}: ${n.oneBreath}`).join("\n")
     : "(none)";
+  const threadRoster = openThreads.length
+    ? openThreads.map((t) => `${t.id} = ${t.title}`).join("\n")
+    : "(none)";
   const user =
     `KNOWN NPCs (id = name: current description):\n${roster}\n\n` +
+    `OPEN THREADS (id = title):\n${threadRoster}\n\n` +
     `Other known entity ids (factions/locations): ${entityIds.join(", ")}\n\n` +
     `Scene transcript:\n${transcript}`;
 
@@ -229,13 +244,29 @@ export async function analyzeScene(
       .map((i: Record<string, unknown>) => ({ name: str(i.name, 60) ?? "", note: str(i.note, 120) }))
       .filter((i: ItemAnalysis) => i.name)
       .slice(0, 4);
+    const threadUpdates: ThreadAnalysis[] = (Array.isArray(parsed.threads) ? parsed.threads : [])
+      .filter((t: unknown): t is Record<string, unknown> => !!t && typeof t === "object")
+      .map((t: Record<string, unknown>): ThreadAnalysis | null => {
+        if (t.op === "open") {
+          const title = str(t.title, 80);
+          return title ? { op: "open", title, body: str(t.body, 200) } : null;
+        }
+        if (t.op === "resolve") {
+          const id = str(t.id, 80);
+          return id ? { op: "resolve", id } : null;
+        }
+        return null;
+      })
+      .filter((t: ThreadAnalysis | null): t is ThreadAnalysis => t !== null)
+      .slice(0, 3);
     return {
       summary: String(parsed.summary ?? ""),
       entityRefs: Array.isArray(parsed.entityRefs) ? parsed.entityRefs.map(String) : [],
       npcs: npcUpdates,
       items: itemUpdates,
+      threads: threadUpdates,
     };
   } catch {
-    return { summary: raw.slice(0, 500), entityRefs: [], npcs: [], items: [] };
+    return { summary: raw.slice(0, 500), entityRefs: [], npcs: [], items: [], threads: [] };
   }
 }

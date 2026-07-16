@@ -1,6 +1,6 @@
 import "server-only";
 import { getSession, setSession, persistSession, type SessionData } from "@/lib/state";
-import { analyzeScene, type NpcAnalysis, type ItemAnalysis } from "@/llm/summarizer";
+import { analyzeScene, type NpcAnalysis, type ItemAnalysis, type ThreadAnalysis } from "@/llm/summarizer";
 import { isPlaceholderOneBreath } from "@/shared/scene";
 import type { ChatEntry } from "@/shared/chat";
 
@@ -16,8 +16,9 @@ export async function applyAnalystUpdates(
   live: SessionData,
   npcUpdates: NpcAnalysis[],
   itemUpdates: ItemAnalysis[],
+  threadUpdates: ThreadAnalysis[] = [],
 ): Promise<boolean> {
-  if (!npcUpdates.length && !itemUpdates.length) return false;
+  if (!npcUpdates.length && !itemUpdates.length && !threadUpdates.length) return false;
   const { TurnRuntime } = await import("@/llm/engineBridge");
   const { liveRng } = await import("@/engine");
   const { isPlausibleNpcName, isCollectiveName } = await import("@/shared/npcExtract");
@@ -44,6 +45,11 @@ export async function applyAnalystUpdates(
     if (id && u.presence === "present") rt.markPresent(id);
   }
   for (const it of itemUpdates) rt.grantSceneItem(it.name, it.note);
+
+  // QUEST backstop: the analyst caught an objective the live turn's threads[] missed
+  // (or an OPEN thread the scene finished) — reconcile it into the tracked threads.
+  const { applyThreadUpdates } = await import("@/llm/threadReconcile");
+  applyThreadUpdates(rt, threadUpdates);
 
   live.state = rt.state;
   live.npcRelations = rt.npcRelations;
@@ -83,15 +89,18 @@ export async function runOpenSceneAnalyst(campaignId: string): Promise<boolean> 
   const sceneNpcs = live.state.npcs
     .filter((n) => live.sceneCard.presentNpcIds.includes(n.id))
     .map((n) => ({ id: n.id, name: n.name, oneBreath: n.oneBreath }));
+  const openThreads = live.state.threads
+    .filter((t) => t.status !== "resolved")
+    .map((t) => ({ id: t.id, title: t.title }));
 
   let res;
   try {
-    res = await analyzeScene(text + beatsNote, sceneNpcs, entityIds);
+    res = await analyzeScene(text + beatsNote, sceneNpcs, entityIds, openThreads);
   } catch (e) {
     console.error("[analyst] open-scene run failed:", e instanceof Error ? e.message : e);
     return false;
   }
-  const changed = await applyAnalystUpdates(live, res.npcs, res.items);
+  const changed = await applyAnalystUpdates(live, res.npcs, res.items, res.threads);
   setSession(campaignId, live);
   if (changed) await persistSession(campaignId, live);
   return changed;

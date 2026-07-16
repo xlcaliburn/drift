@@ -99,7 +99,9 @@ pays the reward; offloads quest STRUCTURE off DeepSeek. Phase 1b backlog in the 
 - **Scene-analyst inference layer** (NEXT) — the player **directive** SHIPPED, and
   the reasoning-model scene ANALYST itself SHIPPED (`llm/summarizer.ts`, configurable
   `SCENE_ANALYST_MODEL` default deepseek-reasoner, runs on scene close + mid-scene +
-  a manual re-sync; picks up/categorizes NPCs + items, refreshes relationship logs).
+  a manual re-sync; picks up/categorizes NPCs + items, refreshes relationship logs,
+  and **reconciles quest threads** — opens an emergent objective the live `threads:[]`
+  missed, resolves a finished one (`llm/threadReconcile.ts`; QUESTS.md backstop).
   Still TODO: have it also INFER a rolling playstyle read + relationship deltas + a
   facts note, accumulated on the campaign and fed alongside the directive (first
   slice of the facts ledger above).
