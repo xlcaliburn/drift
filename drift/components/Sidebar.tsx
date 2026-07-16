@@ -93,7 +93,7 @@ export default function Sidebar({
           />
         )}
         {tab === "traits" && <TraitsTab state={state} />}
-        {tab === "map" && <MapTab state={state} />}
+        {tab === "map" && <MapTab state={state} sceneCard={sceneCard} />}
         {tab === "clocks" && <ClocksTab state={state} />}
         {tab === "jobs" && <JobsTab state={state} jobs={jobs} onJobAction={onJobAction} />}
       </div>

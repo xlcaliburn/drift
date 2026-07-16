@@ -22,6 +22,7 @@ import { dcForRisk, difficultyToRisk, type RiskTier } from "@/shared/risk";
 import type { Character } from "@/shared/schemas";
 import { extractDialogueNpcs, knownEntityNames } from "@/shared/npcExtract";
 import { inferConsumableUse } from "@/shared/items";
+import { routeBetween, rollTransitIncident, riskLabel } from "@/shared/routes";
 import type { CombatState } from "@/shared/combat";
 import type { Dossier } from "@/shared/multiplayer";
 import type { Job } from "@/shared/quests";
@@ -423,6 +424,9 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   let lastStop = "end_turn";
   const rawResponses: string[] = [];
 
+  // Captured BEFORE any mutation — the arrival-richness block (below) needs the
+  // PRE-turn location to know what route the player just traveled.
+  const prevLocationId = input.state.campaign.currentLocationId;
   const runtime = new TurnRuntime(input.state, input.rng ?? liveRng, {
     tickedThisScene: input.tickedSet,
     sceneCard: input.sceneCard,
@@ -876,6 +880,40 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     messages.push({
       role: "user",
       content: `The engine did NOT let the following happen:\n${applyCtx.reconcile.map((r) => `- ${r}`).join("\n")}\nRe-narrate this beat so it matches reality — the effect did NOT occur and the player's condition is UNCHANGED. An NPC may OFFER help, refuse, or point elsewhere, but do not describe any healing/recovery or item effect that didn't happen. Keep everything else, REPLACE your previous narration, do not request a roll.`,
+    });
+    const outcome = await plannedCall(false);
+    if (outcome.narration.trim()) narration = outcome.narration;
+  }
+
+  // ── Arrival richness (the map/route feature): a genuine station-to-station move
+  //    just closed the scene (sceneEnd's arrivedAtLocationId actually changed
+  //    currentLocationId — engine/sceneEnd.ts's ONLY write path for it, so this
+  //    catches every real arrival, model-driven sceneEnd or the turn-cap auto-close
+  //    alike). Roll the ROUTE's risk for a transit incident — engine-owned, seeded,
+  //    so "predefine routes as low/med/high risk" actually changes what happens, not
+  //    just a map color — then have the narrator EXTEND the beat with a proper
+  //    establishing paragraph plus exactly one grounding element: a complication on
+  //    a hit, a routine but concrete event (an NPC, a rumor, a lead) on a clear
+  //    roll. Every location in the current seed is a real hub; there's no "minor
+  //    site" concept yet, so any genuine arrival qualifies. ──
+  const destLocationId = runtime.state.campaign.currentLocationId;
+  const arrivedNewLocation =
+    !!runtime.sceneEndReport?.checklist.arrivalBeatOwed &&
+    !!prevLocationId &&
+    !!destLocationId &&
+    destLocationId !== prevLocationId;
+  if (arrivedNewLocation && prevLocationId && destLocationId) {
+    const dest = runtime.state.locations.find((l) => l.id === destLocationId);
+    const route = routeBetween(prevLocationId, destLocationId, runtime.state.locations);
+    const incident = rollTransitIncident(route.risk, runtime.rng);
+    const rollLine = `🛰 Transit (${riskLabel(route.risk)}): ${incident.roll} vs ${incident.chance} → ${incident.hit ? "INCIDENT" : "clear"}`;
+    engineLines.push(`ENGINE RESULT: ${rollLine}`);
+    emit([rollLine]);
+    toolCalls.push("arrival_realign");
+    messages.push({ role: "assistant", content: JSON.stringify({ narration }) });
+    messages.push({
+      role: "user",
+      content: `You've just arrived at ${dest?.name ?? "a new place"}${dest?.description ? ` — ${dest.description}` : ""}. Extend the ending of your last beat with a proper ESTABLISHING PARAGRAPH for this place (a few vivid sentences — the docks, the crowd, the mood a ${dest?.tier ?? "T1"}-tier location like this carries; this is a NEW major location, not a passing mention). Then weave in EXACTLY ONE grounding element: ${incident.hit ? "the transit did NOT go clean — a complication catches up with the player on arrival (a hazard, a hostile welcome, trouble that followed them in; you may set a \"danger\" check or \"combatStart\" if it's a genuine threat)" : "a routine but CONCRETE beat — a person worth noticing, an overheard rumor, a market detail, a job lead — something that makes the place feel lived-in, not scenery"}. REPLACE your previous narration with the extended version (keep what already happened, add this). Do not request a roll unless you set \"danger\".`,
     });
     const outcome = await plannedCall(false);
     if (outcome.narration.trim()) narration = outcome.narration;

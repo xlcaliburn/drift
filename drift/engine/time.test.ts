@@ -16,9 +16,17 @@ function state(tendays = 0, withFaultline = false): CampaignState {
 }
 
 describe("tendaysForSceneClose — the deterministic clock policy", () => {
-  it("a station hop always costs a tenday", () => {
+  it("a station hop always costs a tenday (the flat default, with no route known)", () => {
     expect(tendaysForSceneClose({ moved: true, sceneSeq: 1 })).toBe(1);
     expect(tendaysForSceneClose({ moved: true, sceneSeq: 7 })).toBe(1);
+  });
+
+  it("a known ROUTE's own travel time overrides the flat default on a move", () => {
+    expect(tendaysForSceneClose({ moved: true, sceneSeq: 1, routeTendays: 3 })).toBe(3);
+    expect(tendaysForSceneClose({ moved: true, sceneSeq: 1, routeTendays: 0 })).toBe(0); // a trivial local hop
+    // routeTendays is ONLY consulted on an actual move — never leaks into the
+    // stay-in-place cadence.
+    expect(tendaysForSceneClose({ moved: false, sceneSeq: 4, routeTendays: 5 })).toBe(1);
   });
 
   it("in-place scenes tick a tenday every 4th close, else nothing", () => {

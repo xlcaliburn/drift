@@ -18,10 +18,14 @@ import { economy } from "@/content";
  * in transit"), on top of this floor.
  */
 
-/** Tendays that pass when a scene closes. `sceneSeq` is the CLOSED scene's number. */
-export function tendaysForSceneClose(opts: { moved: boolean; sceneSeq: number }): number {
+/** Tendays that pass when a scene closes. `sceneSeq` is the CLOSED scene's number.
+ *  `routeTendays` — the ROUTE's own travel time (shared/routes.ts), when both
+ *  endpoints are known — overrides the flat constant for a real station-to-station
+ *  move (a Meridian↔Rook hop costs what the route says, not a blanket "1 tenday"
+ *  regardless of distance/danger). */
+export function tendaysForSceneClose(opts: { moved: boolean; sceneSeq: number; routeTendays?: number }): number {
   const c = economy.constants as { travelTendays?: number; scenesPerTenday?: number };
-  if (opts.moved) return c.travelTendays ?? 1;
+  if (opts.moved) return opts.routeTendays ?? c.travelTendays ?? 1;
   const per = c.scenesPerTenday ?? 4;
   return per > 0 && opts.sceneSeq > 0 && opts.sceneSeq % per === 0 ? 1 : 0;
 }

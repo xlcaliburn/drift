@@ -174,9 +174,15 @@ Don't add prose rules for things the engine can enforce.
   does it need?) or when a playtest surfaces a contradiction (which family should
   have caught it?).
 - `CONTINUITY.md` — scene-memory design (scene card / summaries / NPC relations)
-- `ITEMS.md` — remaining item slices (slots / ammo / shops); `CREW.md` — crew
-  recruitment + scaling upkeep (unbuilt); `COMBAT.md` — the one deferred combat item
-  (I-2 auto-start backstop). Build order: items → crew.
+- `ITEMS.md` — item catalog + the status-effect/damage-type system. SHIPPED.
+  `CREW.md` — recruitment (trust-tier hire chip), per-tenday wages + nonpayment
+  cascade, combat participation (auto-act, medic stabilize), role passives. v1
+  SHIPPED. `COMBAT.md` — the one deferred combat item (I-2 auto-start backstop).
+- `TRAVEL.md` — routes between locations (named lanes + a tier/tag formula
+  fallback), risk tiers that actually roll transit-incident chances (not just map
+  color), route-based travel time, and the arrival-richness re-narration pass
+  (an establishing paragraph + a guaranteed grounding beat on every new-location
+  arrival). SHIPPED. Map UI: hover-to-reveal route lines + tenday readout.
 - `QUESTS.md` — the procedural job board (Phase 1 SHIPPED: engine-owned, playstyle-
   weighted scores; `shared/quests.ts` + `shared/jobsRuntime.ts`; Jobs rail tab)
 - `RELATIONSHIPS.md` — NPC depth: relationship tiers (disposition → unlocks) + the

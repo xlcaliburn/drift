@@ -17,6 +17,7 @@ import { resolveJobsTurn } from "@/shared/jobsRuntime";
 import { personalJobAvailable, TRUST_THRESHOLD } from "@/shared/scene";
 import { liveRng } from "@/engine/rng";
 import { advanceTendays, tendaysForSceneClose } from "@/engine/time";
+import { routeBetween } from "@/shared/routes";
 import { recruitOffer, chargeCrewUpkeep } from "@/shared/crew";
 import { getSession, setSession, persistSession, loadReachableDossiers } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
@@ -554,7 +555,13 @@ export async function POST(req: NextRequest) {
         const sceneClosed = (result.sceneEnded || moved) && !pcDied && !resultCombat?.active;
         const timeLines: string[] = [];
         if (sceneClosed) {
-          const tendaysDelta = tendaysForSceneClose({ moved, sceneSeq: session.sceneCard.seq });
+          // A real station-to-station move costs what the ROUTE says (shared/routes.ts
+          // — distance + danger, not a blanket "1 tenday" for every hop).
+          const routeTendays =
+            moved && prevLoc && result.state.campaign.currentLocationId && prevLoc !== result.state.campaign.currentLocationId
+              ? routeBetween(prevLoc, result.state.campaign.currentLocationId, result.state.locations).tendays
+              : undefined;
+          const tendaysDelta = tendaysForSceneClose({ moved, sceneSeq: session.sceneCard.seq, routeTendays });
           const t = advanceTendays(result.state, tendaysDelta);
           result.state = t.state;
           result.events = [...result.events, ...t.events];
