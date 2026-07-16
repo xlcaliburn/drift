@@ -923,9 +923,12 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       // model rarely fills note/relationship for dialogue-introduced NPCs. Only when
       // ABSENT, so a real note the model set is never clobbered.
       if (!runtime.npcRelations[n.id]) {
+        // A concrete first-meeting note (who they are + where) beats a bare "crossed
+        // paths" line — the People panel's "what you know" reads as real memory.
+        const who = n.role ? `the ${n.role}` : "them";
         runtime.updateNpcRelation(n.id, {
           relationship: n.role ? `a ${n.role}` : undefined,
-          note: metPlace ? `First crossed paths at ${metPlace}.` : "First crossed paths with you.",
+          note: `You first dealt with ${who}${metPlace ? ` at ${metPlace}` : " here"}.`,
         });
       }
     }

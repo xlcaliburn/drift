@@ -187,6 +187,53 @@ export function dispositionLabel(d: number): string {
   return DISPOSITION_LABELS[clamped] ?? "neutral";
 }
 
+/**
+ * An NPC's `role` must read as a short occupational HANDLE ("broker", "dock
+ * foreman"), never a descriptive clause. The model/analyst sometimes hands over a
+ * whole sentence ("meridian trade-house broker giving you a cut on the deal") which
+ * then gets hard-truncated mid-word ("…giving you a") and title-cased into a garbled
+ * label. Cut at the first clause connective, keep a few words, drop trailing filler.
+ */
+export function shortRole(raw?: string | null): string | undefined {
+  if (!raw) return undefined;
+  let s = raw.trim().toLowerCase();
+  if (!s) return undefined;
+  // Cut a descriptive clause off ("broker WHO owes you", "broker GIVING you a cut").
+  s = s.split(
+    /\s+(?:who|whom|that|which|giving|offering|handing|looking|trying|running|working|owing|for\s+you|to\s+you|and\s|with\s|,)/,
+  )[0].trim();
+  s = s.split(/\s+/).slice(0, 4).join(" ").replace(/[.,;:]+$/, "").trim();
+  // Strip a stray trailing article/preposition left by the cut.
+  s = s.replace(/\s+(?:a|an|the|you|your|of|to|for|with|on|at)$/i, "").trim();
+  return s.length >= 2 ? s.slice(0, 32) : undefined;
+}
+
+/**
+ * Relationship notes are shown to the player as "what you know", so they must read
+ * in the SECOND person. The model/analyst sometimes writes them in the third ("Player
+ * handed over the core", "Silas paid her off"). Rewrite the player's third-person
+ * references — "the player", a bare "player", and the PC's own name — to "you".
+ */
+export function toSecondPerson(note: string, pcName?: string): string {
+  const escaped = pcName?.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Did the note LEAD with a player reference? (Only then should we recapitalize the
+  // new leading "you" — otherwise a normally lowercase note is left as the model wrote it.)
+  const ledWithPlayerRef =
+    /^\s*(?:the\s+player|player|the\s+pc)\b/i.test(note) ||
+    (!!escaped && escaped.length >= 3 && new RegExp(`^\\s*${escaped}\\b`).test(note));
+  let s = note;
+  s = s.replace(/\bthe player's\b/gi, "your").replace(/\bplayer's\b/gi, "your");
+  s = s.replace(/\bthe player\b/gi, "you").replace(/\bplayer\b/gi, "you");
+  s = s.replace(/\bthe pc\b/gi, "you");
+  if (escaped && escaped.length >= 3) {
+    // Case-SENSITIVE on the name (the model writes it capitalized) so a name that's
+    // also a common word ("Nix") doesn't swallow ordinary lowercase prose.
+    s = s.replace(new RegExp(`\\b${escaped}'s\\b`, "g"), "your");
+    s = s.replace(new RegExp(`\\b${escaped}\\b`, "g"), "you");
+  }
+  return ledWithPlayerRef ? s.replace(/^(\s*)([a-z])/, (_, ws, c) => ws + c.toUpperCase()) : s;
+}
+
 /** The relation suffix rendered onto an NPC's context line (empty if default). */
 export function relationSuffix(rel: NpcRelation | undefined): string {
   if (!rel) return "";

@@ -174,9 +174,10 @@ export function PeopleView({
                 </div>
               )}
 
-              {/* Their manner is a read you can only take in person — shown once you've
-                  actually dealt with them (a passing mention doesn't reveal it). */}
-              {sel.rel?.lastNote && (
+              {/* Their manner is a read you take once there's an actual RAPPORT to read —
+                  hidden while you're still strangers-at-neutral (a quirk shown for
+                  someone you barely know is just noise). */}
+              {sel.rel?.lastNote && sel.rel.disposition !== 0 && (
                 <div>
                   <div className="text-[11px] uppercase tracking-wide text-neutral-500">Manner</div>
                   <p className="mt-1 leading-snug text-neutral-400">{sel.npc.quirk ?? generateQuirk(sel.npc.id)}</p>

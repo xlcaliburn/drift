@@ -15,6 +15,8 @@ import {
   DISPOSITION_MIN,
   DISPOSITION_MAX,
   MAX_RELATION_LOG,
+  shortRole,
+  toSecondPerson,
   type SceneCard,
   type NpcRelations,
   type NpcRelation,
@@ -212,7 +214,7 @@ export function endScene(rt: NarrativeRT, input: Record<string, unknown>) {
 export function registerNpc(rt: NarrativeRT, name: string, oneBreath?: string, role?: string): { added: boolean; id: string } {
   const trimmed = name.trim();
   const here = rt.state.campaign.currentLocationId;
-  const cleanRole = role?.trim() || undefined;
+  const cleanRole = shortRole(role); // a short handle, never a descriptive clause
   const existing = rt.state.npcs.find((n) => n.name.toLowerCase() === trimmed.toLowerCase());
   if (existing) {
     rt.state = {
@@ -260,7 +262,7 @@ export function setNpcOneBreath(rt: NarrativeRT, id: string, oneBreath: string, 
   if (!text) return;
   rt.state = {
     ...rt.state,
-    npcs: rt.state.npcs.map((n) => (n.id === id ? { ...n, oneBreath: text, role: n.role ?? role?.trim() } : n)),
+    npcs: rt.state.npcs.map((n) => (n.id === id ? { ...n, oneBreath: text, role: n.role ?? shortRole(role) } : n)),
   };
 }
 
@@ -378,9 +380,12 @@ export function updateNpcRelation(
       rel.disposition = to;
     }
   }
-  if (upd.relationship?.trim() && !rel.relationship) rel.relationship = upd.relationship.trim();
+  // Notes/relationship are shown to the player as "what you know" — keep them second
+  // person ("You handed over the core", not "Player handed over…").
+  const pcName = pcOf(rt)?.name;
+  if (upd.relationship?.trim() && !rel.relationship) rel.relationship = toSecondPerson(upd.relationship.trim(), pcName);
   if (upd.note?.trim()) {
-    rel.lastNote = upd.note.trim().slice(0, 160);
+    rel.lastNote = toSecondPerson(upd.note.trim(), pcName).slice(0, 160);
     rel.lastSceneSeq = rt.sceneCard.seq;
     pushRelationLog(rt, rel, rel.lastNote);
   }
