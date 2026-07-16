@@ -739,7 +739,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   //    threads, clock advances, scene end, and combatStart. Pure engine calls —
   //    the whole block is unit-tested without a model call (applyPlan.test.ts). ──
   const combatBeforeApply = combat;
-  const applyCtx: ApplyCtx = { runtime, preState: input.state, pc, emit, toolCalls, lastRoll, combat };
+  const applyCtx: ApplyCtx = { runtime, preState: input.state, pc, emit, toolCalls, lastRoll, combat, reconcile: [] };
   applyPlan(plan, applyCtx);
   combat = applyCtx.combat;
 
@@ -758,6 +758,23 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     messages.push({
       role: "user",
       content: `A fight just broke out. The engine placed EXACTLY these combatants: ${roster}.${openers ? `\n${openers}\nThat opening exchange is the authoritative result — honor it.` : ""}\nRe-narrate the opening beat to match this roster PRECISELY: use these names and this exact count — no more, no fewer, no unnamed extras. 2-3 vivid sentences, present tense; no dice, no options, no new roll. REPLACE your previous narration.`,
+    });
+    const outcome = await plannedCall(false);
+    if (outcome.narration.trim()) narration = outcome.narration;
+  }
+
+  // ── Engine-first reconciliation (ITEMS alignment): a mechanical intent the prose
+  //    leaned on was DENIED — a heal/item use that failed because the player doesn't
+  //    hold it (incl. the model narrating an NPC patching them up from supplies the
+  //    player doesn't own — the "Fingers heals you with a medkit you don't have, HP
+  //    unchanged" desync). Re-narrate so the beat can't claim an effect that never
+  //    happened. Skipped in combat (its own realign owns the prose). ──
+  if (applyCtx.reconcile.length && !combat?.active) {
+    toolCalls.push("intent_realign");
+    messages.push({ role: "assistant", content: JSON.stringify({ narration }) });
+    messages.push({
+      role: "user",
+      content: `The engine did NOT let the following happen:\n${applyCtx.reconcile.map((r) => `- ${r}`).join("\n")}\nRe-narrate this beat so it matches reality — the effect did NOT occur and the player's condition is UNCHANGED. An NPC may OFFER help, refuse, or point elsewhere, but do not describe any healing/recovery or item effect that didn't happen. Keep everything else, REPLACE your previous narration, do not request a roll.`,
     });
     const outcome = await plannedCall(false);
     if (outcome.narration.trim()) narration = outcome.narration;

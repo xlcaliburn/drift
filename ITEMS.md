@@ -14,6 +14,18 @@ over-cap, which just blocks the next auto-pickup — the IT-2 grandfather rule).
 Dock repair + credit/debt (ECONOMY E-3) SHIPPED (see below). Items work is
 COMPLETE.*
 
+*Denied-heal ALIGNMENT SHIPPED (2026-07-15): the narrator used to describe a heal
+the engine never granted — a live case had an NPC "patch up" a downed marine with a
+medkit the PLAYER didn't own, so `useItem` no-op'd (only a buried ⚠ line) while the
+prose said the wound closed and HP never moved. Two guards now: (1) a prompt MIRROR
+rule (`jsonSystem.ts`) — recovering condition happens ONLY through the engine (a real
+item the player holds, or a patron rest); an NPC may OFFER aid but the narrator can't
+restore HP by narrating it; and (2) a denied `useItem` pushes a `reconcile` note
+(`applyPlan/inventory.ts` → `ApplyCtx.reconcile`) that triggers an engine-first
+RE-NARRATION (`jsonTurn.ts`) so the beat is rewritten to match "no heal happened,"
+same idiom as the combat-open realign. NPC-provided healing as a real bounded
+mechanic was deliberately NOT added (would be a new free-heal vector to balance).*
+
 *Rook body-modification service SHIPPED: the NPC **Chrome** (loc-rook) reshapes a
 character's `appearance` and folds the change into their `backstory` for a flat
 ¢500 — engine-owned `bodyMod` (refused off-Rook / when broke), a Rook-only prompt

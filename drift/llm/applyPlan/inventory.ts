@@ -5,14 +5,22 @@ import type { PlanHandler } from "./types";
  * every failure is surfaced (a narrated deal/heal that didn't happen must not pass
  * silently). `gearItems` = narrative pickups/losses becoming real gear entries.
  */
-export const trade: PlanHandler = (plan, { runtime, pc, emit, toolCalls }) => {
+export const trade: PlanHandler = (plan, { runtime, pc, emit, toolCalls, reconcile }) => {
   if (plan.useItem && pc) {
     toolCalls.push("use_item");
     const res = runtime.useItem(plan.useItem.itemId, pc.id) as { line?: string; error?: string };
     if (res.line) emit([res.line]);
-    // Failed use (e.g. the model thinks they hold an item they don't) must be
-    // VISIBLE — otherwise the narration claims a heal that never happened.
-    else if (res.error) emit([`⚠ Can't use item: ${res.error}`]);
+    // Failed use (e.g. the model thinks they hold an item they don't, or narrates an
+    // NPC patching the player from supplies the player doesn't own) must be VISIBLE —
+    // otherwise the narration claims a heal that never happened. Flag it for the
+    // engine-first re-narration too, so the PROSE is corrected, not just a ⚠ line
+    // buried under a paragraph that says the wound closed (ITEMS alignment).
+    else if (res.error) {
+      emit([`⚠ Can't use item: ${res.error}`]);
+      reconcile.push(
+        `The attempted item/heal ("${plan.useItem.itemId}") FAILED — ${res.error}. NO healing or item effect occurred; the player's condition is UNCHANGED. Do not describe a wound closing, being patched up, or any recovery.`,
+      );
+    }
   }
   // Shop transactions (ITEMS.md slice E) — the engine owns the whole exchange:
   // shelf check, rep-adjusted price, credits, pack space.

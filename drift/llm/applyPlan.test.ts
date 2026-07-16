@@ -21,9 +21,11 @@ const maxRng: RNG = { int: (_min: number, max: number) => max };
 function state(
   over: {
     credits?: number;
-    gear?: { name: string; damage?: string; acBonus?: number; qty?: number }[];
+    gear?: { name: string; damage?: string; acBonus?: number; qty?: number; itemId?: string }[];
     threads?: CampaignState["threads"];
     clocks?: CampaignState["clocks"];
+    hp?: number;
+    maxHp?: number;
   } = {},
 ): CampaignState {
   return {
@@ -31,7 +33,7 @@ function state(
     universe: { id: "u", name: "Test" },
     characters: [
       {
-        id: "pc-1", kind: "pc", name: "Vess", hp: 8, maxHp: 8, ac: 12, stims: 0, fragile: false,
+        id: "pc-1", kind: "pc", name: "Vess", hp: over.hp ?? 8, maxHp: over.maxHp ?? 8, ac: 12, stims: 0, fragile: false,
         credits: over.credits ?? 120,
         attributes: { might: 0, reflex: 0, vitality: 0, intellect: 0, perception: 0, presence: 0 },
         skills: [], actionModifiers: {}, gear: over.gear ?? [], injuries: [],
@@ -69,9 +71,10 @@ function run(
     toolCalls: [],
     lastRoll: opts.lastRoll ?? null,
     combat: opts.combat ?? null,
+    reconcile: [],
   };
   applyPlan(plan, ctx);
-  return { runtime, emitted, toolCalls: ctx.toolCalls, combat: ctx.combat };
+  return { runtime, emitted, toolCalls: ctx.toolCalls, combat: ctx.combat, reconcile: ctx.reconcile };
 }
 
 const pc = (rt: TurnRuntime) => rt.state.characters[0];
@@ -109,6 +112,24 @@ describe("applyPlan — inventory", () => {
   it("records a legitimate item gain as real gear", () => {
     const { runtime } = run(state({}), mkPlan({ items: [{ name: "vac-rated facemask", action: "gain", note: "looted" }] }));
     expect(pc(runtime).gear.some((g) => g.name === "vac-rated facemask")).toBe(true);
+  });
+
+  it("flags a DENIED heal for re-narration (used an item the player doesn't hold)", () => {
+    // The model narrated an NPC patching the player up with a 'medkit' the PC never
+    // owned. The engine can't consume it → emits a ⚠ line AND a reconcile note so the
+    // prose gets corrected, not just contradicted by a buried system line.
+    const { emitted, reconcile } = run(state({ gear: [] }), mkPlan({ useItem: { itemId: "medkit" } }));
+    expect(emitted.some((l) => /Can't use item/.test(l))).toBe(true);
+    expect(reconcile).toHaveLength(1);
+    expect(reconcile[0]).toMatch(/NO healing|UNCHANGED/);
+  });
+
+  it("does NOT flag a successful item use", () => {
+    const { reconcile } = run(
+      state({ gear: [{ name: "Medkit", itemId: "medkit" }], hp: 5, maxHp: 20 }),
+      mkPlan({ useItem: { itemId: "medkit" } }),
+    );
+    expect(reconcile).toHaveLength(0);
   });
 });
 

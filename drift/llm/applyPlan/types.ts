@@ -20,6 +20,11 @@ export interface ApplyCtx {
   lastRoll: { skill: string; outcome?: string } | null;
   /** Combat spawned this turn — combatStart sets it; a reroute may have already. */
   combat: CombatState | null;
+  /** Engine outcomes that CONTRADICT what the narration likely assumed — a denied
+   *  heal/item use, a refused purchase. jsonTurn re-narrates the beat to match these
+   *  so the prose can't claim an effect that never happened (ITEMS/COMBAT alignment).
+   *  Handlers push a plain-language note; empty = nothing to reconcile. */
+  reconcile: string[];
 }
 
 export type PlanHandler = (plan: TurnPlan, ctx: ApplyCtx) => void;
