@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { AuditRow } from "@/app/api/admin/audits/route";
+import type { AuditCandidate } from "@/lib/auditRun";
 import { RefreshButton } from "@/components/admin/RefreshButton";
 
 /**
@@ -23,6 +24,10 @@ export default function AdminAuditsPage() {
   const [runNote, setRunNote] = useState("");
   const [reloadNonce, setReloadNonce] = useState(0);
   const [openId, setOpenId] = useState<number | null>(null);
+  // The Run-now scoping modal: who WOULD be included, with deselection.
+  const [candidates, setCandidates] = useState<AuditCandidate[] | null>(null);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setLoaded(false);
@@ -34,12 +39,35 @@ export default function AdminAuditsPage() {
       });
   }, [reloadNonce]);
 
-  // Manual trigger — runs the same pass the 3am cron does (admin-authed).
-  async function runNow() {
-    setRunning(true);
-    setRunNote("Running the audit pass — a strong-model read per campaign; this can take a few minutes…");
+  // Step 1 — open the modal with tonight's would-be roster (everyone pre-checked).
+  async function openPicker() {
+    setPickerLoading(true);
+    setRunNote("");
     try {
-      const res = await fetch("/api/cron/daily-audit", { method: "POST" });
+      const res = await fetch("/api/cron/daily-audit?preview=1");
+      const data = await res.json();
+      const list: AuditCandidate[] = data.candidates ?? [];
+      setCandidates(list);
+      setSelected(new Set(list.map((c) => c.campaignId)));
+    } catch (e) {
+      setRunNote(`⚠ ${e instanceof Error ? e.message : "preview failed"}`);
+    } finally {
+      setPickerLoading(false);
+    }
+  }
+
+  // Step 2 — run only the checked campaigns (same pass the 3am cron does).
+  async function runSelected() {
+    const ids = [...selected];
+    setCandidates(null);
+    setRunning(true);
+    setRunNote(`Auditing ${ids.length} campaign${ids.length === 1 ? "" : "s"} — a strong-model read each; this can take a few minutes…`);
+    try {
+      const res = await fetch("/api/cron/daily-audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignIds: ids }),
+      });
       const data = await res.json();
       setRunNote(
         res.ok
@@ -54,6 +82,15 @@ export default function AdminAuditsPage() {
     }
   }
 
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const totalIssues = (a: AuditRow) =>
     a.report.inconsistencies.length + a.report.droppedThreads.length + a.report.frustrations.length;
 
@@ -66,16 +103,99 @@ export default function AdminAuditsPage() {
         </p>
         <div className="flex items-center gap-2 text-xs">
           <button
-            onClick={runNow}
-            disabled={running}
+            onClick={openPicker}
+            disabled={running || pickerLoading}
             className="rounded-md border border-edge px-3 py-1 text-neutral-300 transition hover:border-accent hover:text-accent disabled:opacity-50"
           >
-            {running ? "Running…" : "▶ Run now"}
+            {running ? "Running…" : pickerLoading ? "Loading…" : "▶ Run now"}
           </button>
           <RefreshButton onClick={() => setReloadNonce((n) => n + 1)} busy={!loaded} />
         </div>
       </div>
       {runNote && <p className="mt-2 text-xs text-neutral-500">{runNote}</p>}
+
+      {/* Run-now scoping modal: tonight's would-be roster, deselectable. */}
+      {candidates !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 p-4" onClick={() => setCandidates(null)}>
+          <div
+            className="w-full max-w-lg rounded-xl border border-edge bg-panel p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-neutral-100">Run the audit pass</span>
+              <button onClick={() => setCandidates(null)} className="text-neutral-400 hover:text-accent" aria-label="Close">
+                ✕
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-neutral-500">
+              Campaigns that played in the last day. Untick any to leave them out — each audit is one strong-model read
+              (~$0.15–0.35).
+            </p>
+
+            {candidates.length === 0 ? (
+              <p className="mt-4 text-sm text-neutral-500">Nobody played in the last day — nothing to audit.</p>
+            ) : (
+              <div className="scrollbar-thin mt-3 max-h-[50vh] space-y-1 overflow-y-auto">
+                {candidates.map((c) => (
+                  <label
+                    key={c.campaignId}
+                    className="flex cursor-pointer items-center gap-2.5 rounded border border-edge bg-ink/40 px-2.5 py-1.5 transition hover:border-accent/50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.has(c.campaignId)}
+                      onChange={() => toggle(c.campaignId)}
+                      className="accent-[#e8a33d]"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] text-neutral-200">
+                        {c.name || c.campaignId}
+                        {c.auditedToday && (
+                          <span className="ml-1.5 text-[10px] text-neutral-600" title="Already audited today — a rerun replaces the report">
+                            (rerun)
+                          </span>
+                        )}
+                      </span>
+                      {c.playerEmail && <span className="block truncate text-[11px] text-neutral-500">{c.playerEmail}</span>}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-[11px] text-neutral-500">{c.turnsToday} turns</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-4 flex items-center justify-between text-xs">
+              {candidates.length > 0 && (
+                <button
+                  onClick={() =>
+                    setSelected(
+                      selected.size === candidates.length ? new Set() : new Set(candidates.map((c) => c.campaignId)),
+                    )
+                  }
+                  className="text-neutral-500 hover:text-neutral-300"
+                >
+                  {selected.size === candidates.length ? "Deselect all" : "Select all"}
+                </button>
+              )}
+              <div className="ml-auto flex gap-2">
+                <button
+                  onClick={() => setCandidates(null)}
+                  className="rounded-md border border-edge px-3 py-1.5 text-neutral-400 transition hover:text-neutral-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={runSelected}
+                  disabled={selected.size === 0}
+                  className="rounded-md border border-accent px-3 py-1.5 font-semibold text-accent transition hover:bg-accent/10 disabled:opacity-40"
+                >
+                  Run {selected.size} campaign{selected.size === 1 ? "" : "s"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!loaded && <p className="mt-8 text-sm text-neutral-500">Loading…</p>}
       {loaded && audits.length === 0 && (

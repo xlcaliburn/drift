@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runNightlyAudits, auditCampaign } from "@/lib/auditRun";
+import { runNightlyAudits, auditCampaign, activeCampaignPreviews } from "@/lib/auditRun";
 import { requireAdmin } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -14,8 +14,11 @@ export const maxDuration = 300;
  *   - `Authorization: Bearer ${CRON_SECRET}` — how Vercel Cron (or any external
  *     scheduler) calls it. Set CRON_SECRET in env; Vercel attaches it
  *     automatically to cron invocations when the env var exists.
- *   - a signed-in ADMIN session — manual trigger for testing
- *     (`?campaignId=camp-…` audits just that one).
+ *   - a signed-in ADMIN session — manual trigger from /admin/audits.
+ *
+ * Scoping (admin modal): `?preview=1` returns the would-be-included campaigns
+ * WITHOUT running anything; a POST body `{"campaignIds": [...]}` runs only that
+ * selection (intersected with the active set). `?campaignId=` still audits one.
  */
 async function handle(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -26,8 +29,18 @@ async function handle(req: NextRequest) {
     if (auth.error) return auth.error;
   }
 
+  // Preview: who WOULD this run include (the admin modal's checklist).
+  if (req.nextUrl.searchParams.get("preview")) {
+    return NextResponse.json({ candidates: await activeCampaignPreviews() });
+  }
+
+  const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+  const onlyIds: string[] | undefined = Array.isArray(body.campaignIds)
+    ? body.campaignIds.filter((x: unknown): x is string => typeof x === "string")
+    : undefined;
+
   const campaignId = req.nextUrl.searchParams.get("campaignId");
-  const results = campaignId ? [await auditCampaign(campaignId)] : await runNightlyAudits();
+  const results = campaignId ? [await auditCampaign(campaignId)] : await runNightlyAudits(onlyIds);
 
   const ok = results.filter((r) => r.ok).length;
   const cost = results.reduce((s, r) => s + (r.costUsd ?? 0), 0);

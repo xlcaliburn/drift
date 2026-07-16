@@ -42,6 +42,69 @@ export async function activeCampaignIds(hours = 26): Promise<string[]> {
   return [...new Set((data ?? []).map((r) => r.campaign_id as string))];
 }
 
+/** One row per campaign the nightly pass WOULD include — the admin "Run now"
+ *  modal shows these so a run can be scoped before it spends. */
+export interface AuditCandidate {
+  campaignId: string;
+  name: string | null;
+  playerEmail: string | null;
+  /** Turns recorded in the window — a feel for how much there is to audit. */
+  turnsToday: number;
+  /** Already has a report for today's date (a rerun replaces it). */
+  auditedToday: boolean;
+}
+
+export async function activeCampaignPreviews(hours = 26): Promise<AuditCandidate[]> {
+  if (!hasSupabase()) return [];
+  const { getServiceClient } = await import("@/db/queries");
+  const db = getServiceClient();
+  const cutoff = new Date(Date.now() - hours * 3600_000).toISOString();
+
+  const { data: turns, error } = await db
+    .from("turn_usage")
+    .select("campaign_id")
+    .gt("created_at", cutoff)
+    .not("campaign_id", "is", null);
+  if (error) throw new Error(`activeCampaignPreviews: ${error.message}`);
+  const counts = new Map<string, number>();
+  for (const r of turns ?? []) {
+    const id = r.campaign_id as string;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  const ids = [...counts.keys()];
+  if (!ids.length) return [];
+
+  const [{ data: camps }, { data: audited }] = await Promise.all([
+    db.from("campaigns").select("id,name,player_id").in("id", ids),
+    db
+      .from("daily_audits")
+      .select("campaign_id")
+      .eq("audit_date", new Date().toISOString().slice(0, 10))
+      .in("campaign_id", ids),
+  ]);
+  const auditedSet = new Set((audited ?? []).map((r) => r.campaign_id as string));
+  const playerIds = [...new Set((camps ?? []).map((c) => c.player_id as string | null).filter((p): p is string => !!p))];
+  const emails = new Map<string, string>();
+  if (playerIds.length) {
+    const { data: profiles } = await db.from("profiles").select("id,email").in("id", playerIds);
+    for (const p of profiles ?? []) emails.set(p.id as string, (p.email as string) ?? "");
+  }
+  const campById = new Map((camps ?? []).map((c) => [c.id as string, c]));
+
+  return ids
+    .map((id) => {
+      const c = campById.get(id);
+      return {
+        campaignId: id,
+        name: (c?.name as string) ?? null,
+        playerEmail: c?.player_id ? emails.get(c.player_id as string) ?? null : null,
+        turnsToday: counts.get(id) ?? 0,
+        auditedToday: auditedSet.has(id),
+      };
+    })
+    .sort((a, b) => b.turnsToday - a.turnsToday);
+}
+
 /** The day's APPEAL calls + errored turns for one campaign — the strongest
  *  frustration signals, fed to the auditor verbatim (truncated). */
 async function dayAppealsText(campaignId: string, hours = 26): Promise<string> {
@@ -196,9 +259,17 @@ export async function auditCampaign(campaignId: string): Promise<AuditRunSummary
   }
 }
 
-/** The full nightly pass: every campaign that played today, one at a time. */
-export async function runNightlyAudits(): Promise<AuditRunSummary[]> {
-  const ids = await activeCampaignIds();
+/** The full nightly pass: every campaign that played today, one at a time.
+ *  `onlyIds` (the admin modal's selection) scopes the run — ids are still
+ *  intersected with the ACTIVE set, so a stale/foreign id can't force an audit. */
+export async function runNightlyAudits(onlyIds?: string[]): Promise<AuditRunSummary[]> {
+  let ids = await activeCampaignIds();
+  if (onlyIds) {
+    // An explicit selection is honored exactly — [] runs nothing (deselect-all),
+    // undefined (the cron, no body) runs everyone active.
+    const wanted = new Set(onlyIds);
+    ids = ids.filter((id) => wanted.has(id));
+  }
   const out: AuditRunSummary[] = [];
   for (const id of ids) out.push(await auditCampaign(id));
   return out;
