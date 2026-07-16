@@ -22,7 +22,19 @@ import {
 } from "@/engine/combatEngine";
 import { fleeDC, threatLevel, weaponSkill } from "@/shared/combat";
 import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
-import { catalogItem, itemCount, slotsUsed, maxSlotsFor } from "@/shared/items";
+import { catalogItem, itemCount, slotsUsed, maxSlotsFor, resolveGearItemId } from "@/shared/items";
+import {
+  applyStatus,
+  tickStatuses,
+  acPenalty,
+  resistFactor,
+  clearOnHeal,
+  statusIcon,
+  statusLabel,
+  type StatusEffect,
+  type StatusKind,
+  type DamageType,
+} from "@/shared/status";
 import { inTutorial } from "@/shared/tutorial";
 import { freshDeathSaves, advanceSaves } from "@/shared/death";
 import type { SceneCard, NpcRelations } from "@/shared/scene";
@@ -67,6 +79,83 @@ const pcOf = (rt: CombatRT): Character | undefined => rt.state.characters.find((
 const isDeadChar = (c: Character): boolean => (c.injuries ?? []).some((i) => i.name === "Dead");
 const isShipTarget = (rt: CombatRT, id: string): boolean =>
   !!rt.state.ship && (id === rt.state.ship.id || id === "ship" || id === "lark");
+
+// ── Status system (ITEMS.md) — read gear traits + resolve per-round effects ──
+
+interface PlayerDefense {
+  resist?: DamageType;
+  vuln?: DamageType;
+  statusGuard: StatusKind[];
+  mobilityPenalty: boolean;
+}
+
+/** The catalog item of the best armor piece worn (highest AC), whose TRAITS
+ *  (resist/vuln/statusGuard/mobility) apply — mirrors bestArmor's "best single piece". */
+function wornArmorItem(pc: Character) {
+  let best: ReturnType<typeof catalogItem>;
+  let bestAc = -1;
+  for (const g of pc.gear ?? []) {
+    const id = resolveGearItemId(g);
+    const it = id ? catalogItem(id) : undefined;
+    if (!it || it.type !== "armor") continue;
+    const ac = it.acBonus ?? 0;
+    if (ac > bestAc) { bestAc = ac; best = it; }
+  }
+  return best;
+}
+
+function playerDefense(pc: Character): PlayerDefense {
+  const a = wornArmorItem(pc);
+  return { resist: a?.resist, vuln: a?.vuln, statusGuard: a?.statusGuard ?? [], mobilityPenalty: !!a?.mobilityPenalty };
+}
+
+/** The drawn weapon's on-hit status + damage type + armor-pierce, from the catalog. */
+function drawnWeaponTraits(weapon?: Character["gear"][number]): {
+  weaponType?: DamageType;
+  weaponOnHit?: StatusKind;
+  armorPen: number;
+} {
+  const id = weapon ? resolveGearItemId(weapon) : undefined;
+  const it = id ? catalogItem(id) : undefined;
+  return { weaponType: it?.damageType, weaponOnHit: it?.onHit, armorPen: it?.armorPen ?? 0 };
+}
+
+/**
+ * Round-start status resolution for the player + every live enemy: DoT ticks,
+ * duration decrements, and the Shocked-skip flags for this round. Mutates the passed
+ * `enemies` (hp + statuses). Returns the player's post-tick statuses, the set of
+ * enemies that are Shocked (they skip their volley), whether the player is Shocked
+ * (skips their action), and a fatal outcome if the player's own DoT dropped them.
+ */
+function tickRoundStatuses(
+  rt: CombatRT,
+  enemies: CombatEnemy[],
+  playerStatuses: StatusEffect[],
+  lines: string[],
+): { playerStatuses: StatusEffect[]; skipIds: Set<string>; playerSkip: boolean; outcome: CombatOutcome | null } {
+  const pc = pcOf(rt)!;
+  const pt = tickStatuses(playerStatuses, "You", rt.rng);
+  lines.push(...pt.lines);
+  let outcome: CombatOutcome | null = null;
+  if (pt.damage > 0) {
+    const harm = applyDamage(rt, pc.id, pt.damage, "status effect");
+    if (harm.died) outcome = "dead";
+    else if (harm.downed) outcome = "downed";
+  }
+  const skipIds = new Set<string>();
+  for (const e of enemies) {
+    if (e.hp <= 0) continue;
+    const et = tickStatuses(e.statuses, e.name, rt.rng);
+    lines.push(...et.lines);
+    e.statuses = et.statuses;
+    if (et.skipTurn) skipIds.add(e.id);
+    if (et.damage > 0) {
+      e.hp = Math.max(0, e.hp - et.damage);
+      if (e.hp <= 0) lines.push(`☠ ${e.name} succumbs to it.`);
+    }
+  }
+  return { playerStatuses: pt.statuses, skipIds, playerSkip: pt.skipTurn, outcome };
+}
 
 export function applyDamage(rt: CombatRT, characterId: string, amount: number, reason: string) {
   const c = charOf(rt, characterId);
@@ -386,25 +475,47 @@ function personalCombatant(rt: CombatRT, weaponName?: string): PlayerCombatant {
     0,
     ...["smallArms", "gunnery", "melee"].map((s) => pc.skills.find((k) => k.name === s)?.level ?? 0),
   );
-  return { hp: pc.hp, maxHp: pc.maxHp, ac: pc.ac, attackMod, weaponDamage, combatLevel };
+  return {
+    hp: pc.hp, maxHp: pc.maxHp, ac: pc.ac, attackMod, weaponDamage, combatLevel,
+    ...drawnWeaponTraits(weapon),
+    ...playerDefense(pc),
+  };
 }
 
-/** Enemies attack the player; halts the instant the player drops (COMBAT D-4). */
-function enemyVolley(rt: CombatRT, combat: CombatState, lines: string[]): CombatOutcome {
+/** Enemies attack the player; halts the instant the player drops (COMBAT D-4). A
+ *  Shocked enemy (`skipIds`) loses its volley. Incoming damage is scaled by the
+ *  player's armor resist/vuln vs the enemy's damage type, and a T2+ enemy's on-hit
+ *  status lands unless the armor guards it. `combat.playerStatuses` is mutated. */
+function enemyVolley(rt: CombatRT, combat: CombatState, lines: string[], skipIds: Set<string> = new Set()): CombatOutcome {
   const pc = pcOf(rt)!;
-  const targetAc = pc.ac + combat.playerCoverAc;
+  const def = playerDefense(pc);
   for (const enemy of combat.enemies) {
+    if (enemy.hp <= 0) continue;
+    if (skipIds.has(enemy.id)) {
+      lines.push(`⚡ ${enemy.name} is Shocked — can't act.`);
+      continue;
+    }
     const swings = enemy.multiAttack ? 2 : 1;
     for (let i = 0; i < swings; i++) {
       if ((pcOf(rt)?.hp ?? 0) <= 0) return isDeadChar(pcOf(rt)!) ? "dead" : "downed";
+      // Corroded armor lowers the player's AC; cover still helps.
+      const targetAc = pc.ac + combat.playerCoverAc - acPenalty(combat.playerStatuses);
       const atk = enemyAttack(enemy, targetAc, rt.rng);
       lines.push(`💢 ${atk.breakdown}`);
       if (atk.hit) {
-        const harm = applyDamage(rt, pc.id, atk.damage, `${enemy.name}'s attack.`);
+        const factor = resistFactor(enemy.personalDamageType, def.resist, def.vuln);
+        const dmg = Math.max(1, Math.round(atk.damage * factor));
+        const harm = applyDamage(rt, pc.id, dmg, `${enemy.name}'s attack.`);
+        const tag = factor < 1 ? " (resisted)" : factor > 1 ? " (vulnerable)" : "";
         lines.push(
-          `💥 You take ${harm.taken} — ${harm.hpAfter + harm.taken}→${harm.hpAfter} HP` +
+          `💥 You take ${harm.taken}${tag} — ${harm.hpAfter + harm.taken}→${harm.hpAfter} HP` +
             (harm.died ? " · KILLED" : harm.downed ? " · DOWNED" : ""),
         );
+        // T2+ enemy's on-hit status — blocked only by matching armor immunity.
+        if (enemy.onHit && !def.statusGuard.includes(enemy.onHit)) {
+          combat.playerStatuses = applyStatus(combat.playerStatuses ?? [], enemy.onHit);
+          lines.push(`${statusIcon(enemy.onHit)} You're now ${statusLabel(enemy.onHit)}.`);
+        }
         if (harm.died) return "dead";
         if (harm.downed) return "downed";
       }
@@ -490,14 +601,31 @@ function resolvePersonalRound(
     }
   }
 
-  switch (action.type) {
+  // ── Round start: statuses tick (DoT + Shocked skips) for everyone. The player's
+  //    own burning/bleeding can drop them; a Shocked player loses their action. ──
+  let playerStatuses = combat.playerStatuses ?? [];
+  const tick = tickRoundStatuses(rt, enemies, playerStatuses, lines);
+  playerStatuses = tick.playerStatuses;
+  if (tick.outcome) {
+    return { combat: { ...combat, enemies, playerStatuses, active: false }, lines, outcome: tick.outcome, loot: 0 };
+  }
+
+  switch (tick.playerSkip ? "skip" : action.type) {
     case "attack": {
       const enemy = enemies.find((e) => e.id === action.enemyId && e.hp > 0) ?? enemies.find((e) => e.hp > 0);
       if (enemy) {
-        const r = playerAttack(enemy, cbt.attackMod, cbt.weaponDamage, aim, rt.rng, surpriseRound);
+        // Corroded armor + armor-piercing rounds lower the effective AC.
+        const effAc = Math.max(1, enemy.ac - acPenalty(enemy.statuses) - cbt.armorPen);
+        const r = playerAttack({ ...enemy, ac: effAc }, cbt.attackMod, cbt.weaponDamage, aim, rt.rng, surpriseRound);
         lines.push(`🎯 ${r.breakdown}`);
+        const shieldBlocked = enemy.shieldReady && r.hit && r.damage === 0;
         enemy.hp = r.enemyHpAfter;
         enemy.shieldReady = r.shieldReadyAfter;
+        // On-hit status: shock arcs THROUGH a shield; burn/bleed/corrode are blocked by one.
+        if (r.hit && cbt.weaponOnHit && (cbt.weaponOnHit === "shocked" || !shieldBlocked)) {
+          enemy.statuses = applyStatus(enemy.statuses ?? [], cbt.weaponOnHit);
+          lines.push(`${statusIcon(cbt.weaponOnHit)} ${enemy.name}: ${statusLabel(cbt.weaponOnHit)}.`);
+        }
         if (r.killed) lines.push(`☠ ${enemy.name} is down.`);
       }
       aim = 0;
@@ -510,9 +638,15 @@ function resolvePersonalRound(
       lines.push("🔺 You steady your aim (+2 to your next attack).");
       break;
     case "cover":
-      cover = 2;
-      aim = 0;
-      lines.push("🛡 You take cover (+2 AC until you move).");
+      if (cbt.mobilityPenalty) {
+        cover = 0;
+        aim = 0;
+        lines.push("🛡 Too heavy to take evasive cover — the carapace won't let you duck.");
+      } else {
+        cover = 2;
+        aim = 0;
+        lines.push("🛡 You take cover (+2 AC until you move).");
+      }
       break;
     case "stim":
     case "item": {
@@ -530,6 +664,12 @@ function resolvePersonalRound(
         const after = applyHeal(rt, pc.id, rollDamage(eff.dice ?? "1d6+2", rt.rng));
         consumeItem(rt, pc.id, itemId);
         lines.push(`🩹 ${item.name}: +${after - before} HP — ${before}→${after}.`);
+        // A patch also stops the bleeding/burning it treats.
+        const healed = clearOnHeal(playerStatuses);
+        playerStatuses = healed.statuses;
+        if (healed.cleared.length) {
+          lines.push(`🩹 That stops your ${healed.cleared.map((k) => statusLabel(k).toLowerCase()).join(" & ")}.`);
+        }
         cover = 0;
       } else if (eff?.kind === "aoe") {
         const dmg = rollDamage(eff.dice ?? "2d6", rt.rng);
@@ -585,14 +725,14 @@ function resolvePersonalRound(
 
   // Enemy volley (halts if the player drops) — SKIPPED on the surprise round.
   const next: CombatState = {
-    ...combat, enemies, playerAimBonus: aim, playerCoverAc: cover, fleeAttempts, playerSurprise: false,
+    ...combat, enemies, playerStatuses, playerAimBonus: aim, playerCoverAc: cover, fleeAttempts, playerSurprise: false,
   };
   if (surpriseRound) {
     lines.push("You struck from surprise — they don't get to answer this round.");
     next.round += 1;
     return { combat: next, lines, outcome: "continue", loot: 0 };
   }
-  const outcome = enemyVolley(rt, next, lines);
+  const outcome = enemyVolley(rt, next, lines, tick.skipIds);
   if (outcome === "continue") {
     next.round += 1;
     return { combat: next, lines, outcome, loot: 0 };

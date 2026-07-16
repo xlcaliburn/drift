@@ -5,6 +5,7 @@
  * the narrator only voices results.
  */
 import type { UsableConsumable } from "./items";
+import type { StatusEffect, DamageType, StatusKind } from "./status";
 
 export type CombatTier = "T1" | "T2" | "T3";
 
@@ -22,6 +23,14 @@ export interface CombatEnemy {
   shieldReady: boolean;
   /** T3 elites / corvettes attack twice. */
   multiAttack: boolean;
+  // ── Status system (ITEMS.md) ──
+  /** Active statuses on this enemy (burning/bleeding/etc.). */
+  statuses?: StatusEffect[];
+  /** Personal scale: this enemy's attack damage TYPE (drives player armor resist).
+   *  Absent = kinetic. T2+ only (T1 enemies are plain kinetic). */
+  personalDamageType?: DamageType;
+  /** Personal scale: a status this enemy inflicts on a hit. T2+ only. */
+  onHit?: StatusKind;
   // ── Ship-scale only (undefined for personal enemies) ──
   weaponType?: "kinetic" | "energy" | "missile" | "ion";
   isEvasive?: boolean;
@@ -48,6 +57,8 @@ export interface CombatState {
   playerSurprise?: boolean;
   /** Escalates the flee DC on repeated attempts. */
   fleeAttempts: number;
+  /** Statuses currently on the PLAYER (burning/bleeding/shocked/corroded). */
+  playerStatuses?: StatusEffect[];
 }
 
 export type CombatActionType = "attack" | "aim" | "cover" | "stim" | "flee" | "item" | "switch";
@@ -82,6 +93,15 @@ export interface PlayerCombatant {
   weaponDamage: string;
   /** Best combat-skill level, for the flee-disparity math. */
   combatLevel: number;
+  // ── Drawn weapon traits (ITEMS.md status system) ──
+  weaponType?: DamageType;
+  weaponOnHit?: StatusKind;
+  armorPen: number;
+  // ── Worn armor traits ──
+  resist?: DamageType;
+  vuln?: DamageType;
+  statusGuard: StatusKind[];
+  mobilityPenalty: boolean;
 }
 
 /** Engine-generated combat action chips for a round (shared so the client can

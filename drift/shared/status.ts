@@ -100,7 +100,7 @@ export function tickStatuses(list: StatusEffect[] | undefined, who: string, rng:
     }
     if (s.kind === "shocked") {
       skipTurn = true;
-      lines.push(`${spec.icon} ${who} is Shocked — loses the turn.`);
+      lines.push(`${spec.icon} ${who}: Shocked — turn skipped.`);
     }
     const rounds = s.rounds - 1;
     if (rounds > 0) next.push({ ...s, rounds });
@@ -113,6 +113,15 @@ export function tickStatuses(list: StatusEffect[] | undefined, who: string, rng:
 export function acPenalty(list: StatusEffect[] | undefined): number {
   const c = list?.find((s) => s.kind === "corroded");
   return c ? 2 * c.stacks : 0;
+}
+
+/** Damage scaling from armor traits vs an incoming damage type: resisted → ×0.5,
+ *  vulnerable → ×1.5, else ×1. */
+export function resistFactor(incoming: DamageType | undefined, resist?: DamageType, vuln?: DamageType): number {
+  if (!incoming) return 1;
+  if (resist === incoming) return 0.5;
+  if (vuln === incoming) return 1.5;
+  return 1;
 }
 
 /** A heal clears the wound-type DoTs (burning/bleeding); control effects persist. */

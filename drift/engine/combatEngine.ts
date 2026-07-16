@@ -2,6 +2,7 @@ import type { RNG } from "./rng";
 import { rollDamage, maxDice } from "./dice";
 import { enemyTiers, shipClasses } from "@/content";
 import type { CombatEnemy, CombatTier } from "@/shared/combat";
+import type { DamageType, StatusKind } from "@/shared/status";
 
 /**
  * Pure combat resolution — the deterministic heart of multi-turn fights. No I/O,
@@ -22,6 +23,42 @@ export interface SpawnSpec {
 
 /** Boss HP multiplier — a `major` enemy is ~1.8× the general tier HP. */
 const MAJOR_HP_MULT = 1.8;
+
+/** Some T2+ enemies carry a specialized weapon that inflicts a status on the player
+ *  (ITEMS.md — enemies inflict statuses from T2 up; T1 stays plain kinetic, so armor
+ *  resist/immunity matters against the tougher foes you graduate to). Seeded, so a
+ *  given spawn is deterministic. Shocked (turn-denial vs the PLAYER) is the rarest —
+ *  T3 only — since losing a turn is the harshest thing a foe can do to you. */
+function enemyLoadout(
+  tier: CombatTier,
+  major: boolean,
+  rng: RNG,
+): { personalDamageType?: DamageType; onHit?: StatusKind } {
+  if (tier === "T1") return {};
+  const roll = rng.int(1, 100);
+  const chance = tier === "T3" || major ? 50 : 30;
+  if (roll > chance) return {};
+  // Weighted pool of "specialist" loadouts.
+  const pool: { type?: DamageType; onHit: StatusKind; weight: number }[] =
+    tier === "T3" || major
+      ? [
+          { onHit: "bleeding", weight: 3 },
+          { type: "thermal", onHit: "burning", weight: 3 },
+          { type: "chemical", onHit: "corroded", weight: 2 },
+          { type: "shock", onHit: "shocked", weight: 2 },
+        ]
+      : [
+          { onHit: "bleeding", weight: 3 },
+          { type: "chemical", onHit: "corroded", weight: 2 },
+        ];
+  const total = pool.reduce((s, p) => s + p.weight, 0);
+  let r = rng.int(1, total);
+  for (const p of pool) {
+    r -= p.weight;
+    if (r <= 0) return { personalDamageType: p.type, onHit: p.onHit };
+  }
+  return {};
+}
 
 /** Build persisted enemies from the tier tables. Count clamped 1–4; T2+ shielded.
  *  A `major` spec scales each spawned enemy's HP ×1.8 (rounded) → the boss fight. */
@@ -44,6 +81,7 @@ export function spawnCombatEnemies(specs: SpawnSpec[], rng: RNG): CombatEnemy[] 
       const rolledHp = rng.int(t.hpRange[0], t.hpRange[1]);
       const hp = spec.major ? Math.round(rolledHp * MAJOR_HP_MULT) : rolledHp;
       const ac = t.acRange ? rng.int(t.acRange[0], t.acRange[1]) : t.ac ?? 14;
+      const loadout = enemyLoadout(spec.tier, !!spec.major, rng);
       out.push({
         id: `e-${++n}`,
         name: count > 1 ? `${spec.name ?? t.label} ${i + 1}` : spec.name ?? t.label,
@@ -57,6 +95,7 @@ export function spawnCombatEnemies(specs: SpawnSpec[], rng: RNG): CombatEnemy[] 
         // early fights are consistent and don't get a surprise first-hit-negate.
         shieldReady: spec.tier === "T3" || !!spec.major,
         multiAttack: !!t.multiAttack,
+        ...loadout,
       });
     }
   }
