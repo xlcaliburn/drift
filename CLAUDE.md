@@ -168,6 +168,11 @@ Don't add prose rules for things the engine can enforce.
 ## Docs map
 
 - `ARCHITECTURE.md` — why it's built this way (token economics, engine/narrator split)
+- `CHECKS.md` — **the continuity check REGISTRY**: every backstop/guard/re-narration
+  in the game, organized by the question it answers, with the live incident each was
+  born from + the known gaps. Read it before adding a feature (which check families
+  does it need?) or when a playtest surfaces a contradiction (which family should
+  have caught it?).
 - `CONTINUITY.md` — scene-memory design (scene card / summaries / NPC relations)
 - `ITEMS.md` — remaining item slices (slots / ammo / shops); `CREW.md` — crew
   recruitment + scaling upkeep (unbuilt); `COMBAT.md` — the one deferred combat item

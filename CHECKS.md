@@ -1,0 +1,196 @@
+# CHECKS.md — The Continuity Check Registry
+
+Continuity is the product. An AI-narrated game lives or dies on whether the world
+*remembers* — people, promises, wounds, money, time. The cheap narrator forgets,
+invents, and contradicts; every check below exists because the engine cannot trust
+it, and most were born from a specific live failure (§ "born from" notes).
+
+**How to use this doc:** it is the single registry of every continuity/consistency
+mechanism in the game. When adding a feature, walk the families below and ask which
+ones it needs (usually: a deterministic path for the player's click, a backstop for
+the model under-firing its field, and a re-narration when the prose can drift from
+the mechanics). When a playtest surfaces a contradiction, find the family that
+should have caught it — the fix is usually a new row here, not a prose rule.
+
+The three recurring failure modes every family defends against:
+
+1. **Under-fire** — the model doesn't emit the structured field (threads, useItem,
+   sceneEnd, npcs…). Fix: deterministic detection or a retrospective analyst pass.
+2. **Invention** — the model asserts state the engine never granted (a heal, a
+   credit figure, an item, a death). Fix: engine-only mutation + prose scrubbing +
+   re-narration.
+3. **Drift** — prose written before the engine resolved (roster, roll outcome)
+   contradicts the result. Fix: engine-first re-narration.
+
+---
+
+## 0. The architecture that makes checks possible
+
+| Mechanism | Where | What it guarantees |
+|---|---|---|
+| Engine owns ALL math | `engine/`, `llm/runtime*` | The model can propose, never compute — no state mutation exists outside the engine, so a narrated lie can't corrupt state |
+| Structured JSON turns | `llm/jsonTurn.ts`, `shared/turnPlan.ts` | Every turn is a validated `TurnPlan`: parse → one retry with the specific error → repair; a no-output turn ABORTS and persists nothing (`TurnGenerationError`) |
+| Canonical history | `jsonTurn` (persist step) | Raw model output is never fed back as context — the user side carries the action + a compact engine summary, the assistant side only the cleaned narration; one violation can't become few-shot evidence |
+| Ordered apply registry | `llm/applyPlan/index.ts` | Plan intents apply in a fixed order (money → trade → npcs → gear → continuity → quests → sceneEnd → combatStart LAST), unit-tested model-free |
+| History structural repair | `llm/history.ts` `sanitizeHistory` | Orphan tool_use/tool_result pairs are repaired on read so one bad old turn can't wedge a campaign (400s) |
+| Turn-failure rollback | `app/api/turn/route.ts` `memorySnapshot` | Scene card / npcRelations / npcs are snapshotted per turn and restored on error — a failed turn *never happened*; retry resumes exactly |
+
+---
+
+## 1. Memory — does the world remember what happened?
+
+Three tiers (design: `CONTINUITY.md`): **NOW** (scene card) → **PREVIOUSLY**
+(scene summaries) → **CANON** (relations, threads, clocks).
+
+| Check | Where | Fires | Catches |
+|---|---|---|---|
+| Scene card (situation/beats/place/dangers/present) | `shared/scene.ts`, mutated by `runtime.updateScene` | every turn | the working memory the model reads back as fact (prompt rule 10) |
+| Scene auto-close cap | `applyPlan/world.ts` `sceneEnd`, `SCENE_TURN_CAP = 12` | turn 12 of a scene | DeepSeek under-firing `sceneEnd` — without the cap a scene never turns over and memory never compresses |
+| Move = scene boundary | route, `isSceneMove` | place/location change | the model moving the player without closing the scene; memory tier turns over anyway (economic checklist still only fires on a real `sceneEnd`) |
+| Place carry | `carryScene` | scene close | whereabouts never blank between scenes |
+| Situation refresh backstop | `jsonTurn` → `runtime.refreshSituation` | model set no `scene.situation` this turn | "Here & now" going stale (the cheap model rarely sets it) |
+| Scene compression + F-3 fallback | route `compressClosedScene` | background, on close | every closed scene becomes a summary; on summarizer failure a deterministic first-action+last-beat stub — never a hole |
+| History window | route (`slice(-20)` = ~10 exchanges) | persist | context stays bounded; older context rides summaries (Continuity v2 wants ~6) |
+| Transcript cap | route (`slice(-400)`) | persist | refresh rehydration without unbounded growth |
+
+## 2. People — does the cast stay real?
+
+| Check | Where | Fires | Catches / born from |
+|---|---|---|---|
+| Register dedupe + set-once identity | `runtimeNarrative.registerNpc` | any NPC write | the same person re-created under a second id; a real oneBreath/role never clobbered |
+| **PC-name guard** | `registerNpc` (CANON.md Phase 1) | any NPC write | the player's own character registered as an NPC ("another NPC called Wren") |
+| **Seed-only load + provenance persist filter** | `db/queries.loadCampaignState`, `lib/state.persistSession` (CANON.md Phase 1) | load/save | cross-campaign NPC bleed — foreign generated NPCs flooding every player's cast |
+| `shortRole` sanitizer | `shared/scene.ts`, applied in `registerNpc`/`setNpcOneBreath` | any role write | a role stored as a truncated SENTENCE — born from the live "Meridian Trade-House Broker Giving You A" label |
+| Plan-npcs narration gate | `applyPlan/world.ts` `npcs` | apply | the model declaring an NPC that never appears in this turn's prose (phantom cast) |
+| Person-shape guards | `shared/npcExtract.ts` (`isPlausibleNpcName`, `isCollectiveName`, non-person names) | apply + analyst | factions/ships/locations/junk words ("Clean") becoming NPCs |
+| Dialogue-speaker backstop | `jsonTurn` post-narration (`extractDialogueNpcs`) | model forgot `npcs[]` | a named speaker with attributed dialogue joins the cast anyway; passing MENTIONS never do |
+| Presence-by-speech backstop | `jsonTurn` post-narration | a known NPC speaks | whoever you're actually dealing with shows in Here & now; a merely-referenced off-screen name does NOT get dragged into the room |
+| First-meeting relation seed | `jsonTurn` (same block) | first dealing with an NPC | a blank People panel — seeds "You first dealt with the ‹role› at ‹place›." |
+| **Scene analyst** (reasoning model) | `llm/summarizer.analyzeScene` via `lib/analystRun` — on scene close, every `ANALYST_INTERVAL = 10` turns mid-scene, and manual re-sync | retrospective | everything the live turn missed: unregistered figures (present vs mentioned), placeholder identities refreshed, relationship notes, legit flavor props |
+| Faction-shaped NPC filter | `PeopleTab` | render | a faction leaking into the people roster |
+| Prompt rules 9 + 11 | `llm/jsonSystem.ts` | every turn | the cast contract: list who's in the scene; known NPCs RECOGNIZE the player; the model may never unilaterally kill/retire a known contact |
+
+## 3. Relationships — does standing mean something?
+
+| Check | Where | Fires | Catches |
+|---|---|---|---|
+| Engine-clamped disposition | `runtimeNarrative.updateNpcRelation` / `nudgeStandingFromCheck` | ±1 max, once per NPC per turn, ONLY on a quest completion or a PASSED social check | the model handing out trust for idle chat; standing is earned through the dice |
+| Relation log + rolling note | same | every meaningful beat | the relationship reads as a story, not one stale line |
+| **Second-person notes** | `shared/scene.toSecondPerson`, applied at every note write | any note | "Player handed over X" / the PC's own name in their own memory — notes read as "what YOU know" |
+| Trust-tier gates | `shared/scene.TRUST_THRESHOLD` (+2) | chips | personal jobs and crew recruitment only unlock at earned trust |
+| Cross-player ledger | `shared/ledger.ts`, `advanceLedger` in the route | every turn with reachable dossiers | cameos gated to what the character KNOWS (firsthand / heard-of / unknown); meeting someone promotes them permanently |
+
+## 4. Story structure — do quests survive?
+
+| Check | Where | Fires | Catches / born from |
+|---|---|---|---|
+| Thread open dedupe | `applyPlan/world.ts` `quests` | model `threads:[]` | a re-narrated job doubling up |
+| **Analyst thread reconciliation** | `llm/threadReconcile.applyThreadUpdates`, analyst fed the OPEN THREADS list | scene close + mid-scene | the model under-firing `threads:open` — born from the live Fingers→Yarl→loot chain that ran dozens of turns untracked and fell out of the window |
+| Engine-owned job board | `shared/quests.ts` + `shared/jobsRuntime.ts` | every turn | quest STRUCTURE off the model entirely: generation, per-objective tracking, completion detected from REAL signals (arrival / won fight / matching skill success), guaranteed payout |
+| Station-local board + expiry | `quests.refreshBoard` (`postedLocationId`, `expiresTenday`) | board refresh | a global static board; offers from stations you left |
+| Dock-debt thread sync | `runtimeEconomy.syncDockDebt` | after any money move | negative credits always carry a visible payoff loop; auto-resolves when cleared |
+| Clock preview-then-commit | `runtimeNarrative.advanceClock` → commit at `end_scene` | mid-scene | clock effects double-applying before the scene settles |
+
+## 5. Prose ↔ mechanics — does the narration tell the truth?
+
+The drift family: prose is written BEFORE (or instead of) the engine's resolution.
+
+| Check | Where | Fires | Catches / born from |
+|---|---|---|---|
+| `outcomeDirective` coda | `jsonTurn` | every engine-result narration | narrating a success the dice denied — born from a MISSED stealth kill read as a clean assassination, then the "dead" guard shot back |
+| Combat-open realign | `jsonTurn` (post-`combatStart`) | fight spawned by the model | prose foes ≠ engine roster — re-narrated against the RESOLVED roster ("narrated two guards + a broker, engine placed one Thug") |
+| Gun-skill reroute + re-narration | `llm/openFight.ts` + `jsonTurn` | player-typed violence | a "skill check" resolving an act of war; the opening exchange re-narrated from the real dice |
+| **Denied-intent reconcile** | `applyPlan/inventory.ts` → `ApplyCtx.reconcile` → `jsonTurn` re-narration | a `useItem`/heal the engine refused | prose claiming a heal that never happened — born from Fingers "patching up" a player with a medkit they didn't own while HP never moved |
+| Anti-echo | `jsonTurn.isEchoOfPrevious` (last 4 narrations) | verbatim repeat | the "same answer 3 times" bug — worse, re-firing that beat's payout |
+| `redactMoney` | `jsonTurn` | every narration | ANY credit figure in prose, digits or words ("eighteen hundred creds") — the engine prints every real figure on a 💰 line |
+| `stripInlineMenu` | `shared/narration.ts` | every narration | prose option lists (choices are data) |
+| Enforce ≥1 checked choice | `jsonTurn` | choices offered | a turn with no dice on offer (the dice are the game) |
+| MIRROR rules (prompt) | `jsonSystem.ts` VOICE + rule 8 | every turn | narrated wounds/heals/item-handovers outside the engine; NPC "gifts" must fire `items:[]` the same beat; ship consumables never handed to someone on foot |
+| Status narration rule | `jsonSystem.ts` rule 5 | every turn | inventing a 🔥/⚡ effect the engine didn't apply (and: describe the ones it did) |
+| `trimToLastSentence` | `llm/history.ts` | `max_tokens` stops | a mid-sentence cliff persisting into canon |
+
+## 6. Player intent — do typed actions actually happen?
+
+The under-fire family: the player said it; the engine must not depend on the model
+mapping it to a field.
+
+| Check | Where | Fires | Catches / born from |
+|---|---|---|---|
+| Deterministic chips (`pre*`) | route → `jsonTurn` (`preCheck`, `preUseItem`, `preRepair`, `preRest`, `preRecruit`, `preSwap`, job/personal-job chips) | any engine chip click | a click is a CONTRACT — the engine applies it before the model ever runs |
+| Typed-attempt inference | `jsonTurn` `impliedCheck` (`inferAttemptVerb`) | typed action that reads as an attempt | the model forgetting `roll` — pre-rolled like a click, so dice and prose can't desync |
+| **Typed consumable backstop** | `shared/items.inferConsumableUse` → `jsonTurn` | typed "use stim"/"pop a medkit" for a HELD heal | the model narrating the heal without firing `useItem` — born from six live "use stim" turns with HP frozen at 1 |
+| Combat free-text interpreter | `shared/combat.interpretCombatText` | any input during a live fight | EVERY in-combat input runs the engine round — typing "I gun them all down" can't skip the rolls |
+| Downed free-text interpreter | `shared/death.interpretDownedText` | any input while bleeding out | "I get up and run" can't skip death saves |
+| **Self-harm gate** | `shared/selfHarm.isSelfHarm` → route intercept + `confirmDeath` chip | typed suicide intent | the model improvising skill checks around a suicide (a throat-slit resolved as an `electronics` roll, death narrated but never applied) — now an explicit engine confirmation and a REAL death |
+| Appeal system | `shared/appeal.ts` → `llm/appealTurn.ts` | `APPEAL …` | the meta escape hatch: a strong judge applies engine-legal corrections when a mechanical outcome was wrong; every appeal audited + filed as an issue |
+
+## 7. Economy & items — does the ledger stay honest?
+
+| Check | Where | Fires | Catches / born from |
+|---|---|---|---|
+| Money is engine-only | payout tiers + `payoutRamp` clamp, offers-as-quotes | any payout/offer | invented/inflated figures; a rookie can't draw a T3 score; offers quote without moving credits |
+| Item gains need a legit source | `runtimeEconomy.applyGearChange` | any gain | player/model-authored loot; weapons/armor need a loot roll or quest; only PERSONAL consumables pass as NPC gifts |
+| **Ship consumables gated** | same | any gain | a shipless character gifted a "Missile reload" (born from Steward Harrow's gift); needs a ship AND a legit source |
+| Name-resilient resolution | `shared/items.resolveGearItemId` — ONE source for count + consume | any use/count | the medkit-that-did-nothing: counted by name, consumed by id (or vice versa) |
+| Loot is engine-rolled | `engine/loot.ts` | successful loot/scavenge check | "I find a rocket launcher" turns up scrap and small money like any other pick |
+| Slots + swap parking | `shared/items` slots, `sceneCard.pendingPickup` | any gain | silent item loss on a full pack — blocked visibly, offered as drop-to-take chips |
+| Seeded markets | `engine/market.ts` | shelves | stock is shared canon per (location, 30-day chunk), tier-gated so top guns aren't at backwater docks |
+
+## 8. World & time — does the setting hold still?
+
+| Check | Where | Fires | Catches / born from |
+|---|---|---|---|
+| Places are canon | `shared/locations.ts` tiers + `framing.ts` location line + prompt rule 10 | every turn | the model inventing whole stations; "place" is a sub-spot WITHIN a canonical location |
+| **Engine tenday clock** | `engine/time.ts` (travel +1; every 4th in-place scene close +1) | scene close | time frozen forever — every live campaign sat at tenday 0, so markets never rotated and offers never expired; the model's `tendaysDelta` stays additive |
+| Time context line | `framing.ts` | every turn | prose inconsistent with the clock (supplies, rumors, deadlines) |
+| Fault Line season clock | `engine/time.advanceTendays` + `sceneEnd` | any time advance | the shared season pressure can never be skipped |
+| Net-worth enemy scaling | `shared/netWorth.ts` + combatStart clamp + spawn backstop | fight spawn | difficulty keyed to what the player owns; narrated foe counts topped up/clamped |
+| Berths by hull / upkeep by clock | `shared/crew.ts` | recruit/tenday | crew growth checked by ship + income, not narration |
+
+## 9. Life & death — is mortality real?
+
+| Check | Where | Fires | Catches |
+|---|---|---|---|
+| Damage/death engine-only | `runtimeCombat.applyDamage` | any harm | narrated wounds don't exist; Downed at 0; struck-while-down = death |
+| Bleeding Out | `shared/death.ts` + `llm/downedTurn.ts` | PC at 0 HP | engine-rolled 3-success/3-failure saves; chips engine-generated; tutorial-safe |
+| Self-harm gate | §6 | typed intent | a real, confirmed, engine-owned death — never a narrated one |
+| Terminal death state | route `pcDied` → campaign `deceased` | death turn | the story actually ends: input locked, memorial, new-character path |
+| Crew mortality | `runtimeCombat` crew rules + `chargeCrewUpkeep` | fights/payroll | crew go Downed (medic can catch), desert at loyalty 0 — Character row removed, the person persists as an NPC |
+
+---
+
+## Known gaps (the honest backlog)
+
+- **I-2 combat backstop** — the model narrates a fight but under-fires `combatStart`
+  with no player gun-verb to reroute. The player-triggered half ships; the
+  narration-triggered half doesn't.
+- **Narration-only heal with NO `useItem`** — the typed backstop catches explicit
+  "use X"; a pure prose heal with no field fired is only held back by the MIRROR
+  prompt rule (no engine detection yet).
+- **Facts ledger (Continuity v2)** — durable facts beyond scene summaries; then the
+  history-window shrink (~10 → 6 exchanges).
+- **Analyst inference layer** — have the analyst also infer a rolling playstyle
+  read, relationship deltas, and a facts note (first slice of the facts ledger).
+- **Summarizer raw-JSON bug** — a few live scene summaries persisted as truncated
+  JSON; needs a repair pass + a guard.
+- **Vac suit / sealed-suit hazard gating** — vacuum hazards aren't typed, so the
+  suit is narrative-only.
+- **Crew v1.1** — crew don't track statuses/resists; downed crew can't be finished
+  off; mutiny events; ship-scale crew actions.
+- **Optimistic lock on `campaign_runtime`** — `updated_at` written, never checked;
+  two concurrent turns can interleave a stale save.
+
+## Incident → check (the lineage, for the record)
+
+| Live incident | The check it produced |
+|---|---|
+| Lazar's six "use stim" turns, HP frozen at 1 | `inferConsumableUse` typed backstop |
+| Fingers "patches you up" with a medkit you don't own | denied-intent reconcile + MIRROR heal rule |
+| Throat-slit resolved as an `electronics` check; death narrated, never applied | self-harm gate + `confirmDeath` |
+| Fingers→Yarl→loot chain never tracked, lost to the window | analyst thread reconciliation |
+| "Meridian Trade-House Broker Giving You A" | `shortRole` sanitizer |
+| Steward Harrow gifts a missile reload on foot | ship-consumable gain gate |
+| "Story said 4, fought 1" | combat-open realign + spawn top-up (pre-dates the fix) |
+| Dead guard comes back and shoots | `outcomeDirective` + reroute re-narration |
+| Every campaign frozen at tenday 0 | engine tenday clock |
+| Cross-campaign NPC bleed / "another NPC called Wren" | seed-only load + provenance filter + PC-name guard (CANON) |
