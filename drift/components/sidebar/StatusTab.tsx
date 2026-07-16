@@ -4,8 +4,22 @@ import type { CampaignState } from "@/shared/schemas";
 import type { CombatState } from "@/shared/combat";
 import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
 import { slotsUsed, maxSlotsFor } from "@/shared/items";
+import { summarizeStatuses, statusLabel, type StatusEffect } from "@/shared/status";
 import { Bar, SheetSection, condition } from "./ui";
 import { ReSyncButton } from "./ReSyncButton";
+
+/** Compact 🔥🩸⚡🧪 badge for a combatant's active statuses (hover → the names). */
+function StatusBadge({ statuses }: { statuses?: StatusEffect[] }) {
+  if (!statuses?.length) return null;
+  const label = statuses
+    .map((s) => `${statusLabel(s.kind)}${s.stacks > 1 ? ` ×${s.stacks}` : ""} (${s.rounds}r)`)
+    .join(", ");
+  return (
+    <span className="ml-1 cursor-help" title={label}>
+      {summarizeStatuses(statuses)}
+    </span>
+  );
+}
 
 /** MAIN tab — the most immediate info: HP/condition, weapons + ammo, inventory,
  *  ship survival state, and where you are / what's live. */
@@ -38,7 +52,10 @@ export function StatusTab({
             {combat.enemies.map((e) => (
               <div key={e.id}>
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-[13px] text-neutral-200">{e.name}</span>
+                  <span className="text-[13px] text-neutral-200">
+                    {e.name}
+                    <StatusBadge statuses={e.statuses} />
+                  </span>
                   <span className="tabular-nums text-[11px] text-neutral-500">
                     {e.hp}/{e.maxHp}
                     {e.shieldReady && <span className="text-accent"> ⛨</span>}
@@ -48,6 +65,12 @@ export function StatusTab({
               </div>
             ))}
           </div>
+          {/* The player's own afflictions this fight. */}
+          {combat.playerStatuses?.length ? (
+            <div className="mt-1.5 border-t border-bad/30 pt-1.5 text-[12px] text-neutral-300">
+              You: <StatusBadge statuses={combat.playerStatuses} />
+            </div>
+          ) : null}
           {/* Own hull, visible during a ship fight (full ship card is in More details). */}
           {combat.scale === "ship" && state.ship && (
             <div className="mt-2 border-t border-bad/30 pt-1.5">
