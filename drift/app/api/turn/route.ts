@@ -4,6 +4,7 @@ import { runCombatTurn } from "@/llm/combatTurn";
 import { runDownedTurn } from "@/llm/downedTurn";
 import { runAppealTurn } from "@/llm/appealTurn";
 import { isAppeal, stripAppeal } from "@/shared/appeal";
+import { isSelfHarm } from "@/shared/selfHarm";
 import { combatActions, interpretCombatText } from "@/shared/combat";
 import { downedActions } from "@/shared/death";
 import { usableConsumables, outOfCombatItemChips } from "@/shared/items";
@@ -151,6 +152,8 @@ export async function POST(req: NextRequest) {
     : typeof body.swapDrop === "string" && body.swapDrop
       ? body.swapDrop
       : undefined;
+  // A clicked "Yes — end this character" chip from the self-harm confirmation gate.
+  const confirmDeath: boolean = Boolean(body.confirmDeath);
   // The action came from a CLICKED choice (not typed). A clicked choice's check is
   // already decided and shown on the chip, so the model can't add a surprise roll.
   const fromChoice: boolean = Boolean(body.fromChoice);
@@ -283,6 +286,87 @@ export async function POST(req: NextRequest) {
             tutorialGraduated: false,
             model: appeal.model,
             usage: appeal.usage,
+          });
+          return;
+        }
+
+        // ── SELF-HARM GATE (the Silas Cray case). A player moving to end their own
+        //    character is NOT a skill check for the cheap narrator to improvise — a
+        //    live campaign had a throat-slit resolved as an `electronics` roll and a
+        //    narrated death the engine never applied (HP stayed at 1). The engine
+        //    intercepts: a typed self-harm intent → an explicit confirmation gate;
+        //    the "Yes" chip → a REAL, deterministic death (a "Dead" injury, the same
+        //    end-state a combat death reaches). Only on the narrative path — a live
+        //    fight and Bleeding Out already own life-and-death through the dice. ──
+        const pcDownedNow =
+          !!pcNow && pcNow.hp <= 0 && (pcNow.injuries ?? []).some((i) => i.name === "Downed");
+        const zeroUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+        if (pcNow && !session.combat?.active && !pcDownedNow && (confirmDeath || isSelfHarm(playerText))) {
+          if (confirmDeath) {
+            // Confirmed: end the character for good. A "Dead" injury flips the campaign
+            // to deceased (the create-gate ignores it) and the client goes terminal.
+            const deadState = {
+              ...session.state,
+              characters: session.state.characters.map((c) =>
+                c.kind === "pc"
+                  ? {
+                      ...c,
+                      hp: 0,
+                      deathSaves: undefined,
+                      injuries: [
+                        ...(c.injuries ?? []).filter((i) => i.name !== "Downed"),
+                        { name: "Dead", effect: "ended their own life" },
+                      ],
+                    }
+                  : c,
+              ),
+              campaign: { ...session.state.campaign, status: "deceased" as const },
+            };
+            const narration = `You stop fighting it. There's no roll to make, no last trick — you let go, and the dark closes over ${pcNow.name} for good.`;
+            const deathAdds = [
+              { role: "player" as const, text: playerText },
+              { role: "dm" as const, text: narration },
+              { role: "system" as const, text: `— ${pcNow.name} is dead · this character's story ends here —` },
+            ];
+            const deadSession = {
+              ...session,
+              state: deadState,
+              transcript: [...session.transcript, ...deathAdds].slice(-400),
+              lastChoices: [],
+              combat: null,
+            };
+            setSession(campaignId, deadSession);
+            await persistSession(campaignId, deadSession);
+            send({
+              type: "done", narration, events: [], state: deadState, worldEvents: [],
+              choices: [], combat: null, sceneEnded: false, dead: true,
+              npcRelations: session.npcRelations, sceneCard: session.sceneCard,
+              tutorialGraduated: false, model: "engine", usage: zeroUsage,
+            });
+            return;
+          }
+          // Detected intent → present the explicit gate instead of narrating a suicide.
+          const narration = `${pcNow.name} moves to end it — this is a real death, not a bluff. Go through with it and ${pcNow.name} is gone for good; you'll start over with a new character. Or pull back.`;
+          const gateChoices: ChoiceOption[] = [
+            { label: `Yes — end ${pcNow.name} for good`, confirmDeath: true },
+            { label: "No — pull back from the brink" },
+          ];
+          const gateAdds = [
+            { role: "player" as const, text: playerText },
+            { role: "dm" as const, text: narration },
+          ];
+          const gateSession = {
+            ...session,
+            transcript: [...session.transcript, ...gateAdds].slice(-400),
+            lastChoices: gateChoices,
+          };
+          setSession(campaignId, gateSession);
+          await persistSession(campaignId, gateSession);
+          send({
+            type: "done", narration, events: [], state: session.state, worldEvents: [],
+            choices: gateChoices, combat: session.combat ?? null, sceneEnded: false, dead: false,
+            npcRelations: session.npcRelations, sceneCard: session.sceneCard,
+            tutorialGraduated: false, model: "engine", usage: zeroUsage,
           });
           return;
         }

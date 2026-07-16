@@ -106,3 +106,19 @@ results; it never controls whether damage happens, the enemy count/tier (both
 engine-clamped), or the credits. During combat the model's choices are ignored —
 the engine generates the action list. The freeform tool loop is retired; all turns
 run the JSON path (cinematic = Sonnet).
+
+## Self-harm gate (SHIPPED 2026-07-15)
+
+Ending your OWN character is engine-owned, not a narrator improvisation. A live
+campaign (Silas Cray) had the player try to slit his own throat; the cheap model
+resolved it as an `electronics` skill check and narrated a death the engine never
+applied (HP stayed at 1 while the prose said he'd died). Fix: `shared/selfHarm.ts`
+(`isSelfHarm`) detects a typed self-harm/suicide intent — a lethal verb aimed at the
+self ("slice my/your throat", "shoot myself") or an unmistakable phrase ("commit
+suicide", "I want to die"), tight enough that ordinary reflexives ("brace myself")
+never match. The turn route intercepts it on the narrative path (a live fight and
+Bleeding Out already own life-and-death) and returns a deterministic CONFIRMATION —
+"end this character for good?" — with a `confirmDeath` chip. Clicking it applies a
+real `Dead` injury (same end-state a combat death reaches: campaign → deceased, the
+"Create a new character" terminal UI). "No" is a plain choice that resumes play. No
+model call on either the gate or the death.

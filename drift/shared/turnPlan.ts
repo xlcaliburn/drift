@@ -117,6 +117,10 @@ export const ChoiceOption = z.object({
   /** Set on a trusted NPC's personal-favor chip: their npc id. The engine generates
    *  their personal job (their backstory want) as an active job. RELATIONSHIPS.md. */
   acceptPersonalJob: optionalNullable(z.string()),
+  /** Set on the "Yes — end this character" chip of the self-harm confirmation gate:
+   *  the engine ends the character DETERMINISTICALLY (a real death, not a narrated
+   *  one). Only ever engine-generated, never model-authored. */
+  confirmDeath: optionalNullable(z.boolean()),
 });
 export type ChoiceOption = z.infer<typeof ChoiceOption>;
 

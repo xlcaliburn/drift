@@ -68,7 +68,9 @@ raw level in `computeModifier`), verb-driven actions, items (consumables + engin
 generated loot), **scene-memory continuity v1** + NPC registration backstops,
 quest-gated relationships, **Bleeding Out death saves** (COMBAT.md — `shared/death.ts`
 + `llm/downedTurn.ts`; D&D-style 3-success/3-failure track, engine-rolled, self-
-rescue with a held stim, hostile-over-you pressure, tutorial-safe), **universe-shared NPCs**
+rescue with a held stim, hostile-over-you pressure, tutorial-safe) + the **self-harm
+gate** (COMBAT.md — `shared/selfHarm.ts`; a typed suicide intent gets an engine
+confirmation + `confirmDeath` chip, a real death, never a narrated one), **universe-shared NPCs**
 (migration 014 — generated NPCs promote to the universe `npcs` table; per-player
 standing stays in `npc_relations`) + backstory NPCs at creation, the People /
 Factions sidebar tabs, **net-worth enemy scaling** (COMBAT.md §1 —

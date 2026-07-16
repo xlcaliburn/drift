@@ -33,6 +33,11 @@ export const CHIP_KINDS: ChipKind[] = [
     icon: "🛟",
     tip: "Your patron patches you up for free — full HP & hull, a stim or two, a small stipend if you're broke. Offered while you're still finding your feet.",
   },
+  {
+    match: (c) => !!c.confirmDeath,
+    icon: "☠",
+    tip: "End this character for good — their story is over and you can start a new one. This cannot be undone.",
+  },
 ];
 
 /** The engine-chip kind a choice belongs to, or undefined for a plain narrative
