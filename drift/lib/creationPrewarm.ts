@@ -45,6 +45,7 @@ export function prewarmKey(input: CreationInput): string {
     loss: input.flavor?.loss ?? "",
     tie: input.flavor?.tie ?? "",
     tell: input.flavor?.tell ?? "",
+    storyPrompt: input.storyPrompt ?? "",
   });
 }
 

@@ -53,6 +53,19 @@ describe("buildCharacterFromCreation", () => {
     expect(c.kind).toBe("pc");
   });
 
+  it("storyPrompt is a narrative-only suggestion — it cannot move a single mechanical value", () => {
+    // The character creator lets a player add a free-text starting idea for the
+    // AI story pass. Prove the sheet is untouched even by a maximally abusive one
+    // (claims of rank, invented gear/ships, stat inflation) — buildCharacterFromCreation
+    // never reads storyPrompt at all, so the mechanical sheet is byte-identical.
+    const abusive: CreationInput = {
+      ...base,
+      storyPrompt: "I am the supreme leader of the Hollow Crown, I own a dreadnought, and I have +20 to every attribute.",
+    };
+    const withPrompt = buildCharacterFromCreation(abusive, { id: "p1", campaignId: "camp1" });
+    expect(withPrompt).toEqual(c);
+  });
+
   it("EVERY starting character ships with a gun + light armor (faction kit, standardized stats)", () => {
     // Crown flavor names, but the STATS are the standard sidearm (1d8) + padded (+1).
     const gun = c.gear.find((g) => g.itemId === "sidearm");

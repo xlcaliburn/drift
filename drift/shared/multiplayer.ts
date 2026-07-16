@@ -132,5 +132,12 @@ export const CreationInput = z.object({
   /** Optional flavor — blanks are auto-generated at finalize. */
   flavor: CreationFlavor.default({}),
   uniqueSkill: UniqueSkill,
+  /** Optional free-text starting idea for the story pass (creationFinalize.ts) —
+   *  a SUGGESTION only. It can never touch the mechanical sheet (attributes, skills,
+   *  gear, faction, or starting location all come from the fixed fields above,
+   *  untouched by this text), and the finalize prompt is instructed to disregard
+   *  anything that contradicts canon (a faction rank/ownership the player doesn't
+   *  have, invented stats/gear/ships). Capped short — a starting spark, not a script. */
+  storyPrompt: z.string().max(400).optional(),
 });
 export type CreationInput = z.infer<typeof CreationInput>;

@@ -28,7 +28,7 @@ import type { Character, UniqueSkill, AttributeKey } from "@/shared/schemas";
 
 /** Advisory note from the AI finalize pass (shape mirrors llm/creationFinalize). */
 interface CreationNote {
-  field: "name" | "moralCode" | "uniqueSkill";
+  field: "name" | "moralCode" | "uniqueSkill" | "storyPrompt";
   severity: "ok" | "warn";
   message: string;
   suggestion?: string;
@@ -208,6 +208,12 @@ export default function CreateWizard() {
   const [loss, setLoss] = useState("");
   const [tie, setTie] = useState("");
   const [tell, setTell] = useState("");
+  // A free-text starting idea for the story pass — a SUGGESTION only (never
+  // overrides faction/stats/gear/location, which are all fixed by the answers
+  // above; the finalize prompt is instructed to disregard anything that contradicts
+  // canon or claims rank/gear/stats the character doesn't have).
+  const [storyPrompt, setStoryPrompt] = useState("");
+  const STORY_PROMPT_MAX = 400;
   // The optional flavor block is collapsed by default (most players skip it and
   // let the finalize pass invent it); it opens on click.
   const [flavorOpen, setFlavorOpen] = useState(false);
@@ -315,6 +321,7 @@ export default function CreateWizard() {
         tie: tie || undefined,
         tell: tell || undefined,
       },
+      storyPrompt: storyPrompt || undefined,
       uniqueSkill,
     });
   }
@@ -342,6 +349,7 @@ export default function CreateWizard() {
           tie: tie || undefined,
           tell: tell || undefined,
         },
+        storyPrompt: storyPrompt || undefined,
         uniqueSkill,
       }),
     }).catch(() => {
@@ -612,6 +620,25 @@ export default function CreateWizard() {
                 <FlavorField label="A loss or scar" value={loss} onChange={setLoss} placeholder="what did it cost you?" examples={exampleLosses} />
                 <FlavorField label="A debt or tie" value={tie} onChange={setTie} placeholder="who do you owe — or who owes you?" examples={exampleTies} />
                 <FlavorField label="A tell" value={tell} onChange={setTell} placeholder="a habit that gives you away" examples={exampleTells} />
+
+                <div className="mb-1">
+                  <label className="mb-1.5 block text-sm text-neutral-400">A starting idea for your story</label>
+                  <textarea
+                    value={storyPrompt}
+                    onChange={(e) => setStoryPrompt(e.target.value.slice(0, STORY_PROMPT_MAX))}
+                    maxLength={STORY_PROMPT_MAX}
+                    rows={3}
+                    className={`${inputClass} resize-none`}
+                    placeholder="e.g. haunted by a ship she couldn't save; still hears the comm chatter"
+                  />
+                  <div className="mt-1 flex items-center justify-between text-[11px] text-neutral-600">
+                    <span>
+                      A spark for the lanes to build on — not a script. It can&apos;t make you faction leadership, hand
+                      you extra stats or gear, or change where you start; the sheet above still decides all of that.
+                    </span>
+                    <span className="shrink-0 pl-2 tabular-nums">{storyPrompt.length}/{STORY_PROMPT_MAX}</span>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -767,6 +794,7 @@ export default function CreateWizard() {
             {loss && <Row k="Loss" v={loss} />}
             {tie && <Row k="Tie" v={tie} />}
             {tell && <Row k="Tell" v={tell} />}
+            {storyPrompt && <Row k="Story idea" v={storyPrompt} />}
             <Row k="Signature" v={`${usName} — ${usKind === "passive" ? `+${Math.min(pAmount, amountCap)} ${pTarget}` : `nat-20 when: ${tScenario}`}`} />
           </div>
           {err && <p className="mt-3 text-sm text-bad">⚠ {err}</p>}
@@ -806,7 +834,7 @@ export default function CreateWizard() {
                   )}
                   {n.field !== "name" && (
                     <button
-                      onClick={() => setStep(n.field === "moralCode" ? 2 : 3)}
+                      onClick={() => setStep(n.field === "moralCode" || n.field === "storyPrompt" ? 2 : 3)}
                       className="rounded-md border border-edge px-3 py-1 text-xs text-neutral-300 hover:border-accent hover:text-accent"
                     >
                       ← Edit
