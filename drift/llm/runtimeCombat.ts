@@ -21,6 +21,7 @@ import {
   type ShipSpawnSpec,
 } from "@/engine/combatEngine";
 import { fleeDC, threatLevel, weaponSkill } from "@/shared/combat";
+import { crewAssistBonus } from "@/shared/crew";
 import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
 import { catalogItem, itemCount, slotsUsed, maxSlotsFor, resolveGearItemId } from "@/shared/items";
 import {
@@ -282,15 +283,19 @@ export function rollCheck(rt: CombatRT, input: Record<string, unknown>) {
   const character = charOf(rt, String(input.characterId));
   if (!character) return { error: `unknown character ${input.characterId}` };
   const dcMod = input.useShipDcModifier && rt.state.ship ? rt.state.ship.dcModifier : 0;
-  // A held tool aids its skill (scanner→perception, lockpicks→locks, grapnel→climb).
+  // A held tool aids its skill (scanner→perception, lockpicks→locks, grapnel→climb),
+  // and a crew SPECIALIST assists the PC's checks (engineer→mechanics, pilot→piloting,
+  // face→negotiation/streetwise — CREW.md §4 passives). Both ride the auditable
+  // `situational` slot of the breakdown.
   const tool = toolBonus(character, String(input.skill));
+  const assist = character.kind === "pc" ? crewAssistBonus(rt.state, String(input.skill)) : 0;
   const res = rollCheckEngine(
     {
       character,
       skill: String(input.skill),
       dc: Number(input.dc),
       stakes: Boolean(input.stakes),
-      situationalMod: (input.situationalMod ? Number(input.situationalMod) : 0) + tool,
+      situationalMod: (input.situationalMod ? Number(input.situationalMod) : 0) + tool + assist,
       dcModifier: dcMod,
     },
     rt.rng,

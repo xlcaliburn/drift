@@ -5,6 +5,7 @@ import type { CombatState } from "@/shared/combat";
 import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
 import { slotsUsed, maxSlotsFor } from "@/shared/items";
 import { summarizeStatuses, statusLabel, type StatusEffect } from "@/shared/status";
+import { upkeepPerTenday } from "@/shared/crew";
 import { Bar, SheetSection, condition } from "./ui";
 import { ReSyncButton } from "./ReSyncButton";
 
@@ -40,6 +41,7 @@ export function StatusTab({
 }) {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
   const active = state.threads.filter((t) => t.status === "active");
+  const upkeep = upkeepPerTenday(state);
   return (
     <div className="space-y-4">
       {combat?.active && (
@@ -94,8 +96,25 @@ export function StatusTab({
           <div key={c.id} className="rounded border border-edge p-2">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-neutral-100">{c.name}</span>
-              <span className="text-neutral-500">{c.kind === "pc" ? "You" : `loyalty ${c.loyalty}/5`}</span>
+              {c.kind === "pc" ? (
+                <span className="text-neutral-500">You</span>
+              ) : (
+                <span
+                  className="cursor-help text-neutral-500"
+                  title={`Loyalty ${c.loyalty ?? 0}/5 — unpaid tendays erode it; at 0 they may walk.`}
+                >
+                  <span className="text-accent">{"●".repeat(c.loyalty ?? 0)}</span>
+                  <span className="text-neutral-700">{"○".repeat(Math.max(0, 5 - (c.loyalty ?? 0)))}</span>
+                </span>
+              )}
             </div>
+            {/* Crew card line — the hire's role/tier/wage (CREW.md). */}
+            {c.kind === "party" && c.crewRole && (
+              <div className="text-[11px] text-neutral-500">
+                {c.crewTier ?? "T1"} {c.crewRole}
+                {c.wage ? ` · ¢${c.wage}/tenday` : ""}
+              </div>
+            )}
             <div className="mt-1 flex items-center gap-2">
               <span className="w-14 text-neutral-500">HP {c.hp}/{c.maxHp}</span>
               <Bar value={c.hp} max={c.maxHp} tone={c.hp / c.maxHp < 0.34 ? "bg-bad" : "bg-good"} />
@@ -109,6 +128,14 @@ export function StatusTab({
               </span>{" "}
               {c.ac}
               {c.credits !== undefined && ` · ¢${c.credits}`}
+              {c.kind === "pc" && upkeep > 0 && (
+                <span
+                  className="cursor-help"
+                  title="Crew wages + overhead, charged automatically as tendays pass. Can't pay? Loyalty erodes — and at zero, they walk."
+                >
+                  {" "}· crew ¢{upkeep}/tenday
+                </span>
+              )}
               {c.fragile && <span className="text-bad"> · FRAGILE</span>}
               {cond && <span className={`font-semibold ${cond.className}`}> · {cond.text}</span>}
             </div>

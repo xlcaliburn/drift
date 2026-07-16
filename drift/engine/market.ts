@@ -10,6 +10,7 @@
  */
 import type { Location, FactionRep, Faction, CampaignState } from "@/shared/schemas";
 import { allItems, type CatalogItem } from "@/shared/items";
+import { repairRatePerHp } from "@/shared/crew";
 import { economy } from "@/content";
 import { seededRng } from "./rng";
 import { seedFromString } from "./creation";
@@ -102,14 +103,15 @@ export function localRep(
 /** Sell rate — locked decision: flat 40% of value, no rep scaling. */
 export const SELL_RATE = 0.4;
 
-/** A dock's hull-repair quote (ECONOMY E-3): full patch at ¢12/HP, offered only
- *  where there's a serviced dock (same tags a market needs) and the hull is
- *  actually damaged. Null when repair isn't available/needed. */
+/** A dock's hull-repair quote (ECONOMY E-3): full patch at ¢12/HP (¢9 with an
+ *  engineer aboard — CREW.md passive), offered only where there's a serviced dock
+ *  (same tags a market needs) and the hull is actually damaged. Null when repair
+ *  isn't available/needed. */
 export function repairQuote(state: CampaignState): { hp: number; cost: number } | null {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
   if (!marketTierFor(loc)) return null;
   const s = state.ship;
   if (!s || s.hp >= s.maxHp) return null;
   const hp = s.maxHp - s.hp;
-  return { hp, cost: hp * economy.constants.repairCostPerHp };
+  return { hp, cost: hp * repairRatePerHp(state, economy.constants.repairCostPerHp) };
 }

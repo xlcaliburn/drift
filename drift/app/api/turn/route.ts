@@ -560,8 +560,9 @@ export async function POST(req: NextRequest) {
           result.events = [...result.events, ...t.events];
           timeLines.push(...t.lines);
           // Crew wages charge as the clock runs (CREW.md §6 — wages + superlinear
-          // overhead per tenday). Credits may go negative; the dock-debt loop bites.
-          const upkeep = chargeCrewUpkeep(result.state, tendaysDelta);
+          // overhead per tenday), with the nonpayment cascade: unpaid crew lose
+          // loyalty; unpaid at loyalty 0 roll to desert.
+          const upkeep = chargeCrewUpkeep(result.state, tendaysDelta, liveRng);
           result.state = upkeep.state;
           result.events = [...result.events, ...upkeep.events];
           timeLines.push(...upkeep.lines);

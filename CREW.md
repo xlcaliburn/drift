@@ -22,8 +22,18 @@ medic — `combat.medicSpentIds`) so the fight continues instead of halting into
 Bleeding Out; on the crew phase they patch a downed crewmate. v1 gaps (deliberate):
 crew don't track statuses/armor resists, enemies never finish a downed crew member
 (death path exists via struck-while-down but isn't reachable yet), ship-scale crew
-actions (gunner turret) not in. STILL TO BUILD: the trimmed nonpayment cascade
-(loyalty decay + desertion), role passives, UI crew cards + upkeep readout.*
+actions (gunner turret) not in.
+CASCADE + PASSIVES + UI SHIPPED (same day) — **crew v1 is COMPLETE**: the trimmed
+nonpayment cascade lives in `chargeCrewUpkeep` (pay the expensive specialist first;
+every unpaid member loyalty −1; unpaid at 0 rolls d20 ≤10 → DESERTS, Character row
+removed, the shared NPC stays in the world; credits never go negative on payroll;
+overhead only charges when the full payroll cleared; mutiny stays deferred). Role
+PASSIVES: engineer→mechanics +1, pilot→piloting +1, face→negotiation/streetwise +1
+(`crewAssistBonus`, non-stacking per role, rides the auditable `situational` slot),
+and an engineer cuts dock repair 25% (¢12→¢9, quote + charge). UI: crew cards show
+tier/role/wage + loyalty pips (●●●○○), and the PC line shows `crew ¢X/tenday`.
+DEFERRED to v1.1: mutiny events, medic between-scene recovery passive, ship-scale
+gunner turret, crew statuses/resists, finishing off downed crew.*
 
 ---
 

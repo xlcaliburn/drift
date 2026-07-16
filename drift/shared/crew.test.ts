@@ -11,6 +11,8 @@ import {
   buildCrewMember,
   upkeepPerTenday,
   chargeCrewUpkeep,
+  crewAssistBonus,
+  repairRatePerHp,
 } from "./crew";
 
 const maxRng: RNG = { int: (_min, max) => max };
@@ -116,17 +118,63 @@ describe("upkeep — wages + superlinear overhead, charged as tendays pass", () 
     expect(upkeepPerTenday(three)).toBe(98);
   });
 
-  it("chargeCrewUpkeep debits the PC per tenday (may go negative)", () => {
-    const s = state({ characters: [pc(30), crewMember("A")], shipClass: "hauler" });
-    const r = chargeCrewUpkeep(s, 2);
-    expect(r.state.characters.find((c) => c.kind === "pc")!.credits).toBe(30 - 50); // 25 × 2
+  it("full payroll: wages (+overhead) debited, loyalty untouched", () => {
+    const s = state({ characters: [pc(500), crewMember("A")], shipClass: "hauler" });
+    const r = chargeCrewUpkeep(s, 2, maxRng);
+    expect(r.state.characters.find((c) => c.kind === "pc")!.credits).toBe(500 - 50); // 25 × 2
     expect(r.lines[0]).toMatch(/Crew upkeep: -¢50/);
+    expect(r.state.characters.find((c) => c.name === "A")!.loyalty).toBe(3);
+  });
+
+  it("can't pay → the unpaid hand loses loyalty (credits never go negative)", () => {
+    const s = state({ characters: [pc(30), crewMember("A")], shipClass: "hauler" }); // 50 due
+    const r = chargeCrewUpkeep(s, 2, maxRng);
+    expect(r.state.characters.find((c) => c.kind === "pc")!.credits).toBe(30); // nothing charged
+    expect(r.state.characters.find((c) => c.name === "A")!.loyalty).toBe(2); // 3 → 2
+    expect(r.lines.some((l) => /A goes unpaid — loyalty 3→2/.test(l))).toBe(true);
+  });
+
+  it("the expensive specialist is paid first; the cheap hand goes unpaid", () => {
+    const t2 = { ...crewMember("Pro", "T2"), wage: 60 };
+    const s = state({ characters: [pc(60), t2, crewMember("Hand")], shipClass: "hauler" });
+    const r = chargeCrewUpkeep(s, 1, maxRng);
+    expect(r.state.characters.find((c) => c.name === "Pro")!.loyalty).toBe(3); // paid
+    expect(r.state.characters.find((c) => c.name === "Hand")!.loyalty).toBe(2); // unpaid
+  });
+
+  it("unpaid at loyalty 0 → departure roll: low deserts (gone), high stays", () => {
+    const broke = { ...crewMember("Zero"), loyalty: 0 };
+    const s = state({ characters: [pc(0), broke], shipClass: "hauler" });
+    const deserted = chargeCrewUpkeep(s, 1, { int: (min) => min }); // d20 = 1 → walks
+    expect(deserted.state.characters.some((c) => c.name === "Zero")).toBe(false);
+    expect(deserted.lines.some((l) => /Zero deserts/.test(l))).toBe(true);
+    const stays = chargeCrewUpkeep(s, 1, maxRng); // d20 = 20 → one more tenday
+    expect(stays.state.characters.some((c) => c.name === "Zero")).toBe(true);
+    expect(stays.lines.some((l) => /stays one more tenday/.test(l))).toBe(true);
   });
 
   it("no crew (or no time) = no charge", () => {
-    expect(chargeCrewUpkeep(state(), 2).lines).toHaveLength(0);
+    expect(chargeCrewUpkeep(state(), 2, maxRng).lines).toHaveLength(0);
     const s = state({ characters: [pc(), crewMember("A")], shipClass: "hauler" });
-    expect(chargeCrewUpkeep(s, 0).lines).toHaveLength(0);
+    expect(chargeCrewUpkeep(s, 0, maxRng).lines).toHaveLength(0);
+  });
+
+  it("role passives: specialists assist their skill (+1, non-stacking per role)", () => {
+    const eng = buildCrewMember({ id: "n1", name: "Torres" }, "T1", "engineer", "c", maxRng);
+    const eng2 = buildCrewMember({ id: "n2", name: "Bolt" }, "T1", "engineer", "c", maxRng);
+    const face = buildCrewMember({ id: "n3", name: "Silk" }, "T1", "face", "c", maxRng);
+    const s = state({ characters: [pc(), eng, eng2, face], shipClass: "hauler" });
+    expect(crewAssistBonus(s, "mechanics")).toBe(1); // two engineers don't stack
+    expect(crewAssistBonus(s, "negotiation")).toBe(1);
+    expect(crewAssistBonus(s, "streetwise")).toBe(1);
+    expect(crewAssistBonus(s, "melee")).toBe(0); // no passive for fighters
+    expect(crewAssistBonus(state(), "mechanics")).toBe(0); // no crew
+  });
+
+  it("an engineer aboard cuts the repair rate 25% (¢12 → ¢9)", () => {
+    const eng = buildCrewMember({ id: "n1", name: "Torres" }, "T1", "engineer", "c", maxRng);
+    expect(repairRatePerHp(state({ characters: [pc(), eng], shipClass: "hauler" }), 12)).toBe(9);
+    expect(repairRatePerHp(state(), 12)).toBe(12);
   });
 
   it("crewMembers excludes the dead; berthsFree counts living heads", () => {

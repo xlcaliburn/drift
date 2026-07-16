@@ -5,6 +5,7 @@ import { economy } from "@/content";
 import { catalogItem, itemCount, allItems, slotsUsed, maxSlotsFor, resolveGearItemId } from "@/shared/items";
 import { repPriceFactor, localRep, SELL_RATE, marketTierFor } from "@/engine/market";
 import { gearValue, patronHelp, PATRON_STIM_FLOOR } from "@/shared/netWorth";
+import { repairRatePerHp } from "@/shared/crew";
 
 /**
  * The economy side of TurnRuntime, split out of engineBridge.ts as free functions
@@ -400,7 +401,8 @@ export function repairShip(rt: EconRT, hpWanted?: number): { line?: string; erro
   const deficit = s.maxHp - s.hp;
   if (deficit <= 0) return { error: "the hull is already fully patched" };
   const hp = hpWanted ? Math.max(1, Math.min(Math.floor(hpWanted), deficit)) : deficit;
-  const cost = hp * economy.constants.repairCostPerHp;
+  // An engineer aboard haggles the yard down / does half the work (CREW.md passive).
+  const cost = hp * repairRatePerHp(rt.state, economy.constants.repairCostPerHp);
   const pc = pcOf(rt);
   const before = pc?.credits ?? 0;
   const after = before - cost;

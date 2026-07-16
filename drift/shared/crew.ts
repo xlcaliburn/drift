@@ -150,6 +150,37 @@ export function buildCrewMember(
   } as Character;
 }
 
+/** Role PASSIVES (CREW.md §4) — a standing crew specialist assists the PC's skill
+ *  checks: engineer → mechanics, pilot → piloting, face → negotiation + streetwise.
+ *  +1 each (same auditable `situational` slot as tool bonuses); one per role — two
+ *  engineers don't stack. Muscle/gunner/medic earn their keep in the fight. */
+const ROLE_ASSIST: Partial<Record<CrewRole, string[]>> = {
+  engineer: ["mechanics"],
+  pilot: ["piloting"],
+  face: ["negotiation", "streetwise"],
+};
+
+export function crewAssistBonus(state: CampaignState, skill: string): number {
+  let bonus = 0;
+  const seen = new Set<CrewRole>();
+  for (const m of crewMembers(state)) {
+    const role = m.crewRole as CrewRole | undefined;
+    if (!role || seen.has(role)) continue;
+    if (m.hp <= 0) continue; // a downed specialist isn't assisting anyone
+    if ((ROLE_ASSIST[role] ?? []).includes(skill)) {
+      bonus += 1;
+      seen.add(role);
+    }
+  }
+  return bonus;
+}
+
+/** An engineer aboard makes hull repairs cheaper: 25% off the dock rate (¢12 → ¢9). */
+export function repairRatePerHp(state: CampaignState, baseRate: number): number {
+  const hasEngineer = crewMembers(state).some((m) => m.crewRole === "engineer" && m.hp > 0);
+  return hasEngineer ? Math.ceil(baseRate * 0.75) : baseRate;
+}
+
 /** Upkeep per tenday: wages + superlinear overhead (supplies/berth costs) —
  *  `wages + ceil(wages × factor × (crewCount − 1))`. Five hands cost more than 5×one. */
 export function upkeepPerTenday(state: CampaignState): number {
@@ -161,28 +192,75 @@ export function upkeepPerTenday(state: CampaignState): number {
 }
 
 /**
- * Charge crew upkeep for elapsed tendays — deducted from the PC (credits may go
- * negative; the dock-debt loop picks that up). The v1 cascade (loyalty decay on
- * nonpayment → desertion) lands with the upkeep slice; this charges honestly.
+ * Charge crew upkeep for elapsed tendays, with the NONPAYMENT CASCADE (CREW.md §6,
+ * trimmed v1): pay who you can afford in wage order (the expensive specialists get
+ * paid first; the cheapest hands go unpaid), every unpaid member loses a point of
+ * loyalty, and an unpaid member already AT loyalty 0 rolls to DESERT (d20 ≤ 10 →
+ * walks, taking their gear — the Character row is removed; the shared NPC remains
+ * in the world). Overhead is only charged when every wage was covered. Mutiny is
+ * deliberately deferred.
  */
 export function chargeCrewUpkeep(
   state: CampaignState,
   tendays: number,
+  rng: RNG,
 ): { state: CampaignState; lines: string[]; events: EngineEvent[] } {
-  const perTenday = upkeepPerTenday(state);
-  if (!tendays || tendays <= 0 || perTenday <= 0) return { state, lines: [], events: [] };
+  const crew = crewMembers(state);
   const pc = state.characters.find((c) => c.kind === "pc");
-  if (!pc) return { state, lines: [], events: [] };
-  const cost = perTenday * tendays;
-  const after = (pc.credits ?? 0) - cost;
-  const next: CampaignState = {
-    ...state,
-    characters: state.characters.map((c) => (c.id === pc.id ? { ...c, credits: after } : c)),
-  };
-  const n = crewMembers(state).length;
-  return {
-    state: next,
-    lines: [`💸 Crew upkeep: -¢${cost} (${n} crew${tendays > 1 ? ` × ${tendays} tendays` : ""}) — ¢${after} left.`],
-    events: [{ type: "cost", breakdown: `Crew upkeep: -¢${cost} (${n} crew, ${tendays} tenday${tendays > 1 ? "s" : ""})`, amount: -cost }],
-  };
+  if (!tendays || tendays <= 0 || !crew.length || !pc) return { state, lines: [], events: [] };
+
+  const lines: string[] = [];
+  const events: EngineEvent[] = [];
+  let pool = Math.max(0, pc.credits ?? 0);
+  let paidTotal = 0;
+  const unpaidIds = new Set<string>();
+
+  // Wages, most expensive first — you keep the specialist before the deckhand.
+  const byWage = [...crew].sort((a, b) => (b.wage ?? 0) - (a.wage ?? 0));
+  for (const m of byWage) {
+    const due = (m.wage ?? TIERS[(m.crewTier as CrewTier) ?? "T1"].wage) * tendays;
+    if (pool >= due) {
+      pool -= due;
+      paidTotal += due;
+    } else {
+      unpaidIds.add(m.id);
+    }
+  }
+  // Overhead (supplies/berth costs) only lands when the full payroll cleared.
+  const factor = (crewContent.overheadFactor as number) ?? 0.15;
+  const wagesPerTenday = crew.reduce((s, c) => s + (c.wage ?? TIERS[(c.crewTier as CrewTier) ?? "T1"].wage), 0);
+  const overhead = unpaidIds.size === 0 ? Math.ceil(wagesPerTenday * factor * (crew.length - 1)) * tendays : 0;
+  const charged = paidTotal + Math.min(pool, overhead);
+
+  let characters = state.characters.map((c) => (c.id === pc.id ? { ...c, credits: (c.credits ?? 0) - charged } : c));
+  if (charged > 0) {
+    lines.push(`💸 Crew upkeep: -¢${charged} (${crew.length} crew${tendays > 1 ? ` × ${tendays} tendays` : ""}).`);
+    events.push({ type: "cost", breakdown: `Crew upkeep: -¢${charged} (${crew.length} crew, ${tendays} tenday${tendays > 1 ? "s" : ""})`, amount: -charged });
+  }
+
+  // The cascade: unpaid → loyalty −1; unpaid at 0 → departure roll.
+  const deserters = new Set<string>();
+  for (const id of unpaidIds) {
+    const m = characters.find((c) => c.id === id);
+    if (!m) continue;
+    const before = m.loyalty ?? 3;
+    if (before > 0) {
+      characters = characters.map((c) => (c.id === id ? { ...c, loyalty: before - 1 } : c));
+      lines.push(`⚠ ${m.name} goes unpaid — loyalty ${before}→${before - 1}.`);
+      events.push({ type: "note", breakdown: `${m.name} unpaid: loyalty ${before}→${before - 1}.` });
+    } else {
+      const roll = rng.int(1, 20);
+      if (roll <= 10) {
+        deserters.add(id);
+        lines.push(`🚪 ${m.name} deserts (d20 ${roll}) — walks off with their gear.`);
+        events.push({ type: "note", breakdown: `${m.name} DESERTED over unpaid wages (d20 ${roll}).` });
+      } else {
+        lines.push(`⚠ ${m.name} stays one more tenday (d20 ${roll}) — but they're done working for free.`);
+        events.push({ type: "note", breakdown: `${m.name} on the brink of deserting (unpaid at loyalty 0, d20 ${roll}).` });
+      }
+    }
+  }
+  if (deserters.size) characters = characters.filter((c) => !deserters.has(c.id));
+
+  return { state: { ...state, characters }, lines, events };
 }
