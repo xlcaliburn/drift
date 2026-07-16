@@ -228,7 +228,21 @@ export function StatusTab({
           🕐 Tenday {state.campaign.tendaysElapsed ?? 0}
         </div>
 
-        {/* The live scene: what's happening, who's here, what's been established. */}
+        {/* THE ACTUAL DRIVER — what you're doing, ENGINE-owned and always accurate
+            (unlike `situation` below, which is free text the cheap model rarely sets
+            and the backstop derives from the narration's first sentence — often just
+            flavor prose). Shown first and prominently so "what's the plan" never
+            requires reading tea leaves. */}
+        {active.length > 0 && (
+          <div className="mt-1 space-y-0.5">
+            {active.slice(0, 3).map((t) => (
+              <div key={t.id} className="text-[12px] font-medium text-accent">
+                ▸ {t.title}
+              </div>
+            ))}
+          </div>
+        )}
+        {/* The live scene: flavor/atmosphere for what's happening right now. */}
         {sceneCard?.situation && (
           <p className="mt-1 text-[12px] italic leading-snug text-neutral-300">{sceneCard.situation}</p>
         )}
@@ -320,12 +334,8 @@ export function StatusTab({
           </div>
         )}
 
-        {/* The current objective only — the full thread list lives in More details. */}
-        {active.length > 0 && (
-          <div className="mt-1.5 border-t border-edge/60 pt-1.5 text-[12px] text-neutral-400">
-            <span className="text-neutral-600">Now:</span> {active[0].title}
-          </div>
-        )}
+        {/* The full active-thread list is promoted to the top of this card now
+            (▸ lines); the full thread history/detail lives in More details. */}
       </div>
 
     </div>

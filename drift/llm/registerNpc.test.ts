@@ -45,15 +45,30 @@ describe("registerNpc — continuity", () => {
     expect(rt.registerNpc("Wren").added).toBe(false); // "Wren" == first name of "Wren Sung"
   });
 
-  it("dedupes by name (case-insensitive) and refreshes their location", () => {
+  it("dedupes by name (case-insensitive); does NOT re-add the entry", () => {
     const rt = new TurnRuntime(stateAt("loc-meridian"), rng);
     const first = rt.registerNpc("Doyle", "supply officer");
-    // Later, the same NPC is used again at a different location.
     rt.state = { ...rt.state, campaign: { ...rt.state.campaign, currentLocationId: "loc-rook" } };
     const again = rt.registerNpc("doyle");
     expect(again.added).toBe(false);
     expect(again.id).toBe(first.id);
     expect(rt.state.npcs.filter((n) => n.name.toLowerCase() === "doyle").length).toBe(1);
-    expect(rt.state.npcs.find((n) => n.id === first.id)!.locationId).toBe("loc-rook");
+  });
+
+  it("home location is SET-ONCE — a later mention elsewhere never relocates it (the live 'Steward still nearby at Halcyon' bug)", () => {
+    const rt = new TurnRuntime(stateAt("loc-meridian"), rng);
+    const first = rt.registerNpc("Doyle", "supply officer");
+    expect(rt.state.npcs.find((n) => n.id === first.id)!.locationId).toBe("loc-meridian");
+    // The player has since traveled; the narrator quotes Doyle again this turn (a
+    // comms call, a remembered line) — this must NOT silently move his canonical home.
+    rt.state = { ...rt.state, campaign: { ...rt.state.campaign, currentLocationId: "loc-rook" } };
+    rt.registerNpc("doyle");
+    expect(rt.state.npcs.find((n) => n.id === first.id)!.locationId).toBe("loc-meridian");
+  });
+
+  it("a NEW npc still gets pinned to wherever they're introduced", () => {
+    const rt = new TurnRuntime(stateAt("loc-rook"), rng);
+    const res = rt.registerNpc("Korso", "cargo-locker fence");
+    expect(rt.state.npcs.find((n) => n.id === res.id)!.locationId).toBe("loc-rook");
   });
 });

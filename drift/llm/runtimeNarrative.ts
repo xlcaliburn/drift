@@ -234,7 +234,16 @@ export function registerNpc(rt: NarrativeRT, name: string, oneBreath?: string, r
         n.id === existing.id
           ? {
               ...n,
-              locationId: here ?? n.locationId,
+              // SET-ONCE, like role/oneBreath/quirk below — never relocate an already-
+              // known NPC's canonical home just because they were quoted this turn. A
+              // dialogue-speaker backstop fires on a comms call or a remembered line as
+              // readily as a real appearance; without this an NPC's home silently drifts
+              // to wherever they were last MENTIONED, and "nearby"/"[immediate]" tags
+              // (world.ts, StatusTab) start reading them as still being wherever the
+              // player currently stands — the live "Steward still nearby at Halcyon"
+              // bug, the same class the patron-specific exemption below was already
+              // patching one NPC at a time.
+              locationId: n.locationId ?? here,
               oneBreath: n.oneBreath || oneBreath || n.oneBreath,
               // Fill a role only if we didn't already know one (set-once).
               role: n.role ?? cleanRole,

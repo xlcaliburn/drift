@@ -3,6 +3,7 @@ import { getSession, setSession, persistSession, hasSupabase } from "@/lib/state
 import { requireApprovedUser, canAccessCampaign } from "@/lib/auth";
 import { refreshBoard } from "@/shared/quests";
 import { liveRng } from "@/engine/rng";
+import { revalidateChoices } from "@/shared/choices";
 
 export const runtime = "nodejs";
 
@@ -50,7 +51,19 @@ export async function GET(req: NextRequest) {
     combat: session.combat,
     npcRelations: session.npcRelations,
     sceneCard: session.sceneCard,
-    lastChoices: session.lastChoices,
+    // Prune any ENGINE chip whose precondition no longer holds (item spent, patron
+    // no longer eligible, job no longer offered…) — a stale click on a refresh must
+    // never be the game's first impression. Skipped while a fight/downed sequence
+    // owns the chip set (it regenerates its own every round).
+    lastChoices:
+      session.combat?.active || !session.lastChoices
+        ? session.lastChoices
+        : revalidateChoices(session.lastChoices, {
+            state: session.state,
+            sceneCard: session.sceneCard,
+            npcRelations: session.npcRelations,
+            jobs: session.jobs ?? [],
+          }),
     jobs: session.jobs ?? [],
     playerLedger: session.playerLedger ?? {},
   });
