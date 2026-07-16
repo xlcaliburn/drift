@@ -90,10 +90,18 @@ export interface DailyAuditResult {
 
 // ── Model ───────────────────────────────────────────────────────────────────────
 
-/** Strong-model default: this runs ONCE per campaign per day in the dead of night,
- *  so depth wins over price (~$0.15-0.35/campaign at Opus list rates). */
-function defaultAuditModel(): string {
-  return process.env.DAILY_AUDIT_MODEL ?? "claude-opus-4-8";
+/** Default: Sonnet — with the pattern taxonomy, live sheet, and evidence
+ *  structure all scaffolded in the prompt, the audit is classification-with-
+ *  evidence, well within Sonnet at ~40% of Opus's rate (~$0.05-0.09/campaign
+ *  day-sliced). The orchestrator ESCALATES to Opus for campaigns that filed an
+ *  APPEAL that day — the days deep root-cause diagnosis actually pays. */
+export function defaultAuditModel(): string {
+  return process.env.DAILY_AUDIT_MODEL ?? "claude-sonnet-5";
+}
+
+/** The escalation model for appeal days (see auditCampaign). */
+export function escalationAuditModel(): string {
+  return process.env.DAILY_AUDIT_ESCALATION_MODEL ?? "claude-opus-4-8";
 }
 
 // ── Prompt ──────────────────────────────────────────────────────────────────────

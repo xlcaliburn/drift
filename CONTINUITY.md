@@ -13,11 +13,13 @@ owns it; the model only proposes).
 
 ## Nightly audit — the strong-model retrospective (SHIPPED 2026-07-16)
 
-A fourth layer above the per-scene analyst: once a day (~3am cron), a STRONG
-model (Opus by default, `DAILY_AUDIT_MODEL`) reads each campaign that PLAYED
-that day *whole* — the full transcript window, cast + standings, open threads,
-jobs, scene summaries, and the day's APPEAL calls/errors — and produces what a
-scene-scoped pass can't:
+A fourth layer above the per-scene analyst: once a day (~3am cron), a strong
+model reads each campaign that PLAYED that day — the day-sliced transcript,
+the LIVE sheet, cast + standings, open threads, jobs, scene summaries, and the
+day's APPEAL calls/errors — and produces what a scene-scoped pass can't.
+Model tiering: **Sonnet by default** (`DAILY_AUDIT_MODEL`, ~$0.05-0.09 per
+campaign day-sliced), **auto-escalated to Opus** (`DAILY_AUDIT_ESCALATION_MODEL`)
+for a campaign that filed an APPEAL that day — the days deep diagnosis pays.
 
 - **Inconsistencies** — cross-scene contradictions (a fact asserted then
   contradicted, an NPC playing stranger to a friend), severity-ranked.
