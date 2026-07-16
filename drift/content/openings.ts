@@ -182,39 +182,6 @@ export const factionOpenings: FactionOpening[] = [
     },
   },
   {
-    factionId: "f-meridian",
-    hook: "A Meridian broker has cargo that needs moving and lanes getting too dangerous to trust to anyone soft. Land a first contract and build a reputation from there.",
-    threadTitle: "Build your standing in Meridian commerce",
-    threadBody:
-      "Meridian runs on clean cargo and cleaner margins — but the lanes are turning violent and honest money needs someone who'll get its hands dirty to protect it. Move goods, keep them safe, and turn a first contract into a name people trust.",
-    firstMoves: [
-      "Take a cargo contract from the broker",
-      "Haggle a better cut on the run",
-      "Ask what's making the brokers nervous",
-    ],
-    loaner: {
-      name: "The Tally",
-      shipClass: "scout",
-      weaponName: "Defensive turret",
-      notes:
-        "Meridian consignment hull — a light courier skiff on the trade house's books. Fly their cargo and keep it safe, and the title comes off their ledger and onto yours.",
-    },
-    seed: {
-      startLocation: "Meridian Ring — the legitimate trade houses, depots, and clean docks of the Crown-held ring",
-      recruitGoal:
-        "Land and protect a first cargo contract, turning clean standing into a reputation people trust.",
-      anchors:
-        "The Meridian trade-house broker (offers standing bulk contracts); the depots and bulk lanes of the Meridian Ring.",
-      tension:
-        "Honest cargo is getting hit as the lanes turn violent, and the brokers need someone willing to get their hands dirty to protect it.",
-      leads: [
-        "A cargo run the broker can't trust to anyone soft",
-        "A shipment already lost that someone needs quietly recovered",
-        "A depot being leaned on for protection money",
-      ],
-    },
-  },
-  {
     factionId: "f-wreckers",
     hook: "In the Nest you eat what you take, and the crew won't feed a mouth that hasn't earned it. Go find something worth plundering before they decide you're dead weight.",
     threadTitle: "Take your share in the Nest",
@@ -296,32 +263,6 @@ export const factionOpenings: FactionOpening[] = [
         "A salvage crew heading to a fresh wreck and short a hand",
         "Kesh's proof, and the dangerous question of what to do with it",
         "A piece of strange salvage that needs fencing or identifying",
-      ],
-    },
-  },
-  {
-    factionId: "f-commons",
-    hook: "The Commons protects the dock crews the syndicates bleed dry — quietly, because being known gets you disappeared. A foreman on Meridian is being squeezed by a collector right now. Help, and the crews start trusting you.",
-    threadTitle: "Win the dock crews' trust",
-    threadBody:
-      "The Commons is a hunted movement against debt and syndicate rule — no ranks, no ledger, just people who look out for each other. Protect a crew, undercut a collector, and you earn a place. Get loud about it, and you become the next one to vanish.",
-    firstMoves: [
-      "Help the foreman being squeezed by a collector",
-      "Quietly warn a crew about a coming crackdown",
-      "Undercut a syndicate's grip on the docks",
-    ],
-    seed: {
-      startLocation: "Meridian Ring — among the dock crews and cargo levels the syndicates bleed dry",
-      recruitGoal:
-        "Protect a dock crew or undercut a collector quietly enough to earn the crews' trust without becoming a target.",
-      anchors:
-        "The dock crews of Meridian Ring; a foreman being squeezed right now; the syndicate collectors who bleed them.",
-      tension:
-        "The Commons is hunted — no muscle to spare, no safe berth — and being known as one of them gets you disappeared.",
-      leads: [
-        "A foreman being squeezed by a syndicate collector today",
-        "Word of a coming crackdown a crew doesn't know about yet",
-        "A chokehold a syndicate has on the docks that could be quietly loosened",
       ],
     },
   },

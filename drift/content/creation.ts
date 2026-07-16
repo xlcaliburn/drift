@@ -436,16 +436,11 @@ export const attributeBaseline: Record<AttributeKey, number> = {
  */
 const FACTION_STARTER_FLAVOR: Record<string, { gun: string; armor: string; tool: string }> = {
   "f-crown": { gun: "Crown service pistol", armor: "Crown-issue vest", tool: "Crown ledger-chit" },
-  "f-meridian": { gun: "Bonded sidearm", armor: "Broker's lined coat", tool: "Trade credentials" },
   "f-sable": { gun: "Back-alley snub pistol", armor: "Reinforced jacket", tool: "Burner comm" },
-  "f-ledger": { gun: "Holdout pistol", armor: "Courier's vest", tool: "Cipher slate" },
   "f-undertow": { gun: "Collector's sidearm", armor: "Enforcer's padded coat", tool: "Debt ledger" },
-  "f-talos": { gun: "Security sidearm", armor: "Frontier plate-vest", tool: "Checkpoint scanner" },
   "f-wreckers": { gun: "Salvaged slugthrower", armor: "Scrap-plate harness", tool: "Cutting torch" },
   "f-free": { gun: "Worn sidearm", armor: "Patched flak jacket", tool: "Multitool" },
   "f-reclaimers": { gun: "Reclaimer bolt pistol", armor: "Salvager's vac-vest", tool: "Salvage scanner" },
-  "f-commons": { gun: "Homemade pistol", armor: "Dockworker's padding", tool: "Worn multitool" },
-  "f-rook": { gun: "Street sidearm", armor: "Padded jacket", tool: "Multitool" },
 };
 const DEFAULT_STARTER = { gun: "Sidearm", armor: "Padded jacket", tool: "Multitool" };
 
@@ -453,16 +448,11 @@ const DEFAULT_STARTER = { gun: "Sidearm", armor: "Padded jacket", tool: "Multito
  *  FACTION_HOME in newCampaign (kept here so content owns the patron placement). */
 export const FACTION_HOME: Record<string, string> = {
   "f-crown": "loc-meridian",
-  "f-meridian": "loc-meridian",
   "f-sable": "loc-rook",
-  "f-ledger": "loc-rook",
   "f-undertow": "loc-undertow",
-  "f-talos": "loc-talos",
   "f-wreckers": "loc-nest",
   "f-free": "loc-rook",
   "f-reclaimers": "loc-rook",
-  "f-commons": "loc-meridian",
-  "f-rook": "loc-rook",
 };
 
 export interface PatronDef {
@@ -483,30 +473,15 @@ export const FACTION_PATRON: Record<string, PatronDef> = {
     role: "Crown recruit-handler",
     oneBreath: "The Hollow Crown's recruit-handler on Meridian — gruff, fair, keeps green contractors alive long enough to be useful. Patches you up and points you at safe work until you're on your feet.",
   },
-  "f-meridian": {
-    name: "Steward Harrow",
-    role: "trade-house steward",
-    oneBreath: "A Meridian trade-house steward who takes in new hands — feeds you, mends you, and lines up honest cargo runs while you learn the lanes.",
-  },
   "f-sable": {
     name: "Handler Sereda",
     role: "Sable Chain handler",
     oneBreath: "A Sable Chain handler working Rook's back rooms — cold but invested in her recruits; keeps you patched, armed, and pointed at the Chain's easy money until you prove out.",
   },
-  "f-ledger": {
-    name: "Old Marn",
-    role: "Ledger steward",
-    oneBreath: "A Ledger network steward on Rook — no-questions, no-judgment; gives couriers a berth, a meal, and a safe first run while they earn their marks.",
-  },
   "f-undertow": {
     name: "Collector Roan",
     role: "Undertow desk-boss",
     oneBreath: "The Undertow's desk-boss at the outpost — grim but loyal to his own; keeps new collectors alive and fed, and starts them on small, safe debts to work.",
-  },
-  "f-talos": {
-    name: "Sergeant Daccett",
-    role: "Talos security quartermaster",
-    oneBreath: "Talos security's quartermaster — hard-line but looks after the frontier's rookies; a bunk, a medbay, and safe patrol work until you can hold the line yourself.",
   },
   "f-wreckers": {
     name: "Boneyard Ma",
@@ -522,11 +497,6 @@ export const FACTION_PATRON: Record<string, PatronDef> = {
     name: "Archivist Sund",
     role: "Reclaimer steward",
     oneBreath: "A Reclaimer collective steward on Rook — patient, careful; keeps new salvagers whole and starts them on safe derelict work while they learn what the wrecks hold.",
-  },
-  "f-commons": {
-    name: "Deacon Iyer",
-    role: "Commons organizer",
-    oneBreath: "A Commons organizer moving quietly through Meridian's dock levels — shelters the hunted, mends the hurt, and puts new hands to safe, useful work against the debt.",
   },
 };
 const DEFAULT_PATRON: PatronDef = {

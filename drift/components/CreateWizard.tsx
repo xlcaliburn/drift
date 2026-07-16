@@ -1008,13 +1008,9 @@ const FACTION_COLORS: Record<string, string> = {
   "f-crown": "#e8a33d",
   "f-sable": "#d9584a",
   "f-undertow": "#8b93a6",
-  "f-ledger": "#c99a5b",
-  "f-meridian": "#6fae8f",
   "f-reclaimers": "#7fa6c9",
   "f-free": "#b98fd0",
   "f-wreckers": "#d9584a",
-  "f-rook": "#c99a5b",
-  "f-talos": "#6f7b93",
 };
 
 /**

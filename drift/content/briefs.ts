@@ -27,8 +27,8 @@ export const factionBriefs: FactionBrief[] = [
     name: "The Hollow Crown",
     tagline: "The house that owns the debt.",
     brief:
-      "The established power on the Meridian lanes — a loan syndicate turned patron, with legitimate fronts and long memories. They reward loyalty with real work: courier runs, escort contracts, intel jobs. But the Crown's grip is slipping, and a slipping empire gets nervous. Starting here means resources and reach, and the pressure of holding a line that's already cracking.",
-    playstyle: "Establishment power, steady work, defending turf under threat.",
+      "The established power on the Meridian lanes — a loan syndicate turned patron that owns the debt AND the legitimate trade houses it backs, with long memories and legal fronts. They reward loyalty with real work: courier runs, escort contracts, intel jobs, cargo the Crown wants moved clean. But the Crown's grip is slipping, and a slipping empire gets nervous. Starting here means resources and reach, and the pressure of holding a line that's already cracking.",
+    playstyle: "Establishment power and clean money — steady work, defending turf under threat.",
   },
   {
     factionId: "f-sable",
@@ -45,14 +45,6 @@ export const factionBriefs: FactionBrief[] = [
     brief:
       "A debt-collection outfit that works the grim edges — bounties, enforcement, leverage. Morally hard, but they respect a clean operator and pay for results. They smell opportunity in the chaos. Starting here means muscle, information, and a reputation that opens doors and closes throats. Where you draw your lines is your business.",
     playstyle: "Enforcement, bounties, leverage and information.",
-  },
-  {
-    factionId: "f-meridian",
-    name: "Meridian Commerce",
-    tagline: "Legitimate business in an illegitimate age.",
-    brief:
-      "The brokers, depots, and trade houses of the Meridian Ring — the legal economy the syndicates prey on. Starting here means capital, cargo, and clean standing, but you're soft where it counts. The lanes are getting dangerous, and honest money needs someone willing to get its hands dirty to protect it.",
-    playstyle: "Commerce, logistics, building wealth while staying legitimate.",
   },
   {
     factionId: "f-wreckers",

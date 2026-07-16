@@ -75,13 +75,13 @@ describe("buildCharacterFromCreation", () => {
 
 describe("ensureStartingGun — no PC is ever stuck gunless (the Cali backfill)", () => {
   const pc = (over: Partial<Character>): Character =>
-    ({ id: "p", kind: "pc", name: "X", parentFactionId: "f-meridian", gear: [], ...over } as Character);
+    ({ id: "p", kind: "pc", name: "X", parentFactionId: "f-crown", gear: [], ...over } as Character);
 
   it("adds a faction sidearm to a gunless legacy PC", () => {
     const fixed = ensureStartingGun(pc({ gear: [{ name: "Encrypted datapad" }, { name: "Fine jacket", acBonus: 1 }] }));
     const gun = fixed.gear.find((g) => g.itemId === "sidearm");
     expect(gun?.damage).toBe("1d8");
-    expect(gun?.name).toBe("Bonded sidearm"); // f-meridian flavor
+    expect(gun?.name).toBe("Crown service pistol"); // f-crown flavor
   });
 
   it("leaves an already-armed PC untouched (a knife-only build still counts as needing a gun)", () => {

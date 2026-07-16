@@ -52,6 +52,20 @@ to the seed constants + the player's own NPCs; the accreted foreign entries drop
 even the first turn clean (safe only AFTER the code deploys — the old universe-wide
 load re-floods otherwise).
 
+## Faction consolidation (SHIPPED 2026-07-16)
+
+Trimmed the world from **11 factions to 6**, each a distinct playable archetype, so
+creation isn't a wall of near-duplicates and the rep/world model stays legible.
+Survivors: **Hollow Crown** (establishment — absorbed Meridian Commerce), **Sable
+Chain** (insurgent), **The Undertow** (enforcer), **Free Drift** (independent —
+absorbed the Ledger network), **The Wreckers** (raider), **The Reclaimers** (salvager).
+Retired: Rook-street (identity-less rep bucket), Talos security, the Commons; Meridian
+Commerce → Crown; Ledger network → Free Drift. All 6 are pickable at creation
+(`content/briefs.ts` `factionBriefs`). Live migration remapped the 2 Meridian PCs +
+the seed contacts (broker → Crown, the Ledger → Free), cascade-cleaned `faction_rep`,
+deleted the dead factions, and rewrote the universe primer; the seed + creation content
+(`seedData`, `creation`, `openings`, `newCampaign`, `CreateWizard`) match.
+
 ## Phase 2 — the constants build (TODO)
 
 Places + loot are designed in detail in **LOCATIONS.md** (tiered canonical locations,

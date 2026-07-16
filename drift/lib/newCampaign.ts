@@ -71,15 +71,11 @@ export function buildFaultLineClock(campaignId: string): Clock {
 /** Where each faction plants a new recruit at the start. */
 const FACTION_HOME: Record<string, string> = {
   "f-crown": "loc-meridian",
-  "f-meridian": "loc-meridian",
   "f-sable": "loc-rook",
-  "f-ledger": "loc-rook",
   "f-undertow": "loc-undertow",
-  "f-talos": "loc-talos",
   "f-wreckers": "loc-nest",
   "f-free": "loc-rook",
   "f-reclaimers": "loc-rook",
-  "f-commons": "loc-meridian",
 };
 
 /**
