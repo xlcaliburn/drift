@@ -345,6 +345,12 @@ export const Campaign = z.object({
    *  burned me"). Player-set, free text. Fed to the narrator every turn so the
    *  world bends toward it instead of forcing an unrelated questline. */
   directive: z.string().max(400).optional(),
+  /** BACKSTORY.md — the tenday value at which a backstory beat (an NPC tie,
+   *  ambition, or moral code) last surfaced in play. Undefined = never yet, so
+   *  pressure is measured from campaign start. Engine-owned; reset by the turn
+   *  route whenever `backstoryPressureDue` fires, regardless of the model's
+   *  actual follow-through (a soft directive, like ambition/moralCode elsewhere). */
+  lastBackstoryBeatTenday: z.number().int().min(0).optional(),
 });
 export type Campaign = z.infer<typeof Campaign>;
 

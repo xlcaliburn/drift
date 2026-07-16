@@ -193,6 +193,13 @@ Don't add prose rules for things the engine can enforce.
   (stopped the cross-campaign NPC bleed: seed-only load + PC-name guard). `LOCATIONS.md`
   — the Phase 2 places+loot design (tiered canonical locations, persisted procedural
   SITES with loot tables, risk/reward tiers). DESIGN, not yet built.
+- `BACKSTORY.md` — making backstory an ACTIVE ingredient (context alone doesn't make
+  the model use it). Phase 1 SHIPPED: the tenday-pressure backstop —
+  `shared/backstoryPressure.ts` selects the PC's most significant due anchor (an NPC
+  tie, ambition, or moral code) and a new `promptSections/backstoryPressure.ts`
+  section forces an explicit directive once enough tendays pass in silence. Phase 2
+  (arrival tie-in, NPC-initiated contact, milestone beats, structured backstory tags)
+  not yet built.
 - `IMPLEMENTATION.md` — what's left to build, in rough order
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)

@@ -12,13 +12,14 @@ import { repairQuote } from "@/engine/market";
 import { patronHelp } from "@/shared/netWorth";
 import { advanceLedger } from "@/shared/ledger";
 import type { Dossier } from "@/shared/multiplayer";
-import { acceptJob, abandonJob, generatePersonalJob } from "@/shared/quests";
+import { acceptJob, abandonJob, generatePersonalJob, inferJobAccept } from "@/shared/quests";
 import { resolveJobsTurn } from "@/shared/jobsRuntime";
 import { personalJobAvailable, TRUST_THRESHOLD } from "@/shared/scene";
 import { liveRng } from "@/engine/rng";
 import { advanceTendays, tendaysForSceneClose } from "@/engine/time";
 import { routeBetween } from "@/shared/routes";
 import { recruitOffer, chargeCrewUpkeep } from "@/shared/crew";
+import { backstoryPressureDue } from "@/shared/backstoryPressure";
 import { getSession, setSession, persistSession, loadReachableDossiers } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
@@ -144,7 +145,8 @@ export async function POST(req: NextRequest) {
   const preRepair = Boolean(body.repairHull);
   // A clicked "Rest up with <patron>" chip — the free early-game safety net (STARTER).
   const preRest = Boolean(body.patronRest);
-  // Clicked job-board chips (QUESTS.md): accept an offered job / abandon an active one.
+  // Job chips (QUESTS.md) — from a narrator-emitted choice (diegetic offers) or the
+  // Status tab's "On the job" block: accept an offered job / abandon an active one.
   const acceptJobId = typeof body.acceptJob === "string" && body.acceptJob ? body.acceptJob : undefined;
   const abandonJobId = typeof body.abandonJob === "string" && body.abandonJob ? body.abandonJob : undefined;
   // A trusted NPC's personal-favor chip (RELATIONSHIPS.md): their npc id.
@@ -513,7 +515,12 @@ export async function POST(req: NextRequest) {
         //    survive objectives.
         const combatResolvedAlive = wasCombatTurn && !resultCombat?.active && !pcDied;
         let jobsBoard = session.jobs ?? [];
-        if (acceptJobId) jobsBoard = acceptJob(jobsBoard, acceptJobId);
+        // Typed-accept backstop (QUESTS.md): with the board tab gone, offers are
+        // taken diegetically. The model SHOULD attach acceptJob to the take-it
+        // choice, but when it under-fires and the player's text is an unmistakable
+        // take ("I'll take the courier run"), resolve it deterministically here.
+        const effectiveAcceptId = acceptJobId ?? (!wasCombatTurn ? inferJobAccept(playerText, jobsBoard) : undefined);
+        if (effectiveAcceptId) jobsBoard = acceptJob(jobsBoard, effectiveAcceptId);
         if (abandonJobId) jobsBoard = abandonJob(jobsBoard, abandonJobId);
         // A trusted NPC's personal favor (RELATIONSHIPS.md): generate their personal
         // job (their backstory want) straight to ACTIVE — it never lists on the public
@@ -573,6 +580,18 @@ export async function POST(req: NextRequest) {
           result.state = upkeep.state;
           result.events = [...result.events, ...upkeep.events];
           timeLines.push(...upkeep.lines);
+        }
+
+        // BACKSTORY.md — the tenday-pressure clock. Checked against the PRE-turn
+        // campaign (what the backstoryPressure prompt section saw building THIS
+        // turn's context) so the reset lines up with the directive actually sent.
+        // Best-effort like ambition/moralCode elsewhere: reset once fired regardless
+        // of how well the model followed through — this is a nudge, not a hard gate.
+        if (backstoryPressureDue(session.state.campaign)) {
+          result.state = {
+            ...result.state,
+            campaign: { ...result.state.campaign, lastBackstoryBeatTenday: result.state.campaign.tendaysElapsed },
+          };
         }
 
         // Bleeding Out is engine-owned end to end now (runDownedTurn resolves the

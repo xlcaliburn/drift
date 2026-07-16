@@ -7,8 +7,9 @@ import { tutorial, previously, directive, sceneHeader, season, sceneNow } from "
 import { pcSheet, vitals, ship } from "./pcSheet";
 import { threat, market, dock, patron, bodyMod } from "./economy";
 import { npcs, cameos, threads, worldStatus } from "./world";
-import { activeJobs } from "./quests";
+import { activeJobs, offeredJobs } from "./quests";
 import { npcTiers } from "./npcTiers";
+import { backstoryPressure } from "./backstoryPressure";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
 
@@ -21,13 +22,13 @@ import type { PlayerLedger } from "@/shared/ledger";
  * llm/contextSlice.golden.test.ts.
  */
 const SECTIONS: (Section | "")[] = [
-  tutorial, previously, directive, sceneHeader, season, sceneNow,
+  tutorial, previously, directive, backstoryPressure, sceneHeader, season, sceneNow,
   "",
   pcSheet, vitals, ship, threat, market, dock, patron, bodyMod,
   "",
   npcs, npcTiers,
   "",
-  cameos, threads, activeJobs,
+  cameos, threads, activeJobs, offeredJobs,
   "",
   worldStatus,
 ];
