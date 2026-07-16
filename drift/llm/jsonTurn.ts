@@ -302,6 +302,75 @@ export function combatRoster(combat: CombatState): string {
   return [...groups.entries()].map(([name, n]) => (n > 1 ? `${n}× ${name}` : name)).join(", ");
 }
 
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * The known NPCs who are the named actor RIGHT BEFORE a line of dialogue — the
+ * "act, then speak" beat the strict speech-verb extractor misses ("Valis taps the
+ * shard. 'You've got…'"). For each OPENING quote (a quote mark preceded by
+ * whitespace, so contraction/possessive apostrophes don't count), the speaker is the
+ * SUBJECT — the FIRST distinctive NPC name-token in the last complete sentence before
+ * the quote. Taking the subject (not the nearest name) avoids attributing "Valis
+ * warns you that Calvo is holed up… 'Watch yourself.'" to Calvo (who's off-screen).
+ */
+function speakersBeforeQuotes(narration: string, npcs: { id: string; name: string }[]): Set<string> {
+  const out = new Set<string>();
+  const openQuoteRe = /(^|[\s—–-])["'“‘]/g;
+  const positions: number[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = openQuoteRe.exec(narration)) !== null) positions.push(m.index + m[1].length);
+  if (!positions.length) return out;
+  // Distinctive name tokens (≥4 chars, so short common words can't false-match).
+  const cands = npcs.flatMap((n) =>
+    n.name.toLowerCase().split(/\s+/).filter((t) => t.length >= 4).map((tok) => ({ id: n.id, tok })),
+  );
+  for (const qp of positions) {
+    // The last COMPLETE sentence before the quote (drop the trailing sentence-ender).
+    const before = narration.slice(0, qp).trimEnd().replace(/[.!?]+$/, "");
+    const enders = [before.lastIndexOf(". "), before.lastIndexOf("! "), before.lastIndexOf("? "), before.lastIndexOf("\n")];
+    const sentence = before.slice(Math.max(-1, ...enders) + 1).toLowerCase();
+    let bestId = "";
+    let bestPos = Infinity;
+    for (const { id, tok } of cands) {
+      const idx = sentence.indexOf(tok);
+      if (idx >= 0 && idx < bestPos) {
+        bestPos = idx;
+        bestId = id;
+      }
+    }
+    if (bestId) out.add(bestId);
+  }
+  return out;
+}
+
+/**
+ * Which KNOWN NPCs the beat implies are PRESENT, beyond the model's own npcs[] and
+ * the strict dialogue-speaker match (CONTINUITY presence — the "talking to Soren in
+ * his office but he's in neither proximity bucket" bug). Two high-precision signals:
+ *  1. the scene is set in THEIR space — a name token in `place`/`situation`
+ *     ("Meridian Ring — Valis's office" → Soren Valis is here);
+ *  2. they're the named actor right before a quote (`speakersBeforeQuotes`).
+ * A bare off-screen MENTION (a target named as being elsewhere) matches neither.
+ */
+export function inferPresentNpcs(
+  narration: string,
+  place: string | undefined,
+  situation: string | undefined,
+  npcs: { id: string; name: string }[],
+): Set<string> {
+  const present = new Set<string>();
+  const placeText = `${place ?? ""} ${situation ?? ""}`.toLowerCase();
+  for (const n of npcs) {
+    const inPlace = n.name
+      .toLowerCase()
+      .split(/\s+/)
+      .some((tok) => tok.length >= 4 && new RegExp(`\\b${escapeRe(tok)}\\b`).test(placeText));
+    if (inPlace) present.add(n.id);
+  }
+  for (const id of speakersBeforeQuotes(narration, npcs)) present.add(id);
+  return present;
+}
+
 /**
  * A blunt, outcome-specific coda appended to the "narrate this result" directive so
  * the cheap model can't narrate a SUCCESS the engine just denied — the exact desync
@@ -831,21 +900,23 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
         speaker.role,
       );
     }
-    // Presence: mark present a known NPC who SPEAKS this turn — so whoever the player
-    // is dealing with (new, or continuing after a scene reset) shows up in Here & now,
-    // even if the model forgot to list them. A name merely REFERENCED in the prose (a
-    // target a contact names, like Calvo off at another station) is NOT presence — it
-    // would wrongly drag an off-screen figure into the immediate area.
+    // Presence: mark a known NPC present when the beat clearly puts them in the scene,
+    // even if the model forgot to list them — so whoever the player is dealing with
+    // shows up in Here & now (the "talking to Soren in his office, but he's in neither
+    // proximity bucket" bug). Signals: they SPOKE (dialogue speaker), the scene is set
+    // in THEIR space ("Valis's office"), or they're the named actor right before a
+    // quote (inferPresentNpcs). A bare off-screen MENTION (a target named as being
+    // elsewhere) matches none of these, so it never drags an off-screen figure in.
     const lower = narration.toLowerCase();
     const metPlace = runtime.sceneCard.place?.trim();
     const spokeHandles = extractDialogueNpcs(narration, new Set(), 20).map((s) => s.handle.toLowerCase());
+    const impliedPresent = inferPresentNpcs(narration, runtime.sceneCard.place, runtime.sceneCard.situation, runtime.state.npcs);
     for (const n of runtime.state.npcs) {
       const nm = n.name.toLowerCase();
       if (nm.length < 3) continue;
-      const re = new RegExp(`\\b${nm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
-      if (!re.test(lower)) continue;
-      // Only if they actually spoke (name matches a dialogue speaker this turn).
-      if (!spokeHandles.some((h) => nm === h || nm.includes(h) || h.includes(nm))) continue;
+      const named = new RegExp(`\\b${escapeRe(nm)}\\b`).test(lower);
+      const spoke = named && spokeHandles.some((h) => nm === h || nm.includes(h) || h.includes(nm));
+      if (!spoke && !impliedPresent.has(n.id)) continue;
       runtime.markPresent(n.id);
       // Seed a relationship the FIRST time you actually deal with someone, so the
       // People panel isn't blank for a fixer/fence you've been talking to — the cheap
