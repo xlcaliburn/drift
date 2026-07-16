@@ -11,7 +11,6 @@ import { StatusTab } from "./sidebar/StatusTab";
 import { TraitsTab } from "./sidebar/TraitsTab";
 import { MapTab } from "./sidebar/MapTab";
 import { ClocksTab } from "./sidebar/ClocksTab";
-import { JobsTab } from "./sidebar/JobsTab";
 import { DetailsModal, type DetailsTab } from "./sidebar/DetailsModal";
 
 /**
@@ -21,7 +20,7 @@ import { DetailsModal, type DetailsTab } from "./sidebar/DetailsModal";
  * sidebar/ui.tsx) so parallel work on different tabs never collides here.
  */
 
-type Tab = "status" | "traits" | "map" | "clocks" | "jobs";
+type Tab = "status" | "traits" | "map" | "clocks";
 
 export default function Sidebar({
   state,
@@ -41,7 +40,8 @@ export default function Sidebar({
   npcRelations?: NpcRelations;
   /** Current scene's working memory — feeds the Scene box. */
   sceneCard?: SceneCard | null;
-  /** The job board (QUESTS.md) — feeds the Jobs tab. */
+  /** Active jobs (QUESTS.md) — feeds the Status tab's "On the job" block.
+   *  Offers are diegetic (surfaced by the narrator), not a browsable board. */
   jobs?: Job[];
   /** The relationship ledger (MULTIPLAYER.md §2) — feeds the Rolodex tab. */
   playerLedger?: PlayerLedger;
@@ -67,7 +67,7 @@ export default function Sidebar({
   const body = (
     <>
       <div className="flex border-b border-edge text-xs">
-        {(["status", "traits", "map", "clocks", "jobs"] as Tab[]).map((t) => (
+        {(["status", "traits", "map", "clocks"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -88,6 +88,8 @@ export default function Sidebar({
             combat={combat}
             npcRelations={npcRelations}
             sceneCard={sceneCard}
+            jobs={jobs}
+            onJobAction={onJobAction}
             onDetails={() => openDetails("equipment")}
             onRefresh={onRefresh}
           />
@@ -95,7 +97,6 @@ export default function Sidebar({
         {tab === "traits" && <TraitsTab state={state} />}
         {tab === "map" && <MapTab state={state} sceneCard={sceneCard} />}
         {tab === "clocks" && <ClocksTab state={state} />}
-        {tab === "jobs" && <JobsTab state={state} jobs={jobs} onJobAction={onJobAction} />}
       </div>
 
       {detailsTab && pc && (

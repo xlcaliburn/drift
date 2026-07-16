@@ -355,23 +355,32 @@ function speakersBeforeQuotes(narration: string, npcs: { id: string; name: strin
  *     ("Meridian Ring — Valis's office" → Soren Valis is here);
  *  2. they're the named actor right before a quote (`speakersBeforeQuotes`).
  * A bare off-screen MENTION (a target named as being elsewhere) matches neither.
+ * HOME-LOCATION GATE: when `currentLocationId` is given, an NPC BASED at a
+ * different station never infers as present — a comms call or a remembered quote
+ * reads exactly like a real appearance to these heuristics (the live "Ilyana in
+ * the scene at Halcyon while based on Meridian" bug). A deliberate story move
+ * still works through the model's explicit npcs[] path, which skips inference.
  */
 export function inferPresentNpcs(
   narration: string,
   place: string | undefined,
   situation: string | undefined,
-  npcs: { id: string; name: string }[],
+  npcs: { id: string; name: string; locationId?: string }[],
+  currentLocationId?: string,
 ): Set<string> {
+  const local = currentLocationId
+    ? npcs.filter((n) => !n.locationId || n.locationId === currentLocationId)
+    : npcs;
   const present = new Set<string>();
   const placeText = `${place ?? ""} ${situation ?? ""}`.toLowerCase();
-  for (const n of npcs) {
+  for (const n of local) {
     const inPlace = n.name
       .toLowerCase()
       .split(/\s+/)
       .some((tok) => tok.length >= 4 && new RegExp(`\\b${escapeRe(tok)}\\b`).test(placeText));
     if (inPlace) present.add(n.id);
   }
-  for (const id of speakersBeforeQuotes(narration, npcs)) present.add(id);
+  for (const id of speakersBeforeQuotes(narration, local)) present.add(id);
   return present;
 }
 
@@ -962,10 +971,18 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     const lower = narration.toLowerCase();
     const metPlace = runtime.sceneCard.place?.trim();
     const spokeHandles = extractDialogueNpcs(narration, new Set(), 20).map((s) => s.handle.toLowerCase());
-    const impliedPresent = inferPresentNpcs(narration, runtime.sceneCard.place, runtime.sceneCard.situation, runtime.state.npcs);
+    const hereLoc = runtime.state.campaign.currentLocationId;
+    const impliedPresent = inferPresentNpcs(narration, runtime.sceneCard.place, runtime.sceneCard.situation, runtime.state.npcs, hereLoc);
     for (const n of runtime.state.npcs) {
       const nm = n.name.toLowerCase();
       if (nm.length < 3) continue;
+      // HOME-LOCATION GATE: an NPC BASED at another station can't be dragged into
+      // the scene by these heuristics — a comms call or a remembered line reads as
+      // dialogue exactly like a real appearance (the live "Ilyana in the scene at
+      // Halcyon while based on Meridian" bug). A DELIBERATE story move still works:
+      // the model's explicit plan.npcs[] path (applyPlan) marks presence without
+      // this gate, so travel-to-the-player beats aren't blocked — only inference is.
+      if (n.locationId && hereLoc && n.locationId !== hereLoc) continue;
       const named = new RegExp(`\\b${escapeRe(nm)}\\b`).test(lower);
       const spoke = named && spokeHandles.some((h) => nm === h || nm.includes(h) || h.includes(nm));
       if (!spoke && !impliedPresent.has(n.id)) continue;

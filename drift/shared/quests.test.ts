@@ -8,9 +8,11 @@ import {
   refreshBoard,
   acceptJob,
   abandonJob,
+  inferJobAccept,
   advanceJobs,
   turnSignals,
   rollJobCredits,
+  canOffer,
   type Job,
   type Objective,
 } from "./quests";
@@ -70,6 +72,89 @@ describe("generateJob", () => {
       if (j && ["bounty", "protection"].includes(j.archetype)) combatLean++;
     }
     expect(combatLean).toBeGreaterThan(20); // strongly favored (baseline ~2/8 of 60 ≈ 15)
+  });
+});
+
+describe("job coherence (giver/adversary alignment)", () => {
+  // A state with all three faction characters present, using the CANON ids the
+  // alignment map keys on. (The live incoherence: Hollow Crown offering a job
+  // smuggling past its own watch, paying Crown rep.)
+  function alignedState(over: { pcFactionId?: string } = {}): CampaignState {
+    const s = state({ credits: 400 }) as unknown as { factions: unknown; characters: Record<string, unknown>[] };
+    s.factions = [
+      { id: "f-crown", universeId: "u", name: "Hollow Crown" },
+      { id: "f-sable", universeId: "u", name: "Sable Chain" },
+      { id: "f-free", universeId: "u", name: "Freeport Combine" },
+    ];
+    if (over.pcFactionId) s.characters[0].parentFactionId = over.pcFactionId;
+    return s as unknown as CampaignState;
+  }
+
+  it("canOffer: officials never post underworld work, syndicates never run sanctioned desks, neutral goes both ways", () => {
+    expect(canOffer("underworld", "official")).toBe(false);
+    expect(canOffer("official", "underworld")).toBe(false);
+    expect(canOffer("underworld", "underworld")).toBe(true);
+    expect(canOffer("official", "official")).toBe(true);
+    expect(canOffer("neutral", "official")).toBe(true);
+    expect(canOffer("neutral", "underworld")).toBe(true);
+    expect(canOffer("underworld", "neutral")).toBe(true);
+    expect(canOffer("official", "neutral")).toBe(true);
+  });
+
+  it("an underworld job's GIVER is never an official faction, and the {faction} run AGAINST is never the giver", () => {
+    for (let seed = 0; seed < 120; seed++) {
+      const j = generateJob(alignedState(), seededRng(seed), 0);
+      if (!j || !["smuggling", "heist"].includes(j.archetype)) continue;
+      // Giver: Hollow Crown (official) can never post smuggling/heist work.
+      expect(j.factionId).not.toBe("f-crown");
+      expect(j.reward.repFactionId).not.toBe("f-crown");
+      // Adversary: the watch/lockup being hit never belongs to the giver itself.
+      const giverName = j.factionId === "f-sable" ? "Sable Chain" : "Freeport Combine";
+      for (const o of j.objectives) expect(o.summary).not.toContain(giverName);
+    }
+  });
+
+  it("a faction-aligned PC draws their own faction's postings and their faction's KIND of work more often", () => {
+    let crownGiver = 0, official = 0, underworld = 0, total = 0;
+    for (let seed = 0; seed < 120; seed++) {
+      const j = generateJob(alignedState({ pcFactionId: "f-crown" }), seededRng(seed), 0);
+      if (!j) continue;
+      total++;
+      if (j.factionId === "f-crown") crownGiver++;
+      if (j.archetype === "bounty") official++;
+      if (["smuggling", "heist"].includes(j.archetype)) underworld++;
+    }
+    // Giver bias: own faction weighted 4:1 among eligible givers.
+    expect(crownGiver).toBeGreaterThan(total / 3);
+    // Alignment lean: sanctioned work (+2) outdraws the underworld pool (2 archetypes, no lean).
+    expect(official).toBeGreaterThan(underworld);
+  });
+});
+
+describe("inferJobAccept — the typed-accept backstop", () => {
+  const offer = (id: string, title: string, archetype = "courier"): Job => ({
+    id, title, blurb: "", giver: "board", playstyle: "commerce", archetype, tier: "T1",
+    objectives: [{ id: "o1", kind: "deliver", summary: "x", done: false }],
+    reward: { tier: "T1" }, status: "offered", createdTenday: 0,
+  });
+
+  it("resolves an unmistakable typed take to the one matching offer", () => {
+    const jobs = [offer("j1", "Courier run"), offer("j2", "Smuggling job", "smuggling")];
+    expect(inferJobAccept("I'll take the courier run.", jobs)).toBe("j1");
+    expect(inferJobAccept("Fine — I accept the smuggling work.", jobs)).toBe("j2");
+  });
+
+  it("stays quiet without an accept verb, on ambiguity, and on active jobs", () => {
+    const jobs = [offer("j1", "Courier run"), offer("j2", "Smuggling job", "smuggling")];
+    // Curiosity isn't consent.
+    expect(inferJobAccept("Tell me more about the courier run.", jobs)).toBeUndefined();
+    // Accept verb but nothing identifying a specific job.
+    expect(inferJobAccept("I'll take the shot.", jobs)).toBeUndefined();
+    // Two offers matching the same token → too ambiguous to act.
+    const twins = [offer("j1", "Courier run"), offer("j2", "Courier run")];
+    expect(inferJobAccept("I'll take the courier job.", twins)).toBeUndefined();
+    // Already-active jobs never re-accept.
+    expect(inferJobAccept("I'll take the courier run.", [{ ...offer("j1", "Courier run"), status: "active" }])).toBeUndefined();
   });
 });
 

@@ -7,6 +7,16 @@ job from parts, DETECTS completion from the turn's real signals (where you are, 
 won fight, a successful skill roll), and pays a guaranteed reward. The narrator only
 writes prose over engine-decided beats. This doc is the reference for how jobs work.*
 
+*UPDATE 2026-07-16 — **diegetic offers + job coherence**: the browsable Jobs rail
+tab is REMOVED. Offers now surface only through the fiction (the `offeredJobs`
+context section feeds them to the narrator; a fixer's pitch, dock chatter, a notice)
+and are taken via a narrator choice carrying `acceptJob:"<id>"` — with a typed-accept
+backstop (`inferJobAccept`) for when the model under-fires the field. Active jobs
+show in a compact "On the job" block on the Status tab. Generation gained an
+ALIGNMENT model so jobs stop reading as nonsense ("Hollow Crown pays you to smuggle
+past the Hollow Crown watch"): givers must plausibly offer the work, adversarial
+archetypes get a distinct opponent, and the player's faction biases what they see.*
+
 ## The one invariant (same as everywhere)
 
 The engine owns the job: its steps, its completion detection, its payout. The LLM
@@ -26,6 +36,19 @@ economy ramp wouldn't allow.
 - **One board, playstyle-weighted.** A single board, biased toward the PC's `bias`
   (playstyle) and their stated `directive`, but anyone can take anything — a couple
   of off-lean jobs always appear. Not separate per-playstyle trees.
+- **Offers are DIEGETIC, not a menu.** No browsable board UI — the narrator surfaces
+  the engine's offers through the world and the player takes them in the fiction.
+  The engine still owns every offer's structure, pay, and expiry.
+- **Coherence via alignment.** Every archetype has an alignment (`official` /
+  `underworld` / `neutral`) and every canon faction a character (`FACTION_ALIGNMENT`:
+  Crown + Undertow official, Sable + Wreckers underworld, Free + Reclaimers neutral).
+  `canOffer` gates who can post what — officials never post smuggling/heists,
+  syndicates never run sanctioned bounty desks. Adversarial archetypes (smuggling,
+  heist — where `{faction}` is the OPPONENT) resolve that placeholder to a faction
+  that is never the giver, preferring one of the opposite character. The giver
+  strongly prefers the PLAYER's own faction when eligible (weight 4:1), and the
+  player's faction alignment leans the archetype mix (+2) — a Hollow Crown hand sees
+  mostly sanctioned work, a Sable runner more smuggling; off-lean work still appears.
 - **Hybrid completion, Phase 1a = auto-detect only.** The engine detects completion
   from state alone (arrival, combat outcome, a matching skill success). The
   model-signalled "report back" step lands in 1b.
@@ -56,16 +79,23 @@ economy ramp wouldn't allow.
   The mutated state (credits/rep) + 🎯 lines + board ride the same persist +
   `done` payload as everything else. Stays OUT of `engineBridge`/`runtime*`/
   `applyPlan` so it can't collide with the in-flight engine split.
-- `app/api/state/route.ts` — seeds the board on first read (only when empty) so the
-  Jobs tab has offers before the first turn; exposes `jobs`.
-- `components/sidebar/JobsTab.tsx` — the **Jobs** rail tab: "On the job" (active,
-  per-objective progress, drop) + "Job board" (offered, tier badge, complication,
-  Take it). Accept/abandon fire a normal turn carrying `acceptJob`/`abandonJob`
-  (forwarded generically by `PlayClient`, like every other chip field).
-- `llm/promptSections/quests.ts` — the `activeJobs` context section: feeds the
-  narrator each active job's NEXT step ("weave it in; the engine tracks completion
-  and pays — never declare a job done yourself"). Offered jobs stay on the
-  player-facing board, out of the prompt, to keep the slice lean.
+- `app/api/state/route.ts` — seeds the board on first read (only when empty) so
+  offers exist before the first turn; exposes `jobs`.
+- `components/sidebar/StatusTab.tsx` — the compact **"On the job"** block (title,
+  next objective, progress count, drop). The old browsable `JobsTab` is DELETED —
+  offers are diegetic now. Accept/abandon ride a normal turn carrying
+  `acceptJob`/`abandonJob` (a narrator-emitted choice's fields forward generically
+  through `PlayClient`, like every other chip field).
+- `llm/promptSections/quests.ts` — TWO context sections: `activeJobs` (each active
+  job's NEXT step: "weave it in; the engine tracks completion and pays — never
+  declare a job done yourself") and `offeredJobs` (the offers posted HERE, with ids —
+  "surface through the world, never as a menu; the take-it choice must carry
+  acceptJob:'<id>'"). Rule 8 in `jsonSystem.ts` backs this: paid work comes ONLY
+  from the WORK ON OFFER list — the model never invents a different paying job.
+- `shared/quests.ts` `inferJobAccept` — the typed-accept backstop, wired in
+  `app/api/turn/route.ts`: an accept VERB + a distinctive title/archetype token
+  matching exactly ONE offer flips it deterministically even when the model's
+  choice under-carried `acceptJob`. Ambiguous (two matches) → no accept.
 
 ## Objective kinds (Phase 1a — engine-verifiable from state alone)
 

@@ -2,6 +2,8 @@
 
 import type { CampaignState } from "@/shared/schemas";
 import type { CombatState } from "@/shared/combat";
+import type { Job } from "@/shared/quests";
+import type { ChoiceOption } from "@/shared/turnPlan";
 import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
 import { slotsUsed, maxSlotsFor } from "@/shared/items";
 import { summarizeStatuses, statusLabel, type StatusEffect } from "@/shared/status";
@@ -29,6 +31,8 @@ export function StatusTab({
   combat,
   npcRelations,
   sceneCard,
+  jobs = [],
+  onJobAction,
   onDetails,
   onRefresh,
 }: {
@@ -36,11 +40,16 @@ export function StatusTab({
   combat: CombatState | null;
   npcRelations: NpcRelations;
   sceneCard: SceneCard | null;
+  /** Accepted jobs (QUESTS.md). Offers are diegetic now — no browsable board. */
+  jobs?: Job[];
+  /** Drop a job: fires a turn carrying the abandonJob chip. Undefined while busy. */
+  onJobAction?: (choice: ChoiceOption) => void;
   onDetails: () => void;
   onRefresh?: () => void;
 }) {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
   const active = state.threads.filter((t) => t.status === "active");
+  const activeJobs = jobs.filter((j) => j.status === "active");
   const upkeep = upkeepPerTenday(state);
   return (
     <div className="space-y-4">
@@ -297,8 +306,9 @@ export function StatusTab({
           );
         })()}
 
-        {/* Also nearby: known contacts on the same station who aren't in the scene
-            — a compact awareness line so they're not out of sight, out of mind. */}
+        {/* Known contacts BASED at this station who aren't in the scene — a compact
+            awareness line so they're not out of sight, out of mind. (Home base is
+            npc.locationId — the People tab shows "Based at X" for everyone else.) */}
         {(() => {
           const presentIds = new Set(sceneCard?.presentNpcIds ?? []);
           const here = state.campaign.currentLocationId;
@@ -308,7 +318,7 @@ export function StatusTab({
           if (nearby.length === 0) return null;
           return (
             <div className="mt-1.5 border-t border-edge/60 pt-1.5 text-[11px] text-neutral-500">
-              <span className="text-neutral-600">Also nearby:</span>{" "}
+              <span className="text-neutral-600">Based on this station:</span>{" "}
               {nearby.map((npc, i) => {
                 const rel = npcRelations[npc.id];
                 const tone = rel && rel.disposition > 0 ? "text-good" : rel && rel.disposition < 0 ? "text-bad" : "text-neutral-400";
@@ -337,6 +347,42 @@ export function StatusTab({
         {/* The full active-thread list is promoted to the top of this card now
             (▸ lines); the full thread history/detail lives in More details. */}
       </div>
+
+      {/* ON THE JOB — accepted work (QUESTS.md). The browsable board tab is gone:
+          offers arrive diegetically through the narration; this block tracks only
+          what you've actually taken on. */}
+      {activeJobs.length > 0 && (
+        <div className="rounded border border-edge p-2">
+          <div className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">On the job</div>
+          <div className="space-y-2">
+            {activeJobs.map((j) => {
+              const next = j.objectives.find((o) => !o.done);
+              const done = j.objectives.filter((o) => o.done).length;
+              return (
+                <div key={j.id} className="rounded border border-edge bg-ink/40 px-1.5 py-1" title={j.blurb}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-[13px] font-medium text-neutral-200">{j.title}</span>
+                    <span className="shrink-0 tabular-nums text-[11px] text-neutral-600">
+                      {done}/{j.objectives.length}
+                    </span>
+                  </div>
+                  {next && <div className="text-[12px] text-accent">▸ {next.summary}</div>}
+                  {onJobAction && (
+                    <button
+                      onClick={() =>
+                        onJobAction({ label: `Walk away from "${j.title}"`, abandonJob: j.id })
+                      }
+                      className="mt-1 text-[11px] text-neutral-600 transition hover:text-bad"
+                    >
+                      Drop the job
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -47,12 +47,15 @@ export function PeopleView({
   const present = new Set(sceneCard?.presentNpcIds ?? []);
   const here = state.campaign.currentLocationId;
   const locName = (id?: string) => state.locations.find((l) => l.id === id)?.name;
+  // Every person has a HOME BASE (npc.locationId) — say it plainly, so "where is
+  // this contact" never reads as a vague "nearby": in the scene, based at this
+  // station, based at a named other station, or genuinely unknown.
   const where = (npc: CampaignState["npcs"][number]) =>
     present.has(npc.id)
       ? { label: "In the scene now", tone: "text-accent" }
       : npc.locationId && npc.locationId === here
-        ? { label: "Nearby — same station", tone: "text-neutral-400" }
-        : { label: locName(npc.locationId) ? `Last seen: ${locName(npc.locationId)}` : "Elsewhere", tone: "text-neutral-500" };
+        ? { label: `Based here — ${locName(here) ?? "this station"}`, tone: "text-neutral-400" }
+        : { label: locName(npc.locationId) ? `Based at ${locName(npc.locationId)}` : "Whereabouts unknown", tone: "text-neutral-500" };
 
   // The cast worth showing: anyone the player has a standing with, is with right
   // now, or who shares the current location. Ranked present → known → the rest.

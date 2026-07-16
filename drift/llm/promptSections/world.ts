@@ -1,7 +1,6 @@
 import { relationSuffix, relationHistory } from "@/shared/scene";
 import { generateQuirk } from "@/shared/npcFlavor";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
-import { isPatronNpcId } from "@/engine/creation";
 import type { Dossier } from "@/shared/multiplayer";
 import { deriveKnowledge, projectDossier, type PlayerLedger } from "@/shared/ledger";
 import type { Section } from "./types";
@@ -12,17 +11,28 @@ import type { Section } from "./types";
  * block, kept separate from the character sheet and economy clusters.
  */
 
-/** How close an NPC is: in the scene with the player (immediate), on the same
- *  station/area (nearby), or neither (unmarked — recalled from elsewhere). */
-function proximityTag(n: { id: string; locationId?: string }, present: Set<string>, currentLoc?: string): string {
-  if (present.has(n.id)) return " [immediate]";
-  // The patron never reads as "nearby" on a bare station-level co-location — it's a
-  // permanently home-seeded safe-harbor NPC, and tagging it nearby every home-station
-  // scene conjures it into the fiction (the "Steward Harrow in the private berth" bug).
-  // Only [immediate] above, when it's genuinely present, applies to the patron.
-  if (isPatronNpcId(n.id)) return "";
-  if (n.locationId && currentLoc && n.locationId === currentLoc) return " [nearby]";
-  return "";
+/** WHERE an NPC is, stated explicitly — every recalled NPC gets a home-base tag so
+ *  the model can never guess someone into the scene. The old scheme left remote
+ *  NPCs UNMARKED (and the patron untagged even at home, a narrower patch for the
+ *  same failure): with no signal, the cheap model kept writing them into scenes on
+ *  other stations (the live "Steward + Ilyana in the scene at Halcyon" bug). Now
+ *  silence never means "maybe here" — it always says based-where + not-in-scene. */
+function proximityTag(
+  n: { id: string; locationId?: string },
+  present: Set<string>,
+  currentLoc?: string,
+  locName?: (id: string) => string,
+): string {
+  if (present.has(n.id)) return " [HERE — in this scene]";
+  const home = n.locationId ? locName?.(n.locationId) ?? n.locationId : undefined;
+  if (n.locationId && currentLoc && n.locationId === currentLoc) {
+    // Same station but NOT in the scene — around, findable, never auto-appearing
+    // (the "Steward Harrow conjured into the private berth" bug: co-location is not
+    // presence, for the patron or anyone else).
+    return ` [based here at ${home} — around the station, NOT in this scene unless sought out]`;
+  }
+  if (home) return ` [based at ${home} — NOT here; reachable by comms or by traveling there]`;
+  return " [whereabouts unknown — not in this scene]";
 }
 
 /**
@@ -92,14 +102,15 @@ function otherCharactersBlock(
   );
 }
 
-/** NPCs in play — proximity, canon personality, backstory hook, standing, and the
- *  full relationship history for anyone relevant this turn. */
-export const npcs: Section = ({ npcs, memory, loc }) => {
+/** NPCs in play — home base + presence, canon personality, backstory hook,
+ *  standing, and the full relationship history for anyone relevant this turn. */
+export const npcs: Section = ({ state, npcs, memory, loc }) => {
   const rels = memory?.npcRelations ?? {};
   const presentSet = new Set(memory?.sceneCard?.presentNpcIds ?? []);
+  const locName = (id: string) => state.locations.find((l) => l.id === id)?.name ?? id;
   return [
     npcs.length
-      ? `NPCs in play (proximity = how close; standing = their history; "plays:" = their canon personality — play it CONSISTENTLY; "hook:" = a backstory thread you can pull into a quest; "history:" = what has ALREADY passed between you and them — treat it as fact and NEVER act as if it didn't happen):\n${npcs
+      ? `NPCs in play (the [bracket] = WHERE they are — someone based at another station is NOT in this scene and can only be reached by comms or by traveling to them, NEVER by appearing; standing = their history; "plays:" = their canon personality — play it CONSISTENTLY; "hook:" = a backstory thread you can pull into a quest; "history:" = what has ALREADY passed between you and them — treat it as fact and NEVER act as if it didn't happen):\n${npcs
           .map((n) => {
             const quirk = n.quirk ?? generateQuirk(n.id);
             const hook = presentSet.has(n.id) && n.backstory ? ` [hook: ${n.backstory}]` : "";
@@ -108,7 +119,7 @@ export const npcs: Section = ({ npcs, memory, loc }) => {
             // can't be forgotten — the "Agnes forgot her whole scene with Sera" bug.
             const hist = relationHistory(rels[n.id]);
             const histLine = hist ? `\n      history: ${hist}` : "";
-            return `  - ${n.name} (id: ${n.id})${proximityTag(n, presentSet, loc?.id)}: ${n.oneBreath} (plays: ${quirk})${relationSuffix(rels[n.id])}${hook}${histLine}`;
+            return `  - ${n.name} (id: ${n.id})${proximityTag(n, presentSet, loc?.id, locName)}: ${n.oneBreath} (plays: ${quirk})${relationSuffix(rels[n.id])}${hook}${histLine}`;
           })
           .join("\n")}`
       : `NPCs in play: none flagged`,

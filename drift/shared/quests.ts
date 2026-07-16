@@ -88,47 +88,77 @@ interface Step {
   enemyTier?: "T1" | "T2" | "T3";
   requiredSkills?: string[];
 }
+/** How a job READS: official (sanctioned, on-the-books) vs underworld (criminal,
+ *  off-book). Neutral work is taken from anyone. Drives WHO can offer a job — the
+ *  live incoherence this fixes: "Smuggling job … past the Hollow Crown watch",
+ *  offered BY Hollow Crown, paying Crown reputation. */
+type JobAlignment = "official" | "underworld" | "neutral";
+
+/** The six canon factions' character. Officials never POST underworld work (openly)
+ *  and underworld outfits don't run sanctioned bounty desks; neutrals deal both ways. */
+const FACTION_ALIGNMENT: Record<string, JobAlignment> = {
+  "f-crown": "official",
+  "f-undertow": "official", // grim, but sanctioned: debt, bounties, enforcement
+  "f-sable": "underworld",
+  "f-wreckers": "underworld",
+  "f-free": "neutral",
+  "f-reclaimers": "neutral",
+};
+
 interface Archetype {
   id: string;
   label: string;
   playstyles: Bias[];
   tier: [PayoutTier, PayoutTier]; // reward band before the net-worth clamp
+  /** Who can OFFER this work (see FACTION_ALIGNMENT; neutral = anyone). */
+  alignment: JobAlignment;
+  /** This archetype's {faction} placeholder is an OPPONENT (smuggled past, broken
+   *  into) — it must never resolve to the GIVER's own faction. */
+  adversarial?: boolean;
   steps: Step[];
 }
 
 const ARCHETYPES: Archetype[] = [
-  { id: "courier", label: "Courier run", playstyles: ["commerce", "piloting"], tier: ["T0", "T1"],
+  { id: "courier", label: "Courier run", playstyles: ["commerce", "piloting"], tier: ["T0", "T1"], alignment: "neutral",
     steps: [{ kind: "deliver", loc: "dropoff", summary: "Haul {cargo} to {dropoff}" }] },
-  { id: "smuggling", label: "Smuggling job", playstyles: ["commerce", "intrigue"], tier: ["T1", "T2"],
+  { id: "smuggling", label: "Smuggling job", playstyles: ["commerce", "intrigue"], tier: ["T1", "T2"], alignment: "underworld", adversarial: true,
     steps: [{ kind: "deliver", loc: "dropoff", summary: "Run {cargo} past the {faction} watch to {dropoff}" }] },
-  { id: "bounty", label: "Bounty", playstyles: ["combat", "brawn"], tier: ["T1", "T2"],
+  { id: "bounty", label: "Bounty", playstyles: ["combat", "brawn"], tier: ["T1", "T2"], alignment: "official",
     steps: [
       { kind: "travel", loc: "site", summary: "Track {target} to {site}" },
       { kind: "eliminate", enemyTier: "T2", summary: "Take {target} down" },
     ] },
-  { id: "protection", label: "Protection", playstyles: ["combat", "brawn", "diplomacy"], tier: ["T1", "T1"],
+  { id: "protection", label: "Protection", playstyles: ["combat", "brawn", "diplomacy"], tier: ["T1", "T1"], alignment: "neutral",
     steps: [{ kind: "survive", summary: "Guard {target} through the meet — walk away alive" }] },
-  { id: "heist", label: "Heist", playstyles: ["intrigue", "engineering"], tier: ["T1", "T2"],
+  { id: "heist", label: "Heist", playstyles: ["intrigue", "engineering"], tier: ["T1", "T2"], alignment: "underworld", adversarial: true,
     steps: [
       { kind: "travel", loc: "site", summary: "Get inside {faction}'s lockup at {site}" },
       { kind: "sabotage", requiredSkills: ["electronics", "mechanics"], summary: "Crack the vault" },
     ] },
-  { id: "recon", label: "Recon", playstyles: ["intrigue", "survival", "piloting"], tier: ["T0", "T1"],
+  { id: "recon", label: "Recon", playstyles: ["intrigue", "survival", "piloting"], tier: ["T0", "T1"], alignment: "neutral",
     steps: [
       { kind: "travel", loc: "site", summary: "Scout {site}" },
       { kind: "investigate", requiredSkills: ["perception", "streetwise"], summary: "Find out what's really going on" },
     ] },
-  { id: "broker", label: "Broker deal", playstyles: ["diplomacy", "commerce"], tier: ["T0", "T1"],
+  { id: "broker", label: "Broker deal", playstyles: ["diplomacy", "commerce"], tier: ["T0", "T1"], alignment: "neutral",
     steps: [
       { kind: "travel", loc: "site", summary: "Meet the contact at {site}" },
       { kind: "persuade", requiredSkills: ["negotiation", "diplomacy"], summary: "Close the deal with {target}" },
     ] },
-  { id: "salvage", label: "Salvage", playstyles: ["engineering", "survival"], tier: ["T0", "T1"],
+  { id: "salvage", label: "Salvage", playstyles: ["engineering", "survival"], tier: ["T0", "T1"], alignment: "neutral",
     steps: [
       { kind: "travel", loc: "site", summary: "Reach the wreck at {site}" },
       { kind: "investigate", requiredSkills: ["electronics", "mechanics"], summary: "Strip {cargo} worth hauling out" },
     ] },
 ];
+
+/** Can this faction plausibly OFFER work of this alignment? Officials don't post
+ *  smuggling runs; syndicates don't run sanctioned bounty desks; neutral work and
+ *  neutral factions go both ways. */
+export function canOffer(jobAlignment: JobAlignment, factionAlignment: JobAlignment): boolean {
+  if (jobAlignment === "neutral" || factionAlignment === "neutral") return true;
+  return jobAlignment === factionAlignment;
+}
 
 const CARGO = ["a sealed medcrate", "contraband stims", "a data core", "reactor parts", "salvaged plating", "a locked strongbox", "a refrigerated pod"];
 const TARGETS = ["a Wrecker enforcer", "a jumped bail-runner", "a Chain informant", "a nervous fixer", "a rogue quartermaster", "a debt-skipping broker"];
@@ -139,11 +169,13 @@ const TIER_ORDER: PayoutTier[] = ["T0", "T1", "T2", "T3"];
 // ── Generation ────────────────────────────────────────────────────────────────
 
 /** Bias → how strongly each archetype is favored on the board. Default weight 1;
- *  a listed match gets 4. Anyone can still take anything (a couple off-lean jobs
- *  always appear), matching the "one board, playstyle-weighted" design. */
-function archetypeWeight(arch: Archetype, bias: Bias | undefined, directive: string): number {
+ *  a listed playstyle match gets +4; work matching the PLAYER'S FACTION character
+ *  gets +2 (a Hollow Crown hand sees more sanctioned bounty/courier work, a Sable
+ *  runner more smuggling — the off-lean stuff still appears, just less). */
+function archetypeWeight(arch: Archetype, bias: Bias | undefined, directive: string, pcAlignment: JobAlignment = "neutral"): number {
   let w = 1;
   if (bias && arch.playstyles.includes(bias)) w += 4;
+  if (pcAlignment !== "neutral" && arch.alignment === pcAlignment) w += 2;
   // Light directive-keyword nudge (the player's own stated aim).
   const d = directive.toLowerCase();
   const KEY: Record<string, Bias> = {
@@ -173,31 +205,57 @@ function jobId(rng: RNG): string {
   return `job-${rng.int(100000, 999999)}-${idSeq++}`;
 }
 
-/** Generate one offered job for this campaign, weighted to the PC's playstyle.
- *  `avoidArchetypes` (ids already on the board this refresh) is excluded so a board
- *  reads as a VARIETY of work, not four of the same archetype. */
+/** Generate one offered job for this campaign, weighted to the PC's playstyle AND
+ *  faction character (a Hollow Crown operative sees mostly sanctioned work, and
+ *  their own faction's postings first). `avoidArchetypes` (ids already on the board
+ *  this refresh) is excluded so a board reads as a VARIETY of work. Coherence rules:
+ *  the GIVER faction must be able to offer the archetype (canOffer), and an
+ *  adversarial archetype's {faction} placeholder resolves to an OPPONENT — never the
+ *  giver itself (the live "Crown smuggling past the Crown watch, paying Crown rep"). */
 export function generateJob(state: CampaignState, rng: RNG, tenday = 0, avoidArchetypes?: Set<string>): Job | null {
   const pc = state.characters.find((c) => c.kind === "pc");
   const bias = pc?.bias as Bias | undefined;
+  const pcFactionId = pc?.ownFactionId ?? pc?.parentFactionId;
+  const pcAlignment: JobAlignment = FACTION_ALIGNMENT[pcFactionId ?? ""] ?? "neutral";
   const directive = state.campaign.directive ?? "";
   // Prefer archetypes not already offered this refresh; fall back to the full pool
   // once every kind is used (a board bigger than the archetype count).
   const fresh = avoidArchetypes?.size ? ARCHETYPES.filter((a) => !avoidArchetypes.has(a.id)) : ARCHETYPES;
   const pool = fresh.length ? fresh : ARCHETYPES;
-  const arch = weightedPick(pool, (a) => archetypeWeight(a, bias, directive), rng);
+  const arch = weightedPick(pool, (a) => archetypeWeight(a, bias, directive, pcAlignment), rng);
 
   // Parts. Prefer a destination that ISN'T where the player already stands.
   const elsewhere = state.locations.filter((l) => l.id !== state.campaign.currentLocationId);
   const destPool = elsewhere.length ? elsewhere : state.locations;
   const dest = destPool.length ? pick(destPool, rng) : undefined;
-  const faction = state.factions.length ? pick(state.factions, rng) : undefined;
+  // GIVER: a faction that can plausibly offer this kind of work, with the player's
+  // own faction strongly preferred when eligible ("official jobs for a Crown hand").
+  const eligible = state.factions.filter((f) => canOffer(arch.alignment, FACTION_ALIGNMENT[f.id] ?? "neutral"));
+  const giverPool = eligible.length ? eligible : state.factions;
+  const faction = giverPool.length
+    ? weightedPick(giverPool, (f) => (f.id === pcFactionId ? 4 : 1), rng)
+    : undefined;
+  // ADVERSARY: who the job is run AGAINST ({faction} in smuggling/heist summaries) —
+  // never the giver; prefer a faction of the OPPOSITE character when one exists.
+  const adversary = arch.adversarial
+    ? (() => {
+        const others = state.factions.filter((f) => f.id !== faction?.id);
+        const opposed = others.filter((f) => {
+          const fa = FACTION_ALIGNMENT[f.id] ?? "neutral";
+          const ga = faction ? FACTION_ALIGNMENT[faction.id] ?? "neutral" : "neutral";
+          return fa !== "neutral" && fa !== ga;
+        });
+        const advPool = opposed.length ? opposed : others;
+        return advPool.length ? pick(advPool, rng) : undefined;
+      })()
+    : undefined;
   const cargo = pick(CARGO, rng);
   const target = pick(TARGETS, rng);
   const complication = rng.int(1, 3) === 1 ? pick(COMPLICATIONS, rng) : undefined;
 
   const fill = (s: string) =>
     s.replace("{cargo}", cargo).replace("{target}", target).replace("{dropoff}", dest?.name ?? "the drop")
-      .replace("{site}", dest?.name ?? "the site").replace("{faction}", faction?.name ?? "the locals");
+      .replace("{site}", dest?.name ?? "the site").replace("{faction}", adversary?.name ?? "local");
 
   const objectives: Objective[] = arch.steps.map((step, i) => ({
     id: `${arch.id}-${i}`,
@@ -301,6 +359,32 @@ export function acceptJob(jobs: Job[], id: string): Job[] {
 }
 export function abandonJob(jobs: Job[], id: string): Job[] {
   return jobs.map((j) => (j.id === id && j.status === "active" ? { ...j, status: "failed" as const } : j));
+}
+
+/** Verbs that read as taking a job in a typed action. Tight, like the other typed
+ *  backstops (inferConsumableUse): ordinary prose must not accept work by accident. */
+const ACCEPT_VERB_RE = /\b(take|accept|sign (?:on|up) for|i'?ll (?:do|take|run|handle)|take on|agree to)\b/i;
+
+/**
+ * Typed-accept backstop: with the posting-board UI gone, offers surface through the
+ * narrator and are accepted diegetically. The model SHOULD return a choice carrying
+ * `acceptJob`, but every model-emitted field under-fires eventually (CHECKS.md §6) —
+ * so a typed "I'll take the courier run" resolves deterministically here. Requires
+ * BOTH an accept verb and a distinctive match against ONE offered job (title words
+ * or archetype), and stays out of ambiguity: two plausible matches → no accept.
+ */
+export function inferJobAccept(text: string, jobs: Job[]): string | undefined {
+  const t = (text ?? "").toLowerCase();
+  if (!t || !ACCEPT_VERB_RE.test(t)) return undefined;
+  const offered = jobs.filter((j) => j.status === "offered");
+  const matches = offered.filter((j) => {
+    const words = `${j.title} ${j.archetype}`
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length >= 4 && !["run"].includes(w)); // "run" is too common to identify a job
+    return words.some((w) => new RegExp(`\\b${w}\\b`).test(t));
+  });
+  return matches.length === 1 ? matches[0].id : undefined;
 }
 
 // ── Completion tracking (the engine-owned crux) ────────────────────────────────
