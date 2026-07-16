@@ -72,3 +72,57 @@ describe("registerNpc — continuity", () => {
     expect(rt.state.npcs.find((n) => n.id === res.id)!.locationId).toBe("loc-rook");
   });
 });
+
+describe("registerNpc — name-collision guard (CHECKS.md §2, the live 'a second Ren' bug)", () => {
+  it("two DIFFERENT roles under the same name never merge — the second person gets a disambiguated entry", () => {
+    const rt = new TurnRuntime(stateAt("loc-meridian"), rng);
+    const courier = rt.registerNpc("Ren", "A sharp, scarred courier.", "courier");
+    // Later: the pilot introduces an unrelated bar-fixer, ALSO named "Ren".
+    const fixer = rt.registerNpc("Ren", "Runs a dock-side bar, the Rust Anchor.", "fixer");
+    expect(fixer.added).toBe(true);
+    expect(fixer.id).not.toBe(courier.id); // a genuinely new, distinct record
+    const courierNpc = rt.state.npcs.find((n) => n.id === courier.id)!;
+    const fixerNpc = rt.state.npcs.find((n) => n.id === fixer.id)!;
+    expect(courierNpc.oneBreath).toContain("courier"); // untouched by the fixer's identity
+    expect(fixerNpc.oneBreath).toContain("Rust Anchor");
+    expect(fixerNpc.name).toBe("Ren (fixer)"); // disambiguated so future mentions tell them apart
+    expect(rt.state.npcs.filter((n) => n.name.toLowerCase().startsWith("ren"))).toHaveLength(2);
+  });
+
+  it("a LATER mention of either Ren re-matches by role — no third duplicate spawns", () => {
+    const rt = new TurnRuntime(stateAt("loc-meridian"), rng);
+    const courier = rt.registerNpc("Ren", "A sharp, scarred courier.", "courier");
+    const fixer = rt.registerNpc("Ren", "Runs a dock-side bar.", "fixer");
+    // The dialogue backstop fires again for each of them later in the same scene.
+    const courierAgain = rt.registerNpc("Ren", undefined, "courier");
+    const fixerAgain = rt.registerNpc("Ren", undefined, "fixer");
+    expect(courierAgain.id).toBe(courier.id);
+    expect(fixerAgain.id).toBe(fixer.id);
+    expect(rt.state.npcs.filter((n) => n.name.toLowerCase().startsWith("ren"))).toHaveLength(2); // still just the two
+  });
+
+  it("same name + same role merges as one person (not a collision)", () => {
+    const rt = new TurnRuntime(stateAt("loc-meridian"), rng);
+    const first = rt.registerNpc("Ren", "A courier.", "courier");
+    const again = rt.registerNpc("Ren", undefined, "courier");
+    expect(again.added).toBe(false);
+    expect(again.id).toBe(first.id);
+  });
+
+  it("an existing NPC with NO role yet still merges when a role shows up later (adopts it, not a collision)", () => {
+    const rt = new TurnRuntime(stateAt("loc-meridian"), rng);
+    const first = rt.registerNpc("Ren"); // no role known yet
+    const withRole = rt.registerNpc("Ren", undefined, "courier");
+    expect(withRole.added).toBe(false);
+    expect(withRole.id).toBe(first.id);
+    expect(rt.state.npcs.find((n) => n.id === first.id)!.role).toBe("courier");
+  });
+
+  it("with NO role signal at all on a genuinely ambiguous mention, falls back to the first candidate (documented best-effort)", () => {
+    const rt = new TurnRuntime(stateAt("loc-meridian"), rng);
+    const courier = rt.registerNpc("Ren", "A courier.", "courier");
+    rt.registerNpc("Ren", "Runs a dock-side bar.", "fixer"); // creates the disambiguated second Ren
+    const noRoleMention = rt.registerNpc("Ren"); // no role this time — can't disambiguate
+    expect(noRoleMention.id).toBe(courier.id); // best effort: the original, unchanged from before this feature
+  });
+});

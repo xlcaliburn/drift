@@ -59,6 +59,7 @@ Three tiers (design: `CONTINUITY.md`): **NOW** (scene card) → **PREVIOUSLY**
 |---|---|---|---|
 | Register dedupe + set-once identity | `runtimeNarrative.registerNpc` | any NPC write | the same person re-created under a second id; a real oneBreath/role never clobbered |
 | **PC-name guard** | `registerNpc` (CANON.md Phase 1) | any NPC write | the player's own character registered as an NPC ("another NPC called Wren") |
+| **Name-collision guard** | `registerNpc` → `resolveNpcNameMatch` | any NPC write | TWO DIFFERENT people sharing a name silently merging into one record — born from the live "a courier Ren, then the model introduces an unrelated bar-fixer also called Ren" case. Role-aware: same name + differing KNOWN roles → a distinct NPC, disambiguated as "Name (role)"; same name + matching/absent role → still one person, merged as before. Schema: `turnPlan.npcs[].role` gives the model the field to flag it; prompt rule 9 asks it to pick a different name or set `role` on both when a coincidence is unavoidable |
 | **Seed-only load + provenance persist filter** | `db/queries.loadCampaignState`, `lib/state.persistSession` (CANON.md Phase 1) | load/save | cross-campaign NPC bleed — foreign generated NPCs flooding every player's cast |
 | `shortRole` sanitizer | `shared/scene.ts`, applied in `registerNpc`/`setNpcOneBreath` | any role write | a role stored as a truncated SENTENCE — born from the live "Meridian Trade-House Broker Giving You A" label |
 | Plan-npcs narration gate | `applyPlan/world.ts` `npcs` | apply | the model declaring an NPC that never appears in this turn's prose (phantom cast) |
@@ -201,3 +202,4 @@ mapping it to a field.
 | Every campaign frozen at tenday 0 | engine tenday clock |
 | Cross-campaign NPC bleed / "another NPC called Wren" | seed-only load + provenance filter + PC-name guard (CANON) |
 | Steward + Ilyana "in the scene" at Halcyon while based on Meridian | set-once NPC home + home-gated presence inference + `[based at X]` context tags + "Based at X" People labels |
+| Lyra Vale's courier "Ren" and a later, unrelated bar-fixer also called "Ren" merged toward one record | `resolveNpcNameMatch` role-aware collision guard + `turnPlan.npcs[].role` + prompt rule 9 |

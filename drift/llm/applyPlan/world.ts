@@ -25,7 +25,7 @@ export const npcs: PlanHandler = (plan, { runtime, emit, toolCalls }) => {
     const bare = nm.replace(/['’]s$/i, "");
     if (!narrationText.includes(nm) && !narrationText.includes(bare)) continue;
     toolCalls.push("register_npc");
-    const { id } = runtime.registerNpc(npc.name, npc.oneBreath ?? undefined);
+    const { id } = runtime.registerNpc(npc.name, npc.oneBreath ?? undefined, npc.role ?? undefined);
     runtime.markPresent(id);
     const rel = runtime.updateNpcRelation(id, {
       disposition: npc.disposition ?? undefined,

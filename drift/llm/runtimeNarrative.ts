@@ -206,10 +206,54 @@ export function endScene(rt: NarrativeRT, input: Record<string, unknown>) {
   };
 }
 
+/** A same-(base-)named cast member's id + role, as far as `resolveNpcNameMatch`
+ *  needs to know. */
+interface NameCandidate {
+  id: string;
+  role?: string;
+}
+
+/**
+ * Which existing same-named cast member (if any) THIS mention refers to, and
+ * whether it's actually a DIFFERENT person sharing the name (a collision) —
+ * CHECKS.md §2. Two distinct fictional people sharing a first name (a live case:
+ * a courier "Ren" already in the party, then a bar-fixer ALSO introduced as "Ren")
+ * used to silently MERGE into one record — the second person's oneBreath/role
+ * overwrote (or was swallowed by) the first's, corrupting canon for whichever one
+ * was actually on-screen. Resolution, cheapest signal first:
+ *  - no existing candidate → nothing to resolve, not a collision.
+ *  - the incoming mention carries no role → no signal to disambiguate with, fall
+ *    back to the FIRST candidate (previous behavior, unchanged).
+ *  - a candidate's role matches the incoming role → same person, found.
+ *  - a candidate has NO role yet → same person, adopting the incoming role.
+ *  - every candidate has a role and NONE match → a genuinely different person.
+ */
+export function resolveNpcNameMatch(
+  candidates: NameCandidate[],
+  role: string | undefined,
+): { existingId?: string; collision: boolean } {
+  if (candidates.length === 0) return { collision: false };
+  if (!role) return { existingId: candidates[0].id, collision: false };
+  const r = role.toLowerCase();
+  const roleMatch = candidates.find((c) => c.role && c.role.toLowerCase() === r);
+  if (roleMatch) return { existingId: roleMatch.id, collision: false };
+  const unroled = candidates.find((c) => !c.role);
+  if (unroled) return { existingId: unroled.id, collision: false };
+  return { collision: true };
+}
+
+/** Strips a prior disambiguation suffix ("Ren (fixer)" → "ren") so a later mention
+ *  of the qualified name still finds the same record, and a fresh mention of the
+ *  ORIGINAL bare name still recognizes it as sharing that name. */
+function baseNameOf(n: string): string {
+  return n.toLowerCase().replace(/\s*\([^)]*\)\s*$/, "");
+}
+
 /**
  * Persist a named NPC the narrator introduced/used this turn, so the world
- * REMEMBERS them (continuity — an NPC recognized on return). Deduped by name.
- * Returns whether a new NPC was created.
+ * REMEMBERS them (continuity — an NPC recognized on return). Deduped by name (and,
+ * when two people share a name, by ROLE — see `resolveNpcNameMatch`). Returns
+ * whether a new NPC was created.
  */
 export function registerNpc(rt: NarrativeRT, name: string, oneBreath?: string, role?: string): { added: boolean; id: string } {
   const trimmed = name.trim();
@@ -226,7 +270,9 @@ export function registerNpc(rt: NarrativeRT, name: string, oneBreath?: string, r
     return cn === tn || cn.split(/\s+/)[0] === tn || cn === tn.split(/\s+/)[0];
   });
   if (isPlayerName) return { added: false, id: "" };
-  const existing = rt.state.npcs.find((n) => n.name.toLowerCase() === trimmed.toLowerCase());
+  const sameBaseName = rt.state.npcs.filter((n) => baseNameOf(n.name) === tn);
+  const { existingId, collision } = resolveNpcNameMatch(sameBaseName, cleanRole);
+  const existing = existingId ? sameBaseName.find((n) => n.id === existingId) : undefined;
   if (existing) {
     rt.state = {
       ...rt.state,
@@ -256,12 +302,21 @@ export function registerNpc(rt: NarrativeRT, name: string, oneBreath?: string, r
     };
     return { added: false, id: existing.id };
   }
-  const slug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "npc";
+  // COLLISION: a role-bearing mention doesn't match any already-known person
+  // sharing this base name, and at least one of them has a DIFFERENT known role —
+  // two distinct people. Fold the role into the stored name so every future mention
+  // (and the People/sheet display) tells them apart from here on, matching the
+  // fiction's own likely acknowledgment of the coincidence ("same name, different
+  // game"). `baseNameOf` strips this suffix again on the NEXT mention, so a later
+  // registerNpc("Ren", ..., "fixer") re-matches THIS record via the role check above
+  // instead of colliding — and re-matches the ORIGINAL "Ren" via its own role too.
+  const displayName = collision ? `${trimmed} (${cleanRole})` : trimmed;
+  const slug = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "npc";
   const id = `npc-gen-${slug}-${rt.state.npcs.length}`;
   const npc = {
     id,
     universeId: rt.state.universe.id,
-    name: trimmed,
+    name: displayName,
     oneBreath: (oneBreath ?? "").trim() || `Someone the player met${here ? " here" : ""}.`,
     ...(here ? { locationId: here } : {}),
     ...(cleanRole ? { role: cleanRole } : {}),

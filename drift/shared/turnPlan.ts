@@ -259,7 +259,10 @@ export const TurnPlan = z.object({
    *  world's cast (at the current location) so they're REMEMBERED and recognized
    *  when the player returns. `disposition` nudges their standing with the player
    *  (±1, engine-clamped -3..+3); `note` overwrites their one-line last-interaction
-   *  memory; `relationship` labels who they are to the player (set once). */
+   *  memory; `relationship` labels who they are to the player (set once). `role` is
+   *  a short occupational handle ("courier", "fixer") — REQUIRED whenever this name
+   *  could collide with an existing cast member (CHECKS.md §2 name-collision guard):
+   *  without it two DIFFERENT people sharing a name silently merge into one record. */
   npcs: optionalNullable(
     z.array(
       z.object({
@@ -268,6 +271,7 @@ export const TurnPlan = z.object({
         disposition: optionalNullable(z.coerce.number().int().min(-1).max(1)),
         note: optionalNullable(z.string().max(160)),
         relationship: optionalNullable(z.string().max(60)),
+        role: optionalNullable(z.string().max(40)),
       }),
     ).max(4),
   ),
