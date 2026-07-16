@@ -139,7 +139,10 @@ const CONFIGS: { label: string; run: () => string }[] = [
     label: "patron eligible (broke rookie, patron present)",
     run: () => {
       const s = patronEligible();
-      return buildContextSlice(s, "rest up", [], undefined, true, {
+      // Mirror the live turn: presentNpcIds are folded into focusIds before retrieval
+      // (jsonTurn's focusWithPresent), so a PRESENT patron still surfaces as [immediate].
+      // The patron no longer surfaces by bare co-location alone (retrieval/proximity fix).
+      return buildContextSlice(s, "rest up", ["npc-patron-camp-vess"], undefined, true, {
         sceneCard: { seq: 1, turnCount: 1, situation: "", beats: [], presentNpcIds: ["npc-patron-camp-vess"], startTranscriptIdx: 0 },
       });
     },

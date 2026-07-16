@@ -61,6 +61,22 @@ describe("retrieveEntities — NPCs", () => {
     expect(npcs).toHaveLength(0);
   });
 
+  it("does NOT surface the patron by bare co-location (the 'Steward Harrow in the berth' bug)", () => {
+    // Patron ids are npc-patron-<campaignId>. Seeded permanently at the home station,
+    // it must not leak into every home-station scene as a phantom nearby figure.
+    const patron = { id: "npc-patron-camp-1", name: "Steward Harrow", locationId: "loc-meridian" };
+    const { npcs } = retrieveEntities(state({ npcs: [patron], currentLoc: "loc-meridian" }), "I look around the berth");
+    expect(npcs.map((n) => n.id)).not.toContain("npc-patron-camp-1");
+  });
+
+  it("STILL surfaces the patron when named or present", () => {
+    const patron = { id: "npc-patron-camp-1", name: "Steward Harrow", locationId: "loc-meridian" };
+    const named = retrieveEntities(state({ npcs: [patron], currentLoc: "loc-rook" }), "I go find Steward Harrow");
+    expect(named.npcs.map((n) => n.id)).toContain("npc-patron-camp-1"); // named
+    const present = retrieveEntities(state({ npcs: [patron], currentLoc: "loc-rook" }), "look", ["npc-patron-camp-1"]);
+    expect(present.npcs.map((n) => n.id)).toContain("npc-patron-camp-1"); // focus/present
+  });
+
   it("caps NPCs to a small set", () => {
     const many = Array.from({ length: 9 }, (_, i) => ({ id: `npc-${i}`, name: `Body ${i}`, locationId: "loc-meridian" }));
     const { npcs } = retrieveEntities(state({ npcs: many, currentLoc: "loc-meridian" }), "look around");

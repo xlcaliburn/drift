@@ -1,5 +1,6 @@
 import type { CampaignState } from "@/shared/schemas";
 import { shipThreadId } from "@/shared/recap";
+import { isPatronNpcId } from "@/engine/creation";
 
 /**
  * Entity retrieval + shared text helpers for the per-turn context slice.
@@ -76,10 +77,17 @@ export function retrieveEntities(state: CampaignState, playerText: string, focus
           named = true;
         }
       }
-      if (n.locationId && n.locationId === currentLoc) score += 25; // physically present
-      if (n.locationId && mentionedLocationIds.has(n.locationId)) score += 20;
-      if (n.factionId && mentionedFactionIds.has(n.factionId)) score += 20;
-      if (n.factionId && n.factionId === pcFactionId) score += 8;
+      // The PATRON is permanently seeded at the player's home station, so PASSIVE
+      // signals (co-location, faction) would surface it into every home-station scene
+      // as a phantom "nearby" figure — the "Steward Harrow randomly in the berth" bug.
+      // Exclude it from all passive scoring: it earns context only by being NAMED or
+      // actually PRESENT (focusIds carries presentNpcIds), never by standing nearby.
+      if (!isPatronNpcId(n.id)) {
+        if (n.locationId && n.locationId === currentLoc) score += 25; // physically present
+        if (n.locationId && mentionedLocationIds.has(n.locationId)) score += 20;
+        if (n.factionId && mentionedFactionIds.has(n.factionId)) score += 20;
+        if (n.factionId && n.factionId === pcFactionId) score += 8;
+      }
       return { n, score, named };
     });
 

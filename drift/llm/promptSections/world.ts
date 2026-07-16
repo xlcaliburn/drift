@@ -1,6 +1,7 @@
 import { relationSuffix, relationHistory } from "@/shared/scene";
 import { generateQuirk } from "@/shared/npcFlavor";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
+import { isPatronNpcId } from "@/engine/creation";
 import type { Dossier } from "@/shared/multiplayer";
 import { deriveKnowledge, projectDossier, type PlayerLedger } from "@/shared/ledger";
 import type { Section } from "./types";
@@ -15,6 +16,11 @@ import type { Section } from "./types";
  *  station/area (nearby), or neither (unmarked — recalled from elsewhere). */
 function proximityTag(n: { id: string; locationId?: string }, present: Set<string>, currentLoc?: string): string {
   if (present.has(n.id)) return " [immediate]";
+  // The patron never reads as "nearby" on a bare station-level co-location — it's a
+  // permanently home-seeded safe-harbor NPC, and tagging it nearby every home-station
+  // scene conjures it into the fiction (the "Steward Harrow in the private berth" bug).
+  // Only [immediate] above, when it's genuinely present, applies to the patron.
+  if (isPatronNpcId(n.id)) return "";
   if (n.locationId && currentLoc && n.locationId === currentLoc) return " [nearby]";
   return "";
 }

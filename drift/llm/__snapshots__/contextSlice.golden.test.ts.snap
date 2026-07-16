@@ -165,9 +165,9 @@ MARKET HERE (FEATURED stock, engine-priced — never invent prices): stim ¢26 �
 YOUR PATRON — Steward Harrow (trade-house steward) is HERE WITH THE PLAYER right now. This early, they look out for the player: if the player is hurt, out of stims, or broke, Steward Harrow will rest them to full and stake them a little — FREE. Emit "patronRest":true when the player actually rests up with them THIS turn. Also hand out small, playstyle-fitting starter jobs (matched to the player's aim: trade runs, salvage/scouting, muscle work, or people/errands) with clear, achievable T0/T1 payouts so nobody stalls out.
 
 NPCs in play (proximity = how close; standing = their history; "plays:" = their canon personality — play it CONSISTENTLY; "hook:" = a backstory thread you can pull into a quest; "history:" = what has ALREADY passed between you and them — treat it as fact and NEVER act as if it didn't happen):
+  - Steward Harrow (id: npc-patron-camp-vess) [immediate]: Your Meridian patron. (plays: Suspicious of everyone, you included; drops into a second language when rattled.)
   - Ilyana (id: npc-ilyana) [nearby]: Hollow Crown debt handler on Meridian; genuine ally, gateway to Crown contractor work. (plays: Cold and precise, wastes no words; never sits with their back to a door.)
   - Meridian broker (id: npc-broker) [nearby]: Gave Vess her first standing contract; pragmatic. (plays: Cautious, measures every word; flinches at loud noises, then covers it.)
-  - Steward Harrow (id: npc-patron-camp-vess) [immediate]: Your Meridian patron. (plays: Suspicious of everyone, you included; drops into a second language when rattled.)
 
 Relevant threads:
   - The loaner (id: th-ship-camp-vess): 

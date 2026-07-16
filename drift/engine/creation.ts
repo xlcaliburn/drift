@@ -114,6 +114,15 @@ export function patronNpcId(campaignId: string): string {
   return `npc-patron-${campaignId}`;
 }
 
+/** Is this the campaign's PATRON? Patron ids are always `npc-patron-<campaignId>`.
+ *  The patron is a permanently home-station-seeded safe-harbor NPC, so it must be
+ *  excluded from PASSIVE surfacing (co-location / faction) — otherwise it leaks into
+ *  every scene at its home station as a phantom "nearby" figure. It should surface
+ *  only when actually present or named. */
+export function isPatronNpcId(id: string): boolean {
+  return id.startsWith("npc-patron-");
+}
+
 /**
  * Build the campaign's PATRON — a faction-flavored safe-harbor mentor placed at the
  * recruit's home location, with a pre-filled warm standing. The engine (restWithPatron)
