@@ -12,8 +12,18 @@ costs a tenday, every 4th in-place scene close ticks one; before this every camp
 sat frozen at tenday 0). (3) The nonpayment cascade v1 is TRIMMED to loyalty decay +
 desertion (mutiny deferred). Tables live in `content/crew.json` (C-1: tune from play
 data); crew metadata on characters via migration 022 (`crew_role`/`crew_tier`/`wage`).
-STILL TO BUILD: combat participation (§4 roles/auto-act/medic stabilize — crew do
-NOT fight yet), the trimmed nonpayment cascade itself, role passives, UI crew cards.*
+COMBAT PARTICIPATION SHIPPED (same day): crew fight beside the PC in personal combat
+(`llm/runtimeCombat.ts` — muscle/gunner auto-attack on a crew phase after the player,
+ONE summary line per round per C-3; engineer/pilot/face hold position, their value is
+passives). Enemies SPLIT FIRE at random across the standing party; a crew member at
+0 HP goes Downed and stops being a target. The **medic stabilize** is live: a medic
+catches the PC as they drop (1d4, Downed + death-saves cleared, ONCE per fight per
+medic — `combat.medicSpentIds`) so the fight continues instead of halting into
+Bleeding Out; on the crew phase they patch a downed crewmate. v1 gaps (deliberate):
+crew don't track statuses/armor resists, enemies never finish a downed crew member
+(death path exists via struck-while-down but isn't reachable yet), ship-scale crew
+actions (gunner turret) not in. STILL TO BUILD: the trimmed nonpayment cascade
+(loyalty decay + desertion), role passives, UI crew cards + upkeep readout.*
 
 ---
 

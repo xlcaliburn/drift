@@ -38,7 +38,7 @@ import {
 import { inTutorial } from "@/shared/tutorial";
 import { freshDeathSaves, advanceSaves } from "@/shared/death";
 import type { SceneCard, NpcRelations } from "@/shared/scene";
-import { applyHeal, consumeItem } from "./runtimeHeal";
+import { applyHeal, consumeItem, reviveDowned } from "./runtimeHeal";
 import { nudgeStandingFromCheck } from "./runtimeNarrative";
 
 /**
@@ -173,6 +173,67 @@ function tickRoundStatuses(
     }
   }
   return { playerStatuses: pt.statuses, skipIds, playerSkip: pt.skipTurn, outcome };
+}
+
+// ── Crew in combat (CREW.md §4) — the party fights beside the PC ──
+
+/** Living, standing crew (kind "party", up, not dead). */
+function standingCrew(rt: CombatRT): Character[] {
+  return rt.state.characters.filter((c) => c.kind === "party" && c.hp > 0 && !isDeadChar(c));
+}
+
+/** A living medic whose once-per-fight stabilize is unspent. */
+function readyMedic(rt: CombatRT, combat: CombatState): Character | undefined {
+  return standingCrew(rt).find((c) => c.crewRole === "medic" && !(combat.medicSpentIds ?? []).includes(c.id));
+}
+
+/** The medic catches a DOWNED character — the PC dropping mid-volley (the difference
+ *  between "left for dead" and back on your feet), or a downed crewmate on the crew
+ *  phase: 1d4 heal, Downed + death-saves cleared, ONCE per fight per medic. */
+function medicStabilize(rt: CombatRT, combat: CombatState, targetId: string, lines: string[]): boolean {
+  const medic = readyMedic(rt, combat);
+  const target = charOf(rt, targetId);
+  if (!medic || !target) return false;
+  combat.medicSpentIds = [...(combat.medicSpentIds ?? []), medic.id];
+  const hp = rt.rng.int(1, 4);
+  reviveDowned(rt, targetId, hp);
+  lines.push(`⚕ ${medic.name} drags ${target.kind === "pc" ? "you" : target.name} back up — ${hp} HP.`);
+  rt.events.push({ type: "note", breakdown: `${medic.name} stabilized ${target.name} (medic — once per fight).` });
+  return true;
+}
+
+/** Crew act after the player — ONE summary line per round (C-3): muscle/gunner
+ *  attack the front enemy, the medic patches a downed crewmate, the rest hold
+ *  position (their value is out-of-fight passives). Mutates `enemies`. */
+function crewPhase(rt: CombatRT, combat: CombatState, enemies: CombatEnemy[], lines: string[]): void {
+  const acts: string[] = [];
+  for (const m of standingCrew(rt)) {
+    if (m.crewRole === "medic") {
+      const downedMate = rt.state.characters.find(
+        (c) =>
+          c.kind === "party" && c.id !== m.id && !isDeadChar(c) &&
+          c.hp <= 0 && (c.injuries ?? []).some((i) => i.name === "Downed"),
+      );
+      if (downedMate) medicStabilize(rt, combat, downedMate.id, lines);
+      continue;
+    }
+    if (m.crewRole !== "muscle" && m.crewRole !== "gunner") continue; // hold position
+    const target = enemies.find((e) => e.hp > 0);
+    if (!target) break;
+    const w = defaultWeapon(m);
+    const effAc = Math.max(1, target.ac - acPenalty(target.statuses));
+    const r = playerAttack({ ...target, ac: effAc }, computeModifier(m, weaponSkill(w?.name)), w?.damage ? String(w.damage) : "1d4", 0, rt.rng);
+    target.hp = r.enemyHpAfter;
+    target.shieldReady = r.shieldReadyAfter;
+    acts.push(
+      r.hit
+        ? r.damage > 0
+          ? `${m.name} hits ${target.name} — ${r.damage}${r.killed ? ` · ${target.name} down` : ""}`
+          : `${m.name} hits ${target.name}'s shield`
+        : `${m.name} misses ${target.name}`,
+    );
+  }
+  if (acts.length) lines.push(`🧑‍🚀 Crew — ${acts.join(" · ")}.`);
 }
 
 export function applyDamage(rt: CombatRT, characterId: string, amount: number, reason: string) {
@@ -502,13 +563,16 @@ function personalCombatant(rt: CombatRT, weaponName?: string): PlayerCombatant {
   };
 }
 
-/** Enemies attack the player; halts the instant the player drops (COMBAT D-4). A
- *  Shocked enemy (`skipIds`) loses its volley. Incoming damage is scaled by the
- *  player's armor resist/vuln vs the enemy's damage type, and a T2+ enemy's on-hit
- *  status lands unless the armor guards it. `combat.playerStatuses` is mutated. */
+/** Enemies attack the party; halts the instant the PLAYER drops with no medic to
+ *  catch them (COMBAT D-4 + CREW.md §4). Fire is split at random across the PC +
+ *  STANDING crew; a downed crew member stops being a target (the medic can pick
+ *  them up on the crew phase). A Shocked enemy (`skipIds`) loses its volley.
+ *  Incoming PLAYER damage is scaled by armor resist/vuln vs the enemy's damage
+ *  type, and a T2+ enemy's on-hit status lands unless the armor guards it (crew
+ *  keep flat AC and no statuses in v1). `combat.playerStatuses`/`medicSpentIds`
+ *  are mutated. */
 function enemyVolley(rt: CombatRT, combat: CombatState, lines: string[], skipIds: Set<string> = new Set()): CombatOutcome {
-  const pc = pcOf(rt)!;
-  const def = playerDefense(pc);
+  const def = playerDefense(pcOf(rt)!);
   for (const enemy of combat.enemies) {
     if (enemy.hp <= 0) continue;
     if (skipIds.has(enemy.id)) {
@@ -517,27 +581,45 @@ function enemyVolley(rt: CombatRT, combat: CombatState, lines: string[], skipIds
     }
     const swings = enemy.multiAttack ? 2 : 1;
     for (let i = 0; i < swings; i++) {
-      if ((pcOf(rt)?.hp ?? 0) <= 0) return isDeadChar(pcOf(rt)!) ? "dead" : "downed";
-      // Corroded armor lowers the player's AC; cover still helps.
-      const targetAc = pc.ac + combat.playerCoverAc - acPenalty(combat.playerStatuses);
-      const atk = enemyAttack(enemy, targetAc, rt.rng);
-      lines.push(`💢 ${atk.breakdown}`);
-      if (atk.hit) {
-        const factor = resistFactor(enemy.personalDamageType, def.resist, def.vuln);
-        const dmg = Math.max(1, Math.round(atk.damage * factor));
-        const harm = applyDamage(rt, pc.id, dmg, `${enemy.name}'s attack.`);
-        const tag = factor < 1 ? " (resisted)" : factor > 1 ? " (vulnerable)" : "";
-        lines.push(
-          `💥 You take ${harm.taken}${tag} — ${harm.hpAfter + harm.taken}→${harm.hpAfter} HP` +
-            (harm.died ? " · KILLED" : harm.downed ? " · DOWNED" : ""),
-        );
-        // T2+ enemy's on-hit status — blocked only by matching armor immunity.
-        if (enemy.onHit && !def.statusGuard.includes(enemy.onHit)) {
-          combat.playerStatuses = applyStatus(combat.playerStatuses ?? [], enemy.onHit);
-          lines.push(`${statusIcon(enemy.onHit)} You're now ${statusLabel(enemy.onHit)}.`);
+      const pc = pcOf(rt)!;
+      if (pc.hp <= 0) return isDeadChar(pc) ? "dead" : "downed";
+      // Split fire across the standing party.
+      const targets: Character[] = [pc, ...standingCrew(rt)];
+      const pick = targets.length === 1 ? pc : targets[rt.rng.int(0, targets.length - 1)];
+      if (pick.kind === "pc") {
+        // Corroded armor lowers the player's AC; cover still helps.
+        const targetAc = pc.ac + combat.playerCoverAc - acPenalty(combat.playerStatuses);
+        const atk = enemyAttack(enemy, targetAc, rt.rng);
+        lines.push(`💢 ${atk.breakdown}`);
+        if (atk.hit) {
+          const factor = resistFactor(enemy.personalDamageType, def.resist, def.vuln);
+          const dmg = Math.max(1, Math.round(atk.damage * factor));
+          const harm = applyDamage(rt, pc.id, dmg, `${enemy.name}'s attack.`);
+          const tag = factor < 1 ? " (resisted)" : factor > 1 ? " (vulnerable)" : "";
+          lines.push(
+            `💥 You take ${harm.taken}${tag} — ${harm.hpAfter + harm.taken}→${harm.hpAfter} HP` +
+              (harm.died ? " · KILLED" : harm.downed ? " · DOWNED" : ""),
+          );
+          // T2+ enemy's on-hit status — blocked only by matching armor immunity.
+          if (enemy.onHit && !def.statusGuard.includes(enemy.onHit)) {
+            combat.playerStatuses = applyStatus(combat.playerStatuses ?? [], enemy.onHit);
+            lines.push(`${statusIcon(enemy.onHit)} You're now ${statusLabel(enemy.onHit)}.`);
+          }
+          if (harm.died) return "dead";
+          // The medic catches you as you fall (once per fight) — else the fight halts.
+          if (harm.downed && !medicStabilize(rt, combat, pc.id, lines)) return "downed";
         }
-        if (harm.died) return "dead";
-        if (harm.downed) return "downed";
+      } else {
+        // A crew member takes the swing.
+        const atk = enemyAttack(enemy, pick.ac, rt.rng);
+        lines.push(`💢 ${atk.breakdown} — at ${pick.name}`);
+        if (atk.hit) {
+          const harm = applyDamage(rt, pick.id, atk.damage, `${enemy.name}'s attack.`);
+          lines.push(
+            `💥 ${pick.name} takes ${harm.taken} — ${harm.hpAfter + harm.taken}→${harm.hpAfter} HP` +
+              (harm.died ? " · KILLED" : harm.downed ? " · DOWNED" : ""),
+          );
+        }
       }
     }
   }
@@ -627,7 +709,11 @@ function resolvePersonalRound(
   const tick = tickRoundStatuses(rt, enemies, playerStatuses, lines);
   playerStatuses = tick.playerStatuses;
   if (tick.outcome) {
-    return { combat: { ...combat, enemies, playerStatuses, active: false }, lines, outcome: tick.outcome, loot: 0 };
+    // Burning out on the deck with a medic in the crew: they catch you (once/fight).
+    const rescued = tick.outcome === "downed" && medicStabilize(rt, combat, pcOf(rt)!.id, lines);
+    if (!rescued) {
+      return { combat: { ...combat, enemies, playerStatuses, active: false }, lines, outcome: tick.outcome, loot: 0 };
+    }
   }
 
   switch (tick.playerSkip ? "skip" : action.type) {
@@ -724,6 +810,10 @@ function resolvePersonalRound(
       break;
     }
   }
+
+  // Crew act after the player — attacks, or the medic patching a downed mate
+  // (one summary line per round, C-3). They fight on the surprise round too.
+  crewPhase(rt, combat, enemies, lines);
 
   // Deaths resolve; victory if the field is clear.
   enemies = enemies.filter((e) => e.hp > 0);

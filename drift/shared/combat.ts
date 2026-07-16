@@ -59,6 +59,8 @@ export interface CombatState {
   fleeAttempts: number;
   /** Statuses currently on the PLAYER (burning/bleeding/shocked/corroded). */
   playerStatuses?: StatusEffect[];
+  /** Crew medics who have spent their once-per-fight stabilize (CREW.md §4). */
+  medicSpentIds?: string[];
 }
 
 export type CombatActionType = "attack" | "aim" | "cover" | "stim" | "flee" | "item" | "switch";
