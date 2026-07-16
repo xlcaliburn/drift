@@ -21,6 +21,7 @@ import { checkFromVerb, verbFromLabel, verbRolls, inferAttemptVerb } from "@/sha
 import { dcForRisk, difficultyToRisk, type RiskTier } from "@/shared/risk";
 import type { Character } from "@/shared/schemas";
 import { extractDialogueNpcs, knownEntityNames } from "@/shared/npcExtract";
+import { inferConsumableUse } from "@/shared/items";
 import type { CombatState } from "@/shared/combat";
 import type { Dossier } from "@/shared/multiplayer";
 import type { Job } from "@/shared/quests";
@@ -391,8 +392,16 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   // like a clicked choice — so the model narrates a KNOWN result in a single pass
   // (no post-hoc re-narration, no dice/prose desync). Pure dialogue / free verbs
   // infer nothing, so "I greet the bartender" never manufactures a false check.
+  // Free-text consumable backstop: a TYPED "use stim"/"pop a medkit" for a heal
+  // the player HOLDS resolves through the engine here (like the clicked chip), so
+  // an out-of-combat heal never depends on the cheap model firing useItem — the
+  // live "stims stopped working" bug (prose said patched, HP never moved). Only
+  // when the player didn't click a chip and isn't mid-pre-roll from a choice.
+  const impliedUseItemId: string | undefined =
+    !input.preUseItem && !input.fromChoice && pc ? inferConsumableUse(input.playerText, pc) : undefined;
+
   const impliedCheck: CheckSpec | undefined = (() => {
-    if (input.fromChoice || input.preCheck) return undefined;
+    if (input.fromChoice || input.preCheck || impliedUseItemId) return undefined;
     const v = inferAttemptVerb(input.playerText);
     const vc = v ? checkFromVerb(v) : null;
     return v && vc ? ({ verb: v, dc: vc.dc, stakes: true } as CheckSpec) : undefined;
@@ -431,15 +440,21 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     }
   }
 
-  // A clicked "Use X" consumable chip: the engine applies the item DETERMINISTICALLY
-  // (never depends on the model firing useItem — the medkit-that-did-nothing bug),
-  // and the resulting line rides engineLines so the model narrates around it.
-  if (input.preUseItem && pc) {
-    toolCalls.push("use_item");
-    const res = runtime.useItem(input.preUseItem, pc.id) as { line?: string; error?: string };
+  // A clicked "Use X" consumable chip — OR a typed "use stim" the backstop resolved
+  // (impliedUseItemId): the engine applies the item DETERMINISTICALLY (never depends
+  // on the model firing useItem — the medkit-that-did-nothing / stims-stopped-working
+  // bug), and the resulting line rides engineLines so the model narrates around it.
+  const preItemId = input.preUseItem ?? impliedUseItemId;
+  // Whether the item was already consumed here, so applyPlan must NOT apply the
+  // model's echoed useItem again (double-spend / double-heal).
+  let preAppliedItem = false;
+  if (preItemId && pc) {
+    toolCalls.push(input.preUseItem ? "use_item" : "use_item(typed)");
+    const res = runtime.useItem(preItemId, pc.id) as { line?: string; error?: string };
     if (res.line) {
       engineLines.push(`ENGINE RESULT: ${res.line}`);
       emit([res.line]);
+      preAppliedItem = true;
     } else if (res.error) {
       emit([`⚠ Can't use item: ${res.error}`]);
     }
@@ -739,6 +754,9 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   //    threads, clock advances, scene end, and combatStart. Pure engine calls —
   //    the whole block is unit-tested without a model call (applyPlan.test.ts). ──
   const combatBeforeApply = combat;
+  // The engine already applied the consumable up front (chip or typed backstop);
+  // drop any useItem the model echoed in its plan so it isn't spent twice.
+  if (preAppliedItem && plan.useItem) plan = { ...plan, useItem: undefined };
   const applyCtx: ApplyCtx = { runtime, preState: input.state, pc, emit, toolCalls, lastRoll, combat, reconcile: [] };
   applyPlan(plan, applyCtx);
   combat = applyCtx.combat;

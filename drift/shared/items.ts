@@ -126,6 +126,52 @@ export function outOfCombatItemChips(
   return chips;
 }
 
+/** Verbs in a TYPED action that signal intent to use a heal consumable on
+ *  yourself right now. Tight on purpose — ordinary prose ("take the stairs",
+ *  "hit the thruster") must not trigger a phantom heal. */
+const USE_VERB_RE =
+  /\b(use|using|used|pop|popped|inject|injects?|injected|jab|jabbed|apply|applies|applied|slam|slammed|crack|cracks?|cracked|thumb|thumbed|dose|administer|patch\s+(?:me|myself|up)|heal|stab)\b/i;
+/** Phrasings that mean the player is DECLINING to use one — a conservative guard
+ *  so the backstop never spends a consumable the player wanted to hold. */
+const USE_NEGATION_RE = /\b(don'?t|do\s+not|without|no\s+need|save|saving|keep|not\s+use|hold\s+off)\b/i;
+/** Match terms per heal consumable (catalog name + common freeform spellings).
+ *  Multiword forms use a flexible space/hyphen so "med-kit"/"med kit" both hit. */
+const HEAL_SYNONYMS: Record<string, string[]> = {
+  stim: ["stim", "stims", "stimpack", "stim pack", "stimpak", "stimulant", "stimshot"],
+  medkit: ["medkit", "med kit", "medpack", "med pack", "medical kit", "first aid", "medi gel", "medigel"],
+};
+
+/**
+ * A held HEAL consumable a typed player action clearly asks to use — the free-text
+ * counterpart to the "Use X" chip. Out of combat, personal heals aren't chips
+ * (ITEMS.md — they'd clutter the bar), so the player heals by TYPING "use stim";
+ * that leaned on the cheap model to fire `useItem`, and when it just narrated the
+ * heal instead the engine never moved HP (the live "stims stopped working" bug —
+ * six "use stim" turns, prose said patched, HP stayed at 1). This lets the ENGINE
+ * apply the heal deterministically, same contract as the chip. Returns the catalog
+ * id, or undefined when the text isn't a clear use-intent for something held.
+ */
+export function inferConsumableUse(text: string, c: Character): string | undefined {
+  const norm = (text ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (!norm) return undefined;
+  if (USE_NEGATION_RE.test(text ?? "")) return undefined;
+  const bare = norm.replace(/ /g, ""); // "use stim" → "usestim"; "stim" → "stim"
+  for (const it of allItems()) {
+    if (it.type !== "consumable" || it.effect?.kind !== "heal") continue;
+    if (itemCount(c, it.id) <= 0) continue;
+    const syns = HEAL_SYNONYMS[it.id] ?? [it.name.toLowerCase()];
+    for (const s of syns) {
+      const term = s.replace(/[\s-]+/g, " ").trim();
+      const re = new RegExp(`\\b${term.replace(/ /g, "[\\s-]?")}\\b`);
+      if (!re.test(norm)) continue;
+      // Whole input IS the item ("Stim", "Stim.") → unambiguous use intent even
+      // without a verb; otherwise require a use verb ("use/pop/inject … stim").
+      if (bare === term.replace(/ /g, "") || USE_VERB_RE.test(text ?? "")) return it.id;
+    }
+  }
+  return undefined;
+}
+
 /** One-line effect description for the narrator/UI. */
 export function describeEffect(i: CatalogItem): string {
   const e = i.effect;
