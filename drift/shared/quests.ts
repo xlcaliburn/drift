@@ -62,7 +62,10 @@ export const Job = z.object({
   archetype: z.string(),
   tier: z.enum(["T0", "T1", "T2", "T3"]),
   complication: z.string().optional(),
-  locationId: z.string().optional(), // where it mainly plays out
+  locationId: z.string().optional(), // where it mainly plays out (the destination)
+  /** The station this job was POSTED at — the board is local, so an offer only shows
+   *  while the player is here. Undefined on legacy jobs (shown anywhere). */
+  postedLocationId: z.string().optional(),
   objectives: z.array(Objective),
   reward: z.object({
     tier: z.enum(["T0", "T1", "T2", "T3"]),
@@ -170,12 +173,18 @@ function jobId(rng: RNG): string {
   return `job-${rng.int(100000, 999999)}-${idSeq++}`;
 }
 
-/** Generate one offered job for this campaign, weighted to the PC's playstyle. */
-export function generateJob(state: CampaignState, rng: RNG, tenday = 0): Job | null {
+/** Generate one offered job for this campaign, weighted to the PC's playstyle.
+ *  `avoidArchetypes` (ids already on the board this refresh) is excluded so a board
+ *  reads as a VARIETY of work, not four of the same archetype. */
+export function generateJob(state: CampaignState, rng: RNG, tenday = 0, avoidArchetypes?: Set<string>): Job | null {
   const pc = state.characters.find((c) => c.kind === "pc");
   const bias = pc?.bias as Bias | undefined;
   const directive = state.campaign.directive ?? "";
-  const arch = weightedPick(ARCHETYPES, (a) => archetypeWeight(a, bias, directive), rng);
+  // Prefer archetypes not already offered this refresh; fall back to the full pool
+  // once every kind is used (a board bigger than the archetype count).
+  const fresh = avoidArchetypes?.size ? ARCHETYPES.filter((a) => !avoidArchetypes.has(a.id)) : ARCHETYPES;
+  const pool = fresh.length ? fresh : ARCHETYPES;
+  const arch = weightedPick(pool, (a) => archetypeWeight(a, bias, directive), rng);
 
   // Parts. Prefer a destination that ISN'T where the player already stands.
   const elsewhere = state.locations.filter((l) => l.id !== state.campaign.currentLocationId);
@@ -220,6 +229,7 @@ export function generateJob(state: CampaignState, rng: RNG, tenday = 0): Job | n
     tier,
     complication,
     locationId: dest?.id,
+    postedLocationId: state.campaign.currentLocationId,
     objectives,
     reward: { tier, ...(faction ? { repFactionId: faction.id, repDelta: 1 } : {}) },
     status: "offered",
@@ -263,15 +273,25 @@ export function generatePersonalJob(
   };
 }
 
-/** Top the OFFERED board up to `count`, dropping expired offers. Active/complete
- *  jobs are untouched. */
+/** Top the OFFERED board up to `count` for the CURRENT station, with archetype
+ *  VARIETY (no four-of-a-kind boards). Offers posted at another station — a board
+ *  you've walked away from — are dropped, as are expired ones. Active/complete jobs
+ *  (and legacy offers with no posting location) are untouched. */
 export function refreshBoard(state: CampaignState, jobs: Job[], rng: RNG, tenday = 0, count = 4): Job[] {
-  const kept = jobs.filter((j) => j.status !== "offered" || (j.expiresTenday ?? Infinity) >= tenday);
-  const offered = kept.filter((j) => j.status === "offered").length;
+  const here = state.campaign.currentLocationId;
+  const postedHere = (j: Job) => j.postedLocationId === undefined || j.postedLocationId === here;
+  const kept = jobs.filter(
+    (j) => j.status !== "offered" || ((j.expiresTenday ?? Infinity) >= tenday && postedHere(j)),
+  );
   const out = [...kept];
-  for (let i = offered; i < count; i++) {
-    const j = generateJob(state, rng, tenday);
-    if (j) out.push(j);
+  // Don't repeat an archetype already on the board this refresh (variety).
+  const used = new Set(out.filter((j) => j.status === "offered").map((j) => j.archetype));
+  const offeredHere = out.filter((j) => j.status === "offered" && postedHere(j)).length;
+  for (let i = offeredHere; i < count; i++) {
+    const j = generateJob(state, rng, tenday, used);
+    if (!j) continue;
+    out.push(j);
+    used.add(j.archetype);
   }
   return out;
 }

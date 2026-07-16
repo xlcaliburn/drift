@@ -92,6 +92,29 @@ describe("board lifecycle", () => {
     const b = abandonJob(a, id);
     expect(b.find((j) => j.id === id)!.status).toBe("failed");
   });
+
+  it("stamps every offer with the current station and offers VARIETY (distinct archetypes)", () => {
+    const jobs = refreshBoard(state({ currentLocationId: "loc-a", bias: "combat" }), [], seededRng(7), 0, 4);
+    const offered = jobs.filter((j) => j.status === "offered");
+    expect(offered).toHaveLength(4);
+    expect(offered.every((j) => j.postedLocationId === "loc-a")).toBe(true);
+    // Despite a strong combat lean, the board isn't four-of-a-kind.
+    expect(new Set(offered.map((j) => j.archetype)).size).toBe(offered.length);
+  });
+
+  it("the board is LOCAL — moving station drops the old postings and regenerates", () => {
+    const atA = refreshBoard(state({ currentLocationId: "loc-a" }), [], seededRng(8), 0, 4);
+    expect(atA.filter((j) => j.status === "offered")).toHaveLength(4);
+    // Accept one, then travel to loc-b: the accepted job follows, the rest of loc-a's
+    // board is gone, and a fresh loc-b board fills in.
+    const accepted = acceptJob(atA, atA.find((j) => j.status === "offered")!.id);
+    const atB = refreshBoard(state({ currentLocationId: "loc-b" }), accepted, seededRng(9), 0, 4);
+    const offeredB = atB.filter((j) => j.status === "offered");
+    expect(offeredB).toHaveLength(4);
+    expect(offeredB.every((j) => j.postedLocationId === "loc-b")).toBe(true);
+    expect(atB.some((j) => j.status === "active" && j.postedLocationId === "loc-a")).toBe(true); // accepted one carried over
+    expect(atB.some((j) => j.status === "offered" && j.postedLocationId === "loc-a")).toBe(false); // old offers dropped
+  });
 });
 
 describe("advanceJobs — engine-owned completion detection", () => {

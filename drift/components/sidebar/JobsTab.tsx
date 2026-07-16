@@ -11,7 +11,7 @@ import type { Job } from "@/shared/quests";
  * so the narrator acknowledges the handshake while the engine moves the board.
  */
 
-const TIER_LABEL: Record<string, string> = { T0: "Odd job", T1: "Steady", T2: "Big score", T3: "Major score" };
+const TIER_LABEL: Record<string, string> = { T0: "Odd job", T1: "Standard", T2: "Big score", T3: "Major score" };
 
 function ObjectiveRow({ done, text }: { done: boolean; text: string }) {
   return (
@@ -60,7 +60,7 @@ function OfferedJob({ job, faction, onAccept }: { job: Job; faction?: string; on
       <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-neutral-600">
         <span className="truncate">
           {faction ? `${faction} · ` : ""}
-          {job.reward.repFactionId ? "pays + standing" : "pays on delivery"}
+          {job.reward.repFactionId ? "pays + reputation" : "pays on delivery"}
         </span>
         {onAccept && (
           <button
@@ -86,7 +86,13 @@ export function JobsTab({
   onJobAction?: (choice: ChoiceOption) => void;
 }) {
   const active = jobs.filter((j) => j.status === "active");
-  const offered = jobs.filter((j) => j.status === "offered");
+  // The board is LOCAL — only postings from the station you're at (legacy jobs with
+  // no posting location still show). Jobs you accept move to "On the job" and follow
+  // you anywhere.
+  const here = state.campaign.currentLocationId;
+  const offered = jobs.filter(
+    (j) => j.status === "offered" && (j.postedLocationId === undefined || j.postedLocationId === here),
+  );
   const factionName = (id?: string) => state.factions.find((f) => f.id === id)?.name;
 
   return (
