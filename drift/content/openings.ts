@@ -117,12 +117,12 @@ export const factionOpenings: FactionOpening[] = [
   },
   {
     factionId: "f-sable",
-    hook: "The Sable Chain is pushing openly into Crown lanes and needs bodies who'll take risks. Your handler on Rook wants to see nerve before they'll trust you with anything real.",
+    hook: "The Sable Chain is pushing openly into Crown lanes and needs bodies who'll take risks. Your handler on Coldharbor's staging docks wants to see nerve before they'll trust you with anything real.",
     threadTitle: "Make your name in the Sable Chain",
     threadBody:
       "The Chain is the rising knife — hungry, aggressive, and watched by everyone. Pull off something that hurts the Crown or fattens the Chain and you rise fast; flinch, and you're expendable. Decide how far you'll ride with them before it's your own name on the door.",
     firstMoves: [
-      "Find your Sable handler on Rook for orders",
+      "Find your Sable handler on the staging docks for orders",
       "Poach a shipment off a Crown lane",
       "Shake down a broker paying Crown protection",
     ],
@@ -134,11 +134,11 @@ export const factionOpenings: FactionOpening[] = [
         "Sable Chain loaner — keys handed over, not signed over. Prove your worth and it becomes yours; flinch or cross the Chain and they take it back with interest.",
     },
     seed: {
-      startLocation: "Rook Station — the lawless black-market hub of fixers, couriers, and bounty desks",
+      startLocation: "Coldharbor — the Sable Chain's fortified staging station, cranes and gun-nests over cold docks",
       recruitGoal:
         "Show enough nerve and results to earn a real place in the rising Chain instead of being spent as expendable muscle.",
       anchors:
-        "Your Sable Chain handler on Rook Station; the contested Meridian–Rook bulk lanes the Chain is muscling into.",
+        "Your Sable Chain handler on Coldharbor's staging docks; the contested Meridian–Rook bulk lanes the Chain is muscling into.",
       tension:
         "The Chain is pushing openly into Crown territory and everyone is suddenly watching — momentum is everything and hesitation gets you cut loose.",
       leads: [
@@ -209,21 +209,21 @@ export const factionOpenings: FactionOpening[] = [
   },
   {
     factionId: "f-free",
-    hook: "Free Drift lives on the jobs no one else will touch and a contact on every side. A fixer on Rook has work that needs someone with no flag to fly.",
+    hook: "Free Drift lives on the jobs no one else will touch and a contact on every side. A fixer at Halcyon freeport has work that needs someone with no flag to fly.",
     threadTitle: "Make yourself useful across the lanes",
     threadBody:
       "You answer to no syndicate — that's the point. Take the jobs that need a neutral hand, keep your word to every side, and become the crew everyone calls and no one owns. The moment you pick a side for good, you stop being useful to the rest.",
     firstMoves: [
       "Take a no-questions courier job",
-      "Work a Rook contact for leads",
+      "Work the harbormaster for leads",
       "Broker between two sides who won't meet",
     ],
     seed: {
-      startLocation: "Rook Station — the lawless black-market hub where every side's business quietly passes through",
+      startLocation: "Halcyon — the independents' neutral freeport, where every side's business quietly passes through",
       recruitGoal:
         "Prove you can take the jobs no one else will and keep your word to every side without being owned by any.",
       anchors:
-        "A fixer on Rook Station (the Ledger network moves cargo and secrets for anyone); contacts scattered across every faction.",
+        "Harbormaster Quist at Halcyon (trades berths for favors); the Ledger, Rook's courier-fixer; contacts scattered across every faction.",
       tension:
         "With the lanes splitting into sides, everyone wants a neutral courier — and everyone wants to own one.",
       leads: [

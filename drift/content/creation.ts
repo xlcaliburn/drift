@@ -448,10 +448,10 @@ const DEFAULT_STARTER = { gun: "Sidearm", armor: "Padded jacket", tool: "Multito
  *  FACTION_HOME in newCampaign (kept here so content owns the patron placement). */
 export const FACTION_HOME: Record<string, string> = {
   "f-crown": "loc-meridian",
-  "f-sable": "loc-rook",
+  "f-sable": "loc-sable", // Coldharbor — the Chain plants recruits at its own staging docks
   "f-undertow": "loc-undertow",
   "f-wreckers": "loc-nest",
-  "f-free": "loc-rook",
+  "f-free": "loc-freeport", // Halcyon — the independents' neutral haven
   "f-reclaimers": "loc-rook",
 };
 
@@ -476,7 +476,7 @@ export const FACTION_PATRON: Record<string, PatronDef> = {
   "f-sable": {
     name: "Handler Sereda",
     role: "Sable Chain handler",
-    oneBreath: "A Sable Chain handler working Rook's back rooms — cold but invested in her recruits; keeps you patched, armed, and pointed at the Chain's easy money until you prove out.",
+    oneBreath: "A Sable Chain handler on Coldharbor's staging docks — cold but invested in her recruits; keeps you patched, armed, and pointed at the Chain's easy money until you prove out.",
   },
   "f-undertow": {
     name: "Collector Roan",
@@ -491,7 +491,7 @@ export const FACTION_PATRON: Record<string, PatronDef> = {
   "f-free": {
     name: "Old Pell",
     role: "Free Drift fixer",
-    oneBreath: "A Free Drift fixer on Rook, all mutual-aid and no-questions — spots a struggling independent a meal, a mend, and a milk run until they can stand on their own.",
+    oneBreath: "A Free Drift fixer at Halcyon freeport, all mutual-aid and no-questions — spots a struggling independent a meal, a mend, and a milk run until they can stand on their own.",
   },
   "f-reclaimers": {
     name: "Archivist Sund",

@@ -71,10 +71,10 @@ export function buildFaultLineClock(campaignId: string): Clock {
 /** Where each faction plants a new recruit at the start. */
 const FACTION_HOME: Record<string, string> = {
   "f-crown": "loc-meridian",
-  "f-sable": "loc-rook",
+  "f-sable": "loc-sable", // Coldharbor — the Chain's own staging docks
   "f-undertow": "loc-undertow",
   "f-wreckers": "loc-nest",
-  "f-free": "loc-rook",
+  "f-free": "loc-freeport", // Halcyon — the independents' neutral haven
   "f-reclaimers": "loc-rook",
 };
 
