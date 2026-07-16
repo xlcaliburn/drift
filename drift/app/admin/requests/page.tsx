@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { FeatureRequest } from "@/shared/feedback";
+import { RefreshButton } from "@/components/admin/RefreshButton";
 
 const STATUS_STYLE: Record<string, string> = {
   pending: "border-accent/60 text-accent",
@@ -14,12 +15,15 @@ const STATUS_STYLE: Record<string, string> = {
 export default function AdminRequestsPage() {
   const [requests, setRequests] = useState<FeatureRequest[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   async function refresh() {
+    setRefreshing(true);
     const res = await fetch("/api/feedback");
     const data = await res.json();
     setRequests(data.requests ?? []);
     setLoaded(true);
+    setRefreshing(false);
   }
 
   useEffect(() => {
@@ -40,9 +44,12 @@ export default function AdminRequestsPage() {
 
   return (
     <div>
-      <p className="text-sm text-neutral-400">
-        Player-submitted, auto-formatted. Approve what you&apos;ll build; decline the rest.
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-neutral-400">
+          Player-submitted, auto-formatted. Approve what you&apos;ll build; decline the rest.
+        </p>
+        <RefreshButton onClick={refresh} busy={refreshing} />
+      </div>
 
       {!loaded && <p className="mt-8 text-sm text-neutral-500">Loading…</p>}
       {loaded && requests.length === 0 && (

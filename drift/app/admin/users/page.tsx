@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { AdminUserRow } from "@/app/api/admin/users/route";
+import { RefreshButton } from "@/components/admin/RefreshButton";
 
 const STATUS_STYLE: Record<string, string> = {
   pending: "border-accent/60 text-accent",
@@ -19,15 +20,18 @@ const fmtDate = (iso: string | null) =>
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   async function refresh() {
+    setRefreshing(true);
     const res = await fetch("/api/admin/users");
     const data = await res.json();
     if (!res.ok) setError(data.error ?? "failed to load");
     setUsers(data.users ?? []);
     setLoaded(true);
+    setRefreshing(false);
   }
 
   useEffect(() => {
@@ -60,11 +64,14 @@ export default function AdminUsersPage() {
         <p className="text-sm text-neutral-400">
           New sign-ins land pending. Approve to let them play; suspend to cut access.
         </p>
-        {loaded && users.length > 0 && (
-          <p className="text-xs text-neutral-500">
-            {users.length} users · <span className="text-neutral-300">${totalCost.toFixed(2)}</span> all-time
-          </p>
-        )}
+        <div className="flex items-center gap-3">
+          {loaded && users.length > 0 && (
+            <p className="text-xs text-neutral-500">
+              {users.length} users · <span className="text-neutral-300">${totalCost.toFixed(2)}</span> all-time
+            </p>
+          )}
+          <RefreshButton onClick={refresh} busy={refreshing} />
+        </div>
       </div>
       {error && <p className="mt-3 text-sm text-bad">{error}</p>}
       {!loaded && <p className="mt-8 text-sm text-neutral-500">Loading…</p>}

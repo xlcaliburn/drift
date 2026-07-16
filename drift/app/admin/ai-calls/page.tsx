@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AiCallRow, AiCallUser } from "@/app/api/admin/ai-calls/route";
+import { RefreshButton } from "@/components/admin/RefreshButton";
 
 const KINDS = ["", "turn", "appeal", "creation", "summary"] as const;
 
@@ -64,6 +65,7 @@ export default function AdminAiCallsPage() {
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -85,7 +87,8 @@ export default function AdminAiCallsPage() {
         setSelectedId(null);
         setLoaded(true);
       });
-  }, [kind, userId]);
+    // reloadNonce forces a manual refetch even when the filters are unchanged.
+  }, [kind, userId, reloadNonce]);
 
   // Oldest → newest so it reads like a chat; scroll up for history.
   const ordered = useMemo(() => [...calls].reverse(), [calls]);
@@ -142,6 +145,7 @@ export default function AdminAiCallsPage() {
               </button>
             ))}
           </div>
+          <RefreshButton onClick={() => setReloadNonce((n) => n + 1)} busy={!loaded} />
         </div>
       </div>
 

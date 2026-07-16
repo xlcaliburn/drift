@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import type { AdminCampaignRow } from "@/app/api/admin/campaigns/route";
+import { RefreshButton } from "@/components/admin/RefreshButton";
 
 const STATUS_STYLE: Record<string, string> = {
   active: "border-good/60 text-good",
@@ -17,16 +18,20 @@ const fmtDate = (iso: string | null) =>
 export default function AdminCampaignsPage() {
   const [rows, setRows] = useState<AdminCampaignRow[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState("");
 
-  useEffect(() => {
-    fetch("/api/admin/campaigns")
-      .then((r) => r.json())
-      .then((d) => {
-        setRows(d.campaigns ?? []);
-        setLoaded(true);
-      });
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    const d = await fetch("/api/admin/campaigns").then((r) => r.json());
+    setRows(d.campaigns ?? []);
+    setLoaded(true);
+    setRefreshing(false);
   }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   const filtered = q
     ? rows.filter((r) =>
@@ -40,12 +45,15 @@ export default function AdminCampaignsPage() {
         <p className="text-sm text-neutral-400">
           Inspect and fix any player&apos;s live game — character, inventory, scene, story. Edits apply immediately (even mid-session).
         </p>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="filter…"
-          className="rounded-md border border-edge bg-ink px-2 py-1 text-xs text-neutral-300 outline-none focus:border-accent"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="filter…"
+            className="rounded-md border border-edge bg-ink px-2 py-1 text-xs text-neutral-300 outline-none focus:border-accent"
+          />
+          <RefreshButton onClick={refresh} busy={refreshing} />
+        </div>
       </div>
 
       {!loaded && <p className="mt-8 text-sm text-neutral-500">Loading…</p>}
