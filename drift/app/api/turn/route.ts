@@ -274,17 +274,41 @@ export async function POST(req: NextRequest) {
           }
           // File a GitHub issue for this appeal so disputes are trackable in the repo
           // (best-effort, env-gated on GITHUB_TOKEN/GITHUB_REPO; runs AFTER the response
-          // is sent so it never delays the player's ruling).
+          // is sent so it never delays the player's ruling). Carry enough DEBUG CONTEXT
+          // that triaging it doesn't need a live SQL dig — state, scene, and the recent
+          // transcript + dice trail AT THE TIME of the disputed beat (pre-ruling state).
+          const apPc = session.state.characters.find((c) => c.kind === "pc");
+          const apLoc = session.state.locations.find((l) => l.id === session.state.campaign.currentLocationId);
+          const apInjuries = (apPc?.injuries ?? []).map((i) => i.name).join(", ");
           after(() =>
             createAppealIssue({
               reporter: auth.user.displayName || auth.user.email || "unknown",
               campaignId,
-              character: session.state.characters.find((c) => c.kind === "pc")?.name,
+              character: apPc?.name,
               granted: appeal.granted,
               appealText: stripAppeal(playerText),
               ruling: appeal.ruling,
               adjustments: appeal.engineLines,
               model: appeal.model,
+              context: {
+                where: [session.sceneCard.place, apLoc ? `${apLoc.name} (${apLoc.id})` : session.state.campaign.currentLocationId]
+                  .filter(Boolean)
+                  .join(" — "),
+                situation: session.sceneCard.situation || undefined,
+                vitals: apPc
+                  ? `${apPc.hp}/${apPc.maxHp} HP${apInjuries ? ` (${apInjuries})` : ""} · ¢${apPc.credits ?? 0} · ${apPc.stims ?? 0} stims`
+                  : undefined,
+                presentNpcs: session.sceneCard.presentNpcIds
+                  .map((id) => session.state.npcs.find((n) => n.id === id)?.name)
+                  .filter((n): n is string => !!n),
+                combat: session.combat?.active
+                  ? `${session.combat.scale} ${session.combat.enemies[0]?.tier ?? ""} fight, round ${session.combat.round}: ${session.combat.enemies
+                      .map((e) => `${e.name} (${e.hp}/${e.maxHp})`)
+                      .join(", ")}`
+                  : undefined,
+                transcriptTail: session.transcript.slice(-12).map((e) => `${e.role.toUpperCase()}: ${e.text.slice(0, 300)}`),
+                engineLogTail: session.log.slice(-10).map((e) => ("breakdown" in e && e.breakdown ? e.breakdown : e.type)),
+              },
             }),
           );
           send({

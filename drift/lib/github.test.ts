@@ -44,4 +44,33 @@ describe("buildAppealIssue", () => {
     expect(title.endsWith("…")).toBe(true);
     expect(title.length).toBeLessThan(140);
   });
+
+  it("embeds self-contained debug context (state, scene, transcript, dice) so no SQL dig is needed", () => {
+    const { body } = buildAppealIssue({
+      ...base,
+      granted: false,
+      context: {
+        where: "Valis's office — Meridian Ring (loc-meridian)",
+        situation: "Cali lays the shard on the desk",
+        vitals: "3/18 HP (Downed) · ¢420 · 2 stims",
+        presentNpcs: ["Soren Valis"],
+        combat: "personal T2 fight, round 3: Thug 1 (4/8), Thug 2 (8/8)",
+        transcriptTail: ["PLAYER: I gun the guard down", "SYSTEM: d20(4)+0 = 4 vs AC 13 → miss", "DM: Your shot goes wide"],
+        engineLogTail: ["athletics: d20(14)+3 = 17 vs DC 18 → failure · 6 damage (DOWNED)"],
+      },
+    });
+    expect(body).toContain("**Where:** Valis's office");
+    expect(body).toContain("3/18 HP (Downed)"); // vitals fold into the Character line
+    expect(body).toContain("**Present:** Soren Valis");
+    expect(body).toContain("round 3: Thug 1 (4/8)");
+    expect(body).toContain("<details><summary>Recent transcript"); // folded, so it doesn't bury the issue
+    expect(body).toContain("PLAYER: I gun the guard down");
+    expect(body).toContain("<details><summary>Recent engine log");
+    expect(body).toContain("6 damage (DOWNED)");
+  });
+
+  it("omits the fold blocks when there's no transcript/log context", () => {
+    const { body } = buildAppealIssue({ ...base, granted: false });
+    expect(body).not.toContain("<details>");
+  });
 });
