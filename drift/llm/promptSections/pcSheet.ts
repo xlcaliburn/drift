@@ -59,10 +59,11 @@ export const pcSheet: Section = ({ pc }) => {
   return lines;
 };
 
-/** Party & PC vitals — one line each (HP/AC/credits/loyalty/fragile). */
+/** Party & PC vitals — one line each (HP/AC/credits/loyalty/fragile; a hired crew
+ *  member also shows their tier/role/wage so the narrator plays them true). */
 export const vitals: Section = ({ state }) => {
   const line = (c: (typeof state.characters)[number]) =>
-    `${c.name}: HP ${c.hp}/${c.maxHp}, AC ${c.ac}${c.credits !== undefined ? `, ¢${c.credits}` : ""}${c.loyalty !== undefined ? `, loyalty ${c.loyalty}/5` : ""}${c.fragile ? " [FRAGILE: death saves -4]" : ""}`;
+    `${c.name}: HP ${c.hp}/${c.maxHp}, AC ${c.ac}${c.credits !== undefined ? `, ¢${c.credits}` : ""}${c.loyalty !== undefined ? `, loyalty ${c.loyalty}/5` : ""}${c.crewRole ? ` [crew: ${c.crewTier ?? "T1"} ${c.crewRole}, ¢${c.wage ?? 0}/tenday]` : ""}${c.fragile ? " [FRAGILE: death saves -4]" : ""}`;
   return [
     `Party & PC vitals:`,
     ...state.characters.map((c) => `  ${line(c)} (id: ${c.id})`),
