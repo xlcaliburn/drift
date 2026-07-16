@@ -108,10 +108,13 @@ export function runSceneEnd(
     }
   }
 
-  // Combat lifecycle: shield + burst drive recharge after a fight.
+  // Combat lifecycle: the burst drive recharges after a fight. The shield capacitor
+  // does NOT — a popped shield stays down until a SHIELD CELL restores it, so shields
+  // are a spent resource like missiles, not a free per-fight reset. Ship HP is only
+  // recovered by a paid dock repair or the patron's help.
   if (ship && input.combatEnded) {
-    ship = { ...ship, shieldReady: true, burstDriveReady: true };
-    events.push({ type: "note", breakdown: "Shield capacitor + burst drive recharged after combat." });
+    ship = { ...ship, burstDriveReady: true };
+    events.push({ type: "note", breakdown: "Burst drive recharged after combat." });
   }
 
   // --- Step 4: clocks ---

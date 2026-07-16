@@ -54,3 +54,25 @@ describe("runSceneEnd — full DM checklist pipeline", () => {
     expect(state.clocks.find((c) => c.id === "clk-sable")!.current).toBe(3);
   });
 });
+
+describe("runSceneEnd — ship recharge after combat", () => {
+  it("a popped shield STAYS down (no free shield-cell reload); burst drive recharges", () => {
+    const state = buildCampaignState();
+    state.ship!.shieldReady = false; // absorbed a hit this fight
+    state.ship!.burstDriveReady = false; // spent on an escape
+    const report = runSceneEnd(state, { combatEnded: true });
+    expect(report.state.ship!.shieldReady).toBe(false); // must be re-earned with a shield cell
+    expect(report.state.ship!.burstDriveReady).toBe(true); // recharges (its only charge source)
+  });
+
+  it("does NOT free-reload missiles at scene end (fired rounds are only deducted)", () => {
+    const state = buildCampaignState();
+    const pod = state.ship!.weapons.find((w) => w.type === "missile");
+    if (pod) {
+      pod.ammo = 3;
+      const report = runSceneEnd(state, { combatEnded: true, missilesFired: 2 });
+      const after = report.state.ship!.weapons.find((w) => w.type === "missile")!;
+      expect(after.ammo).toBe(1); // 3 - 2, never topped back up
+    }
+  });
+});
