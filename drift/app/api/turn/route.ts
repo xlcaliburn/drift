@@ -20,6 +20,7 @@ import { getSession, setSession, persistSession, loadReachableDossiers } from "@
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
 import { recordAiCall } from "@/lib/audit";
+import { createAppealIssue } from "@/lib/github";
 import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { buildFallbackChoices } from "@/shared/recap";
 import { CheckSpec, CombatActionSpec, DownedActionSpec, type ChoiceOption } from "@/shared/turnPlan";
@@ -271,6 +272,21 @@ export async function POST(req: NextRequest) {
           if (!isDevUser(auth.user)) {
             await recordTurnUsage({ userId: auth.user.id, campaignId, model: appeal.model, usage: appeal.usage });
           }
+          // File a GitHub issue for this appeal so disputes are trackable in the repo
+          // (best-effort, env-gated on GITHUB_TOKEN/GITHUB_REPO; runs AFTER the response
+          // is sent so it never delays the player's ruling).
+          after(() =>
+            createAppealIssue({
+              reporter: auth.user.displayName || auth.user.email || "unknown",
+              campaignId,
+              character: session.state.characters.find((c) => c.kind === "pc")?.name,
+              granted: appeal.granted,
+              appealText: stripAppeal(playerText),
+              ruling: appeal.ruling,
+              adjustments: appeal.engineLines,
+              model: appeal.model,
+            }),
+          );
           send({
             type: "done",
             narration: appeal.ruling,
