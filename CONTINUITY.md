@@ -65,13 +65,17 @@ from ~10 to ~6 exchanges. The 4 dropped exchanges are exactly the ones the scene
 summaries now cover better than raw text did. **Not a same-commit change** — do
 it after summaries have run in play, so a regression is easy to attribute.
 
-### 3. Bug — summarizer persists raw truncated JSON
+### 3. Bug — summarizer persists raw truncated JSON — **FIXED 2026-07-16**
 
-Some scene summaries have been persisted as **raw truncated JSON** (e.g.
-`{\n "summary": "...`) instead of clean prose text. The summarizer's output
-parsing needs to extract the `summary` field (and fall back cleanly on a parse
-failure) rather than storing the model's raw JSON string. Fix the parse path in
-`llm/summarizer.ts`.
+Some scene summaries were persisted as **raw truncated JSON** (e.g.
+`{\n "summary": "...`) instead of clean prose — and one such stub embedded a
+wrong PC name into canon (the "Harrow calls Cali 'Vess'" incident). Fixed in
+`llm/summarizer.ts`: both parse paths now strip code fences and run
+`llm/jsonRepair.repairTruncatedJson` (salvages the complete prefix of a
+token-capped response), and every terminal fallback returns an EMPTY summary —
+never raw model text — so the caller's deterministic F-3 stub takes over.
+Existing polluted rows are left as-is (stories are not retro-edited); they age
+out of the recent-scenes window.
 
 ---
 

@@ -231,6 +231,7 @@ export default function AdminAuditsPage() {
             <button onClick={() => setOpenId(openId === a.id ? null : a.id)} className="block w-full p-3 text-left">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="font-semibold text-neutral-100">{a.campaignTitle || a.campaignId}</span>
+                {a.playerName && <span className="text-xs text-accent/80">{a.playerName}</span>}
                 <span className="text-xs text-neutral-500">{a.auditDate}</span>
                 <span className="font-mono text-[10px] text-neutral-600">{a.model}</span>
                 {a.costUsd != null && <span className="text-[10px] text-neutral-600">${a.costUsd.toFixed(3)}</span>}
@@ -287,7 +288,32 @@ export default function AdminAuditsPage() {
                   ))}
                 </Section>
 
-                {a.report.adjustments.length > 0 && (
+                {/* THE HEADLINE — the systemic cause behind the findings and the
+                    check that prevents recurrence (stories are never retro-edited). */}
+                {(a.report.patterns ?? []).length > 0 && (
+                  <div>
+                    <div className="mb-1 text-[11px] uppercase tracking-wide text-accent">
+                      Patterns → proposed checks (the durable fix)
+                    </div>
+                    <div className="space-y-1.5">
+                      {(a.report.patterns ?? []).map((p, i) => (
+                        <div key={i} className="rounded border border-accent/40 bg-ink/40 p-2">
+                          <div className="text-neutral-100">
+                            <span className="mr-1.5 rounded bg-panel px-1 py-0.5 font-mono text-[10px] uppercase text-accent">
+                              {p.mechanism}
+                            </span>
+                            {p.pattern}
+                          </div>
+                          {p.evidence && <div className="mt-1 text-xs italic text-neutral-500">seen in: {p.evidence}</div>}
+                          {p.proposedCheck && <div className="mt-1 text-xs text-good">check: {p.proposedCheck}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Legacy pre-patterns reports. */}
+                {(a.report.patterns ?? []).length === 0 && a.report.adjustments.length > 0 && (
                   <div>
                     <div className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">
                       Recommended adjustments (dev-facing)

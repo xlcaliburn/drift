@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseAuditReport, buildAuditUser } from "./dailyAudit";
+import { repairTruncatedJson } from "./jsonRepair";
 
 describe("parseAuditReport — the nightly audit's pure parse/bound layer", () => {
   it("parses a full report and preserves every section", () => {
@@ -59,6 +60,72 @@ describe("parseAuditReport — the nightly audit's pure parse/bound layer", () =
     const r = parseAuditReport("not json at all");
     expect(r.inconsistencies).toEqual([]);
     expect(r.storyContext).toContain("not json");
+  });
+
+  it("strips markdown code fences before parsing", () => {
+    const r = parseAuditReport('```json\n{"storyContext":"fenced","inconsistencies":[]}\n```');
+    expect(r.storyContext).toBe("fenced");
+  });
+
+  it("parses PATTERNS (the headline) and clamps a junk mechanism to engine-gap", () => {
+    const r = parseAuditReport(
+      JSON.stringify({
+        storyContext: "x",
+        patterns: [
+          {
+            pattern: "Narrated deal terms have no durable home, so later scenes contradict them",
+            mechanism: "engine-gap",
+            evidence: "the 50/50 → 30% renegotiation",
+            proposedCheck: "facts ledger slice on campaign_runtime",
+          },
+          { pattern: "clamped", mechanism: "cosmic-rays" },
+          { mechanism: "drift" }, // no pattern → dropped
+        ],
+      }),
+    );
+    expect(r.patterns).toHaveLength(2);
+    expect(r.patterns[0].mechanism).toBe("engine-gap");
+    expect(r.patterns[0].proposedCheck).toContain("facts ledger");
+    expect(r.patterns[1].mechanism).toBe("engine-gap"); // junk mechanism clamped
+  });
+
+  it("SALVAGES a truncated report (the live Wren case: token cap hit mid-object)", () => {
+    // Fenced AND cut mid-string inside the second field — the shape that reduced
+    // a $0.28 Opus report to a 500-char raw stub.
+    const raw =
+      '```json\n{\n  "storyContext": "Wren Sung is a shipless independent on Rook Station.",\n' +
+      '  "inconsistencies": [{"severity": "high", "what": "Sera denies the arrangement", "evidence": "she said';
+    const r = parseAuditReport(raw);
+    expect(r.storyContext).toBe("Wren Sung is a shipless independent on Rook Station.");
+    // The complete first fields survive; the half-written finding may be dropped.
+    expect(r.frustrations).toEqual([]);
+  });
+});
+
+describe("repairTruncatedJson", () => {
+  it("closes an object cut mid-string value", () => {
+    const fixed = repairTruncatedJson('{"a": "done", "b": "half wri')!;
+    expect(JSON.parse(fixed)).toEqual({ a: "done" });
+  });
+
+  it("closes an array cut mid-element and drops the dangling key", () => {
+    const fixed = repairTruncatedJson('{"list": [1, 2, 3], "next": [4, 5')!;
+    expect(JSON.parse(fixed)).toEqual({ list: [1, 2, 3], next: [4, 5] });
+  });
+
+  it("drops a dangling key cut before its colon", () => {
+    const fixed = repairTruncatedJson('{"a": 1, "hangingKey"')!;
+    expect(JSON.parse(fixed)).toEqual({ a: 1 });
+  });
+
+  it("handles escaped quotes inside strings", () => {
+    const fixed = repairTruncatedJson('{"quote": "she said \\"done\\"", "cut": "mid')!;
+    expect(JSON.parse(fixed)).toEqual({ quote: 'she said "done"' });
+  });
+
+  it("returns null when nothing is salvageable", () => {
+    expect(repairTruncatedJson("no braces here")).toBeNull();
+    expect(repairTruncatedJson('{"')).toBeNull();
   });
 });
 

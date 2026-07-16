@@ -1,6 +1,6 @@
 import "server-only";
 import { getSession, setSession, persistSession, hasSupabase, type SessionData } from "@/lib/state";
-import { runDailyAudit, type AuditInputs, type DailyAuditResult } from "@/llm/dailyAudit";
+import { runDailyAudit, RECENTLY_FIXED_NOTE, type AuditInputs, type DailyAuditResult } from "@/llm/dailyAudit";
 import { applyAnalystUpdates } from "@/lib/analystRun";
 import { recordAiCall } from "@/lib/audit";
 import { dispositionLabel } from "@/shared/scene";
@@ -130,18 +130,41 @@ async function dayAppealsText(campaignId: string, hours = 26): Promise<string> {
     .join("\n");
 }
 
-/** Assemble one campaign's audit inputs from its live session. Exported for tests. */
-export function buildAuditInputs(live: SessionData, appeals: string): AuditInputs {
+/** Turns recorded for this campaign in the window — sizes the day-slice. */
+async function dayTurnCount(campaignId: string, hours = 26): Promise<number> {
+  if (!hasSupabase()) return 0;
+  const { getServiceClient } = await import("@/db/queries");
+  const cutoff = new Date(Date.now() - hours * 3600_000).toISOString();
+  const { count } = await getServiceClient()
+    .from("turn_usage")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaignId)
+    .gt("created_at", cutoff);
+  return count ?? 0;
+}
+
+/** Assemble one campaign's audit inputs from its live session. Exported for tests.
+ *  `maxEntries` day-slices the transcript (derived from turns recorded today) —
+ *  the audit reads TODAY's play in full and leans on scene summaries for the
+ *  older story, which halves input cost and stops re-reporting stale findings. */
+export function buildAuditInputs(live: SessionData, appeals: string, maxEntries?: number): AuditInputs {
   const s = live.state;
   const pc = s.characters.find((c) => c.kind === "pc");
   const loc = s.locations.find((l) => l.id === s.campaign.currentLocationId);
   const faction = s.factions.find(
     (f) => f.id === (pc?.ownFactionId ?? pc?.parentFactionId),
   );
+  // The LIVE sheet rides the header as ground truth — the transcript contains
+  // HISTORICAL sheet snapshots, and auditing against those produced a false
+  // "riot gun still on sheet after being dropped" finding (the live sheet was
+  // fine; the audit had only an old in-transcript copy to compare with).
+  const gearNow = pc?.gear.map((g) => `${g.name}${g.qty && g.qty > 1 ? ` ×${g.qty}` : ""}`).join(", ") || "nothing";
   const header =
     `${pc?.name ?? "Unknown"} — ${faction ? `${faction.name} ` : ""}character at ` +
     `${loc?.name ?? "unknown location"}, tenday ${s.campaign.tendaysElapsed ?? 0} ` +
-    `(campaign ${s.campaign.id})`;
+    `(campaign ${s.campaign.id}).\n` +
+    `LIVE SHEET RIGHT NOW (the engine's single source of truth — any sheet text inside the transcript is a HISTORICAL snapshot; judge sheet-vs-prose findings against THIS line only): ` +
+    `HP ${pc?.hp ?? "?"}/${pc?.maxHp ?? "?"}, ¢${pc?.credits ?? 0}, stims ${pc?.stims ?? 0}, carrying: ${gearNow}`;
 
   const npcRoster = s.npcs
     .map((n) => {
@@ -170,15 +193,17 @@ export function buildAuditInputs(live: SessionData, appeals: string): AuditInput
 
   const recentScenes = live.recentScenes.map((sc) => `[s${sc.seq}] ${sc.title}: ${sc.summary}`).join("\n");
 
-  // The full recent transcript window (the store caps it at ~400 entries). Char
-  // cap keeps a whale campaign under ~30k input tokens.
-  const transcript = live.transcript
-    .filter((e) => e.role !== "recap")
+  // Day-sliced transcript: the tail covering roughly today's turns (each turn ≈
+  // 2-3 entries), floored so quiet days still carry enough context to judge.
+  // Older story rides the scene summaries above. Char cap backstops a whale.
+  const entries = live.transcript.filter((e) => e.role !== "recap");
+  const transcript = entries
+    .slice(-(maxEntries ?? entries.length))
     .map((e) => `${e.role.toUpperCase()}: ${e.text}`)
     .join("\n")
     .slice(-120_000);
 
-  return { header, transcript, npcRoster, threadRoster, jobs, recentScenes, appeals };
+  return { header, transcript, npcRoster, threadRoster, jobs, recentScenes, appeals, recentlyFixed: RECENTLY_FIXED_NOTE };
 }
 
 /** Persist the report row (idempotent per campaign per day — a rerun replaces). */
@@ -214,7 +239,10 @@ export async function auditCampaign(campaignId: string): Promise<AuditRunSummary
     if (live.transcript.length < 6) return { campaignId, ok: false, error: "too little play to audit" };
 
     const appeals = await dayAppealsText(campaignId).catch(() => "");
-    const inputs = buildAuditInputs(live, appeals);
+    // Day-slice: ~3 transcript entries per recorded turn, floored at 40 entries
+    // so a quiet day still gives the auditor enough to judge continuity against.
+    const turnsToday = await dayTurnCount(campaignId).catch(() => 0);
+    const inputs = buildAuditInputs(live, appeals, Math.max(40, turnsToday * 3));
     const res = await runDailyAudit(inputs);
 
     // Fold the safe continuity fills into the live session via the SAME guarded

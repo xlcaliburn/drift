@@ -40,6 +40,24 @@ describe("buyItem — the engine owns the whole transaction", () => {
     expect(pc.gear.find((g) => g.itemId === "medkit")?.qty).toBe(1);
   });
 
+  it("HAGGLE: a passed negotiation roll this turn takes 10% off the till (audit-born)", () => {
+    // The live appeal: player won the haggle, narration said ¢28, engine charged
+    // list ¢30. The price the till charges must follow the dice.
+    const rt = new TurnRuntime(atLocation(["blackmarket"]), maxRng);
+    rt.events.push({ type: "roll", breakdown: "x", skill: "negotiation", total: 20, dc: 13, outcome: "success", tickEligible: false });
+    const res = rt.buyItem("medkit", 1);
+    expect(res.line).toContain("¢68"); // round(75 * 0.9)
+    expect(res.line).toContain("haggled");
+    expect(rt.state.characters[0].credits).toBe(500 - 68);
+
+    // A FAILED haggle changes nothing — list price, no discount marker.
+    const rt2 = new TurnRuntime(atLocation(["blackmarket"]), maxRng);
+    rt2.events.push({ type: "roll", breakdown: "x", skill: "negotiation", total: 4, dc: 13, outcome: "failure", tickEligible: false });
+    const res2 = rt2.buyItem("medkit", 1);
+    expect(res2.line).toContain("¢75");
+    expect(res2.line).not.toContain("haggled");
+  });
+
   it("refuses off-shelf items, empty wallets, and full packs — all visibly", () => {
     // Not on ANY shelf: a made-up id.
     const rt = new TurnRuntime(atLocation(["blackmarket"]), maxRng);

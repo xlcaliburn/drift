@@ -16,6 +16,16 @@ export const pcSheet: Section = ({ pc }) => {
     `PC skills (id: ${pc?.id ?? "pc"}): ${pc ? pc.skills.map(skillProgress).join(" · ") : "—"}`,
   ];
 
+  // NAME PIN: the player character is addressed by THIS name and no other. Born
+  // from a live drift — an NPC coincidentally named like a past example PC
+  // ("Vess") surfaced in context and the narrator started calling the player by
+  // it; the summarizer then baked the wrong name into scene memory.
+  if (pc?.name) {
+    lines.push(
+      `THE PLAYER CHARACTER IS "${pc.name}" — NPCs address them as ${pc.name} (or a title/nickname the story earned). NEVER call them by any other character's name, even one that sounds like a protagonist.`,
+    );
+  }
+
   // Identity — the PC's past and their drive. Creation bakes these into gear and
   // backstory but they weren't re-fed at play time, so the narrator couldn't pull
   // on them. Surface background + ambition each turn as material for scenes, NPCs,

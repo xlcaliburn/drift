@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { deepseekChat, deepseekAvailable, isDeepSeekModel, resolveModel } from "./deepseek";
+import { repairTruncatedJson, stripCodeFences } from "./jsonRepair";
 
 export interface SceneSummary {
   summary: string;
@@ -140,15 +141,28 @@ export async function summarizeScene(
     }
   }
 
+  // Parse, repairing a truncated object rather than persisting raw JSON — the
+  // live bug: a token-capped response stored `{\n "summary": "…` VERBATIM as a
+  // scene summary, and one such stub embedded a wrong PC name into canon. An
+  // empty summary is the honest failure: the caller's F-3 deterministic stub
+  // takes over instead of junk becoming memory.
   try {
-    const match = raw.match(/\{[\s\S]*\}/);
-    const parsed = JSON.parse(match ? match[0] : raw);
+    const unfenced = stripCodeFences(raw);
+    const match = unfenced.match(/\{[\s\S]*\}/);
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(match ? match[0] : unfenced);
+    } catch {
+      const repaired = repairTruncatedJson(unfenced);
+      if (!repaired) return { summary: "", entityRefs: [] };
+      parsed = JSON.parse(repaired);
+    }
     return {
       summary: String(parsed.summary ?? ""),
       entityRefs: Array.isArray(parsed.entityRefs) ? parsed.entityRefs.map(String) : [],
     };
   } catch {
-    return { summary: raw.slice(0, 500), entityRefs: [] };
+    return { summary: "", entityRefs: [] };
   }
 }
 
@@ -221,8 +235,18 @@ export async function analyzeScene(
   const knownIds = new Set(npcs.map((n) => n.id));
   const str = (v: unknown, n: number) => (v ? String(v).trim().slice(0, n) : undefined);
   try {
-    const match = raw.match(/\{[\s\S]*\}/);
-    const parsed = JSON.parse(match ? match[0] : raw);
+    const unfenced = stripCodeFences(raw);
+    const match = unfenced.match(/\{[\s\S]*\}/);
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(match ? match[0] : unfenced);
+    } catch {
+      // Truncated output — salvage the complete prefix instead of losing the
+      // scene (or worse, persisting the raw JSON text as a summary).
+      const repaired = repairTruncatedJson(unfenced);
+      if (!repaired) throw new Error("unparseable");
+      parsed = JSON.parse(repaired);
+    }
     const npcUpdates: NpcAnalysis[] = (Array.isArray(parsed.npcs) ? parsed.npcs : [])
       .filter((u: unknown): u is Record<string, unknown> => !!u && typeof u === "object")
       .map((u: Record<string, unknown>): NpcAnalysis => {
@@ -267,6 +291,8 @@ export async function analyzeScene(
       threads: threadUpdates,
     };
   } catch {
-    return { summary: raw.slice(0, 500), entityRefs: [], npcs: [], items: [], threads: [] };
+    // Empty summary = honest failure: the caller's deterministic F-3 stub takes
+    // over. Never persist raw model text as memory.
+    return { summary: "", entityRefs: [], npcs: [], items: [], threads: [] };
   }
 }

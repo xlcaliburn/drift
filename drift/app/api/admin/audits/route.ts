@@ -9,6 +9,8 @@ export interface AuditRow {
   id: number;
   campaignId: string;
   campaignTitle: string | null;
+  /** The player's display name (falls back to their email). */
+  playerName: string | null;
   auditDate: string;
   model: string;
   report: DailyAuditReport;
@@ -38,18 +40,34 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Best-effort campaign titles for the list header.
+  // Best-effort campaign titles + player names for the list header.
   const ids = [...new Set((data ?? []).map((r) => r.campaign_id as string))];
   const titles = new Map<string, string>();
+  const playerByCampaign = new Map<string, string>();
   if (ids.length) {
-    const { data: camps } = await db.from("campaigns").select("id,name").in("id", ids);
-    for (const c of camps ?? []) titles.set(c.id as string, (c.name as string) ?? "");
+    const { data: camps } = await db.from("campaigns").select("id,name,player_id").in("id", ids);
+    const playerIds = [...new Set((camps ?? []).map((c) => c.player_id as string | null).filter((p): p is string => !!p))];
+    const names = new Map<string, string>();
+    if (playerIds.length) {
+      const { data: profiles } = await db.from("profiles").select("id,email,display_name").in("id", playerIds);
+      for (const p of profiles ?? []) {
+        names.set(p.id as string, ((p.display_name as string) || (p.email as string)) ?? "");
+      }
+    }
+    for (const c of camps ?? []) {
+      titles.set(c.id as string, (c.name as string) ?? "");
+      if (c.player_id) {
+        const n = names.get(c.player_id as string);
+        if (n) playerByCampaign.set(c.id as string, n);
+      }
+    }
   }
 
   const audits: AuditRow[] = (data ?? []).map((r) => ({
     id: r.id as number,
     campaignId: r.campaign_id as string,
     campaignTitle: titles.get(r.campaign_id as string) ?? null,
+    playerName: playerByCampaign.get(r.campaign_id as string) ?? null,
     auditDate: String(r.audit_date),
     model: r.model as string,
     report: r.report as DailyAuditReport,

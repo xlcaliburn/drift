@@ -324,7 +324,14 @@ export function buyItem(rt: EconRT, itemId: string, qty = 1): { line?: string; e
     return { error: `${cat.name} is above what this market carries` };
   }
   const rep = localRep(loc, rt.state.factions, rt.state.factionRep);
-  const price = Math.round(cat.price * repPriceFactor(rep)) * n;
+  // HAGGLE IS ENGINE-OWNED (audit-born): a PASSED negotiation/diplomacy roll this
+  // turn moves the PRICE the till actually charges — 10% off. The live appeal:
+  // the player won a haggle the narration priced at ¢28, then the engine charged
+  // list ¢30, and the fiction/ledger split cost us an APPEAL to unwind.
+  const haggled = rt.events.some(
+    (e) => e.type === "roll" && ["negotiation", "diplomacy"].includes(e.skill) && e.outcome.includes("success"),
+  );
+  const price = Math.round(cat.price * repPriceFactor(rep) * (haggled ? 0.9 : 1)) * n;
   if ((pc.credits ?? 0) < price) return { error: `can't afford it (¢${price}, holding ¢${pc.credits ?? 0})` };
   const existing = pc.gear.find((g) => g.itemId === cat.id);
   const gear = existing
@@ -350,7 +357,7 @@ export function buyItem(rt: EconRT, itemId: string, qty = 1): { line?: string; e
     ...rt.state,
     characters: rt.state.characters.map((c) => (c.id === pc.id ? { ...c, credits: after } : c)),
   };
-  const line = `🛒 Bought ${cat.name}${n > 1 ? ` ×${n}` : ""} — ¢${price}. ¢${after} left.`;
+  const line = `🛒 Bought ${cat.name}${n > 1 ? ` ×${n}` : ""} — ¢${price}${haggled ? " (haggled down)" : ""}. ¢${after} left.`;
   rt.events.push({ type: "note", breakdown: line });
   return { line };
 }
