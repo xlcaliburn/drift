@@ -9,6 +9,7 @@ import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { stripInlineMenu } from "@/shared/narration";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Job } from "@/shared/quests";
+import type { PlayerLedger } from "@/shared/ledger";
 import { combatActions, type CombatState } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
 import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
@@ -52,6 +53,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
   const [npcRelations, setNpcRelations] = useState<NpcRelations>({});
   const [sceneCard, setSceneCard] = useState<SceneCard | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [playerLedger, setPlayerLedger] = useState<PlayerLedger>({});
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   // Terminal state — the PC has died; the story is over and input is locked.
@@ -105,6 +107,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
         if (d.npcRelations) setNpcRelations(d.npcRelations);
         if (d.sceneCard) setSceneCard(d.sceneCard);
         if (d.jobs) setJobs(d.jobs);
+        if (d.playerLedger) setPlayerLedger(d.playerLedger);
 
         // The opening recap + starter choices are derived from stored state — free.
         const recap: ChatEntry = { role: "recap", text: buildOpeningRecap(d.state) };
@@ -184,6 +187,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
       if (d.npcRelations) setNpcRelations(d.npcRelations);
       if (d.sceneCard) setSceneCard(d.sceneCard);
       if (d.jobs) setJobs(d.jobs);
+      if (d.playerLedger) setPlayerLedger(d.playerLedger);
     } catch {
       /* keep the current view on a transient failure */
     }
@@ -254,6 +258,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             npcRelations?: NpcRelations;
             sceneCard?: SceneCard | null;
             jobs?: Job[];
+            playerLedger?: PlayerLedger;
             tutorialGraduated?: boolean;
           };
           try {
@@ -276,6 +281,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             if (evt.npcRelations) setNpcRelations(evt.npcRelations);
             if (evt.sceneCard) setSceneCard(evt.sceneCard);
             if (evt.jobs) setJobs(evt.jobs);
+            if (evt.playerLedger) setPlayerLedger(evt.playerLedger);
             if (evt.dead) {
               // The character has died — end the story: lock input, drop choices,
               // and show a final beat instead of the scene-end line.
@@ -768,6 +774,7 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
             npcRelations={npcRelations}
             sceneCard={sceneCard}
             jobs={jobs}
+            playerLedger={playerLedger}
             onJobAction={busy ? undefined : (c) => send(c)}
             onRefresh={refreshState}
             mobileOpen={showSheet}

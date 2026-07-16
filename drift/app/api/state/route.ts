@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
     sceneCard: session.sceneCard,
     lastChoices: session.lastChoices,
     jobs: session.jobs ?? [],
+    playerLedger: session.playerLedger ?? {},
   });
 }
 

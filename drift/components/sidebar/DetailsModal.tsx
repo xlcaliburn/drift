@@ -3,8 +3,10 @@
 import { useState } from "react";
 import type { CampaignState } from "@/shared/schemas";
 import type { NpcRelations, SceneCard } from "@/shared/scene";
+import type { PlayerLedger } from "@/shared/ledger";
 import { SheetSection } from "./ui";
 import { PeopleView } from "./PeopleTab";
+import { RolodexTab } from "./RolodexTab";
 import { FactionsDetail } from "./FactionsTab";
 import { ShipTab } from "./ShipTab";
 import { EquipmentDetail, ItemsDetail } from "./GearTabs";
@@ -12,7 +14,7 @@ import { StoryDetail, StoryThreads } from "./StoryTab";
 import { AimEditor } from "./AimEditor";
 import { RemakeEditor } from "./RemakeEditor";
 
-export type DetailsTab = "equipment" | "items" | "ship" | "relationships" | "factions" | "story";
+export type DetailsTab = "equipment" | "items" | "ship" | "relationships" | "contacts" | "factions" | "story";
 
 /** Popup — extended info kept out of the always-on rail, split into tabs:
  *  Equipment (weapons/armor detail), Items (consumables + tools), Ship,
@@ -24,6 +26,7 @@ export function DetailsModal({
   character,
   npcRelations,
   sceneCard,
+  playerLedger = {},
   initialTab = "equipment",
   onRefresh,
   onClose,
@@ -32,6 +35,8 @@ export function DetailsModal({
   character: CampaignState["characters"][number];
   npcRelations: NpcRelations;
   sceneCard: SceneCard | null;
+  /** The relationship ledger (MULTIPLAYER.md §2) — feeds the Contacts/Rolodex tab. */
+  playerLedger?: PlayerLedger;
   initialTab?: DetailsTab;
   onRefresh?: () => void;
   onClose: () => void;
@@ -58,6 +63,7 @@ export function DetailsModal({
               ["items", "Items"],
               ["ship", "Ship"],
               ["relationships", "People"],
+              ["contacts", "Rolodex"],
               ["factions", "Factions"],
               ["story", "Story"],
             ] as const
@@ -82,6 +88,7 @@ export function DetailsModal({
         ) : (
           <div className="scrollbar-thin flex-1 overflow-y-auto p-5">
             {tab === "equipment" && <EquipmentDetail character={c} />}
+            {tab === "contacts" && <RolodexTab ledger={playerLedger} />}
             {tab === "items" && <ItemsDetail character={c} />}
             {tab === "ship" && (
               <SheetSection label="Ship">

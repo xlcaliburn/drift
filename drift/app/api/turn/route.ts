@@ -655,6 +655,7 @@ export async function POST(req: NextRequest) {
           npcRelations: updatedSession.npcRelations,
           sceneCard: updatedSession.sceneCard,
           jobs: updatedSession.jobs,
+          playerLedger: updatedSession.playerLedger,
           tutorialGraduated: result.tutorialGraduated,
           model: result.model,
           usage: result.usage,

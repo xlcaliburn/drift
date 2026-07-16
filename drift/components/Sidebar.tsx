@@ -6,6 +6,7 @@ import type { CombatState } from "@/shared/combat";
 import type { NpcRelations, SceneCard } from "@/shared/scene";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Job } from "@/shared/quests";
+import type { PlayerLedger } from "@/shared/ledger";
 import { StatusTab } from "./sidebar/StatusTab";
 import { TraitsTab } from "./sidebar/TraitsTab";
 import { MapTab } from "./sidebar/MapTab";
@@ -28,6 +29,7 @@ export default function Sidebar({
   npcRelations = {},
   sceneCard = null,
   jobs = [],
+  playerLedger = {},
   onJobAction,
   onRefresh,
   mobileOpen = false,
@@ -41,6 +43,8 @@ export default function Sidebar({
   sceneCard?: SceneCard | null;
   /** The job board (QUESTS.md) — feeds the Jobs tab. */
   jobs?: Job[];
+  /** The relationship ledger (MULTIPLAYER.md §2) — feeds the Rolodex tab. */
+  playerLedger?: PlayerLedger;
   /** Accept/abandon a job: fires a turn carrying the chip. Undefined while busy. */
   onJobAction?: (choice: ChoiceOption) => void;
   /** Re-pull fresh server state; fired when the details modal opens so it never
@@ -100,6 +104,7 @@ export default function Sidebar({
           character={pc}
           npcRelations={npcRelations}
           sceneCard={sceneCard}
+          playerLedger={playerLedger}
           initialTab={detailsTab}
           onRefresh={onRefresh}
           onClose={() => setDetailsTab(null)}
