@@ -193,10 +193,17 @@ export function applyGearChange(rt: EconRT, name: string, action: "gain" | "lose
     action === "gain"
       ? allItems().find((it) => it.name.toLowerCase() === norm || it.id.toLowerCase() === norm)
       : undefined;
-  // GEAR gains are engine-authored: real WEAPONS/ARMOR may only be handed over on a
-  // turn with a legit source (a scavenge/loot roll or a quest reward). CONSUMABLES
-  // (a stim, a medkit) pass freely as NPC gifts. FLAVOR props are always allowed.
-  const isConsumableGift = !!cat && !cat.damage && !cat.acBonus;
+  // A SHIP consumable (missile reload, hull patch, shield cell) is a dock/market
+  // RESUPPLY for a ship — meaningless to a character on foot and baffling in a
+  // personal pack ("Steward gave me a missile reload, no idea what that is"). It is
+  // never a casual NPC gift: with NO ship it can't be granted at all, and even with
+  // one it's held to the same legit-source rule as gear (loot/quest), not gifted.
+  if (action === "gain" && cat?.scale === "ship" && !rt.state.ship) return null;
+  // GEAR gains are engine-authored: real WEAPONS/ARMOR (and ship consumables, above)
+  // may only be handed over on a turn with a legit source (a scavenge/loot roll or a
+  // quest reward). PERSONAL consumables (a stim, a medkit) pass freely as NPC gifts.
+  // FLAVOR props are always allowed.
+  const isConsumableGift = !!cat && cat.scale !== "ship" && !cat.damage && !cat.acBonus;
   if (
     action === "gain" &&
     !isConsumableGift &&
