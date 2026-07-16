@@ -176,8 +176,18 @@ export async function persistSession(campaignId: string, session: SessionData): 
     // shouts echo…") are dropped here so they neither promote to the shared world
     // NOR persist in the runtime cast — a warm session carrying one self-heals on
     // its next save (isPlausibleNpcName now rejects such names).
+    // This campaign's OWN generated NPCs only. `isCampaignNpc` is id-prefix based and
+    // campaign-BLIND (npc-patron-/npc-rel-/npc-gen- from ANY campaign match), so a
+    // foreign NPC that flooded in via the old universe-wide load would otherwise get
+    // re-persisted into this runtime and accrete forever. Gate on provenance too: keep
+    // only NPCs with no origin (legacy own) or this campaign's origin — never another
+    // campaign's (the Wren bleed). Seed NPCs (no npc-gen/rel/patron prefix) are shared,
+    // not campaign-local, so they're excluded here by design.
     const campaignNpcs = session.state.npcs.filter(
-      (n) => isCampaignNpc(n.id) && isPlausibleNpcName(n.name),
+      (n) =>
+        isCampaignNpc(n.id) &&
+        isPlausibleNpcName(n.name) &&
+        (!n.originCampaignId || n.originCampaignId === campaignId),
     );
     // Promote them into the UNIVERSE-scoped npcs table so other campaigns in the
     // same world can meet them (shared canon). Stamp provenance if unset. Failure

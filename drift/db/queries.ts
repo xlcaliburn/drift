@@ -80,7 +80,13 @@ export async function loadCampaignState(
     db.from("factions").select("*").eq("universe_id", campaign.universeId),
     db.from("faction_rep").select("*").eq("campaign_id", campaignId),
     db.from("locations").select("*").eq("universe_id", campaign.universeId),
-    db.from("npcs").select("*").eq("universe_id", campaign.universeId),
+    // Only the CANONICAL SEED cast (the world's "constants") is shared into every
+    // campaign — hand-authored NPCs have no origin_campaign_id. NPCs promoted FROM a
+    // campaign (origin set) stay out of other players' casts: a campaign sees the seed
+    // constants + its OWN generated NPCs (folded back from campaign_runtime.npcs), so
+    // one player's fixers/patrons don't flood everyone else's game (the "Wren had 31
+    // foreign NPCs" bleed). Cross-player CHARACTER cameos still ride the gated dossiers.
+    db.from("npcs").select("*").eq("universe_id", campaign.universeId).is("origin_campaign_id", null),
     db.from("clocks").select("*").eq("campaign_id", campaignId),
     db.from("threads").select("*").eq("campaign_id", campaignId),
     db.from("contracts").select("*").eq("campaign_id", campaignId),

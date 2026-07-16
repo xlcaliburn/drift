@@ -215,6 +215,17 @@ export function registerNpc(rt: NarrativeRT, name: string, oneBreath?: string, r
   const trimmed = name.trim();
   const here = rt.state.campaign.currentLocationId;
   const cleanRole = shortRole(role); // a short handle, never a descriptive clause
+  // NEVER register the player's own character as an NPC. The cheap model attributes
+  // a line to the PC's SHORT name ("Wren" for "Wren Sung"), which — since the short
+  // form isn't in the known-entity set — spawned a duplicate person and shattered
+  // continuity (Angela's "it created another NPC called Wren"). Block an exact match
+  // or a first-name match against any PC/crew name.
+  const tn = trimmed.toLowerCase();
+  const isPlayerName = rt.state.characters.some((c) => {
+    const cn = c.name.toLowerCase();
+    return cn === tn || cn.split(/\s+/)[0] === tn || cn === tn.split(/\s+/)[0];
+  });
+  if (isPlayerName) return { added: false, id: "" };
   const existing = rt.state.npcs.find((n) => n.name.toLowerCase() === trimmed.toLowerCase());
   if (existing) {
     rt.state = {
@@ -269,6 +280,7 @@ export function setNpcOneBreath(rt: NarrativeRT, id: string, oneBreath: string, 
 /** Mark an NPC as present in the current scene — they ride retrieval every turn
  *  of the scene without needing to be re-named (CONTINUITY tier NOW). */
 export function markPresent(rt: NarrativeRT, npcId: string) {
+  if (!npcId) return; // registerNpc returns "" when it refused (e.g. the PC's own name)
   if (!rt.sceneCard.presentNpcIds.includes(npcId)) rt.sceneCard.presentNpcIds.push(npcId);
 }
 

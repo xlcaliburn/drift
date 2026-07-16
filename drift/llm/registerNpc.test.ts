@@ -25,6 +25,26 @@ describe("registerNpc — continuity", () => {
     expect(npc.id.startsWith("npc-gen-")).toBe(true); // campaign-scoped id
   });
 
+  it("REFUSES to register the player's own character as an NPC (the 'Wren' bug)", () => {
+    // PC is "Vess". The model attributes a line to "Vess" (or a full-name PC's first
+    // name) — that must never spawn a duplicate person.
+    const rt = new TurnRuntime(stateAt("loc-meridian"), rng);
+    const res = rt.registerNpc("Vess", "Spoke with the player.");
+    expect(res.added).toBe(false);
+    expect(res.id).toBe("");
+    expect(rt.state.npcs.some((n) => n.name.toLowerCase() === "vess")).toBe(false);
+    // markPresent no-ops on the refused "" id (doesn't corrupt presentNpcIds).
+    rt.markPresent(res.id);
+    expect(rt.sceneCard.presentNpcIds).not.toContain("");
+  });
+
+  it("refuses a first-name match against a full PC name", () => {
+    const s = stateAt("loc-rook");
+    (s.characters[0] as { name: string }).name = "Wren Sung";
+    const rt = new TurnRuntime(s, rng);
+    expect(rt.registerNpc("Wren").added).toBe(false); // "Wren" == first name of "Wren Sung"
+  });
+
   it("dedupes by name (case-insensitive) and refreshes their location", () => {
     const rt = new TurnRuntime(stateAt("loc-meridian"), rng);
     const first = rt.registerNpc("Doyle", "supply officer");
