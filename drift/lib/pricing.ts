@@ -28,7 +28,8 @@ const PRICING: Record<string, Rates> = {
   "deepseek-reasoner": { in: 0.55, out: 2.19, cacheRead: 0.14, cacheWrite: 0.55 },
   "claude-haiku-4-5": { in: 1, out: 5, cacheRead: 0.1, cacheWrite: 1.25 },
   "claude-sonnet-5": { in: 3, out: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-  "claude-opus": { in: 15, out: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+  // Opus 4.5+ list price (the old 4.1-era $15/$75 over-counted budgets 3×).
+  "claude-opus": { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 },
 };
 
 const FALLBACK: Rates = PRICING["claude-sonnet-5"];

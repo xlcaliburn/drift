@@ -11,6 +11,39 @@ owns it; the model only proposes).
 
 ---
 
+## Nightly audit — the strong-model retrospective (SHIPPED 2026-07-16)
+
+A fourth layer above the per-scene analyst: once a day (~3am cron), a STRONG
+model (Opus by default, `DAILY_AUDIT_MODEL`) reads each campaign that PLAYED
+that day *whole* — the full transcript window, cast + standings, open threads,
+jobs, scene summaries, and the day's APPEAL calls/errors — and produces what a
+scene-scoped pass can't:
+
+- **Inconsistencies** — cross-scene contradictions (a fact asserted then
+  contradicted, an NPC playing stranger to a friend), severity-ranked.
+- **Dropped story lines** — promises/hooks that went quiet, each with a
+  concrete revival beat the narrator could use.
+- **Player frustration** — appeals (always), repeated retries, in-game
+  complaints, error lines; each with a root-cause guess and a suggested fix.
+- **Story context** — a 3-6 sentence "where this campaign stands" brief.
+- **Adjustments** — dev-facing tuning recommendations.
+- **Continuity fills** — npc/thread updates in the SAME shapes as the scene
+  analyst, auto-applied through the same guarded machinery
+  (`applyAnalystUpdates`/`applyThreadUpdates`); presence is forced to
+  "mentioned" so an offline pass can never write into the live Here & now.
+
+Where it lives: `llm/dailyAudit.ts` (prompt + pure `parseAuditReport`, tested),
+`lib/auditRun.ts` (campaign selection via `turn_usage`, appeals via `ai_calls`,
+apply + persist), `app/api/cron/daily-audit` (CRON_SECRET bearer for the
+scheduler, or an admin session — "Run now" on the admin page), `daily_audits`
+table (migration 024, one row per campaign per day, reruns replace),
+`/admin/audits` (the report UI). Cost ≈ $0.15–0.35/campaign/day at Opus list
+rates; every call is metered into `ai_calls` as kind `audit`. Scheduling:
+`vercel.json` cron at 08:00 UTC — adjust to taste, or point any scheduler at
+the route with the bearer secret.
+
+---
+
 ## Remaining work
 
 ### 1. Facts ledger — CANON tier v2 (deferred per D-2)

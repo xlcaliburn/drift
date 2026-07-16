@@ -20,7 +20,7 @@ import { estimateCostUsd, type TokenUsage } from "@/lib/pricing";
 export const AUDIT_PREVIEW_CHARS = 2000;
 export const AUDIT_TRUNCATE = process.env.AI_AUDIT_TRUNCATE === "1";
 
-export type AiCallKind = "turn" | "creation" | "summary" | "appeal";
+export type AiCallKind = "turn" | "creation" | "summary" | "appeal" | "audit";
 
 export interface AiCallEntry {
   /** Real profile id, or null for dev/keyless callers (no FK row exists). */
