@@ -178,6 +178,10 @@ Don't add prose rules for things the engine can enforce.
   trusted-tier personal job (private diegetic offer, tracked execution, campaign-side
   arc resolution). Phase 1 SHIPPED (`npcTiers` section + `generatePersonalJob` +
   arc resolution in `jobsRuntime`); Phase 2 (betrayal / favor ledger / rep greetings).
+- `CANON.md` — world constants direction (curated vs. procedural). Phase 1 SHIPPED
+  (stopped the cross-campaign NPC bleed: seed-only load + PC-name guard). `LOCATIONS.md`
+  — the Phase 2 places+loot design (tiered canonical locations, persisted procedural
+  SITES with loot tables, risk/reward tiers). DESIGN, not yet built.
 - `IMPLEMENTATION.md` — what's left to build, in rough order
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)

@@ -54,6 +54,10 @@ load re-floods otherwise).
 
 ## Phase 2 — the constants build (TODO)
 
+Places + loot are designed in detail in **LOCATIONS.md** (tiered canonical locations,
+persisted procedural SITES with loot tables, risk/reward tiers). The NPC items below
+stay here.
+
 - **NPC roster bounding + dedup.** Token-containment dedup ("Yuri" ⊆ "Dockmaster Yuri")
   and near-dup handling ("Corso"/"Korso"); reject bare-role ("Guard") and mentioned-only
   registrations (only figures actually PRESENT become NPCs); a soft cap on a campaign's
