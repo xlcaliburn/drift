@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { CampaignState } from "@/shared/schemas";
 import type { CombatState, CombatEnemy } from "@/shared/combat";
 import { TurnRuntime } from "./engineBridge";
+import { toolBonus } from "./runtimeCombat";
 import { usableConsumables, itemCount } from "@/shared/items";
 import type { RNG } from "@/engine";
 
@@ -147,5 +148,26 @@ describe("out-of-combat useItem", () => {
     expect(res.line).toContain("Medkit");
     expect(rt.state.characters[0].hp).toBeGreaterThan(5); // actually healed
     expect(itemCount(rt.state.characters[0], "medkit")).toBe(0); // actually spent
+  });
+});
+
+describe("functional tools (ITEMS.md slice 4)", () => {
+  it("a held tool grants its skill bonus; nothing for the wrong skill or no tool", () => {
+    const scannerPc = withInventory([{ name: "Scanner", itemId: "scanner" }]).characters[0];
+    expect(toolBonus(scannerPc, "perception")).toBe(2);
+    expect(toolBonus(scannerPc, "streetwise")).toBe(1);
+    expect(toolBonus(scannerPc, "athletics")).toBe(0);
+    const pickPc = withInventory([{ name: "Lockpick set", itemId: "lockpicks" }]).characters[0];
+    expect(toolBonus(pickPc, "mechanics")).toBe(2);
+    expect(toolBonus(pickPc, "electronics")).toBe(2);
+    const grapPc = withInventory([{ name: "Grapnel line", itemId: "grapnel" }]).characters[0];
+    expect(toolBonus(grapPc, "athletics")).toBe(2);
+    expect(toolBonus(withInventory([]).characters[0], "perception")).toBe(0);
+  });
+
+  it("the tool bonus lands in the roll breakdown (auditable)", () => {
+    const rt = new TurnRuntime(withInventory([{ name: "Scanner", itemId: "scanner" }]), maxRng);
+    const res = rt.execute("roll_check", { characterId: "pc-1", skill: "perception", dc: 10, stakes: false }) as { breakdown?: string };
+    expect(res.breakdown).toMatch(/situational \+2/);
   });
 });

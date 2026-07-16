@@ -1,5 +1,22 @@
 # ITEMS.md — Item Audit, Consumables & Inventory Design
 
+*STATUS-EFFECT / GEAR-TRAIT SYSTEM SHIPPED (2026-07-16): weapon choice is now a
+DECISION, not just a bigger die. `shared/status.ts` — the pure v1 status core:
+🔥 burning (1d4/turn × 2 rounds, armor-ignoring), 🩸 bleeding (2×stacks/turn × 3
+rounds, stacks to 5),
+⚡ shocked (skips the next turn + arcs through / drops shields), 🧪 corroded (−2 AC/
+stack). Weapons carry a `damageType` (kinetic default | thermal | shock | chemical),
+an optional `onHit` status, and `armorPen`; armor carries `resist`/`vuln` (a type),
+`statusGuard` (immunities), and `mobilityPenalty` (heavy → no evasive cover). The
+catalogue is a 3-tier progression (17 weapons / 6 armor) with a reliability axis
+(flat-modifier guns: machine pistol 1d4+2, service carbine 1d6+3, burst rifle 2d4+2)
+beside the swingy ones. Combat wiring (`llm/runtimeCombat.ts`): on-hit application,
+round-start ticks, shocked-skip, corroded/armorPen AC, armor resist/immunity, a heal
+clears wound DoTs; T2+ enemies inflict statuses (shocked-vs-player is T3-only). TOOLS
+are now functional (`toolBonus`): scanner→perception, lockpicks→locks, grapnel→climb.
+LEFT (deferred): a combat status BADGE in the UI (statuses currently surface via the
+🔥/⚡ engine log lines) and a narrator prompt note to describe the effect vividly.*
+
 *ALL SLICES SHIPPED (2026-07-14): consumables + loot, weapon/armor catalog (W),
 inventory slots (B), ammo/reload gating (D), shops (E), and DETERMINISTIC item use
 (out-of-combat "Use X" chips route through the engine — a heal never depends on the

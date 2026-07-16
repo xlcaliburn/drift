@@ -109,6 +109,24 @@ function playerDefense(pc: Character): PlayerDefense {
   return { resist: a?.resist, vuln: a?.vuln, statusGuard: a?.statusGuard ?? [], mobilityPenalty: !!a?.mobilityPenalty };
 }
 
+/** Tools that AID a skill check when carried — the reusable alternative to a
+ *  one-shot charge (ITEMS.md slice 4): a scanner sharpens perception, lockpicks help
+ *  with locks/mechanisms, a grapnel with climbs. Makes a tool worth its slot + price. */
+const TOOL_SKILL_BONUS: Record<string, Partial<Record<string, number>>> = {
+  scanner: { perception: 2, streetwise: 1 },
+  lockpicks: { mechanics: 2, electronics: 2 },
+  grapnel: { athletics: 2 },
+};
+
+/** Total bonus a character's held tools grant to a given skill check. */
+export function toolBonus(pc: Character, skill: string): number {
+  let bonus = 0;
+  for (const [toolId, skillMap] of Object.entries(TOOL_SKILL_BONUS)) {
+    if (itemCount(pc, toolId) > 0) bonus += skillMap[skill] ?? 0;
+  }
+  return bonus;
+}
+
 /** The drawn weapon's on-hit status + damage type + armor-pierce, from the catalog. */
 function drawnWeaponTraits(weapon?: Character["gear"][number]): {
   weaponType?: DamageType;
@@ -203,13 +221,15 @@ export function rollCheck(rt: CombatRT, input: Record<string, unknown>) {
   const character = charOf(rt, String(input.characterId));
   if (!character) return { error: `unknown character ${input.characterId}` };
   const dcMod = input.useShipDcModifier && rt.state.ship ? rt.state.ship.dcModifier : 0;
+  // A held tool aids its skill (scanner→perception, lockpicks→locks, grapnel→climb).
+  const tool = toolBonus(character, String(input.skill));
   const res = rollCheckEngine(
     {
       character,
       skill: String(input.skill),
       dc: Number(input.dc),
       stakes: Boolean(input.stakes),
-      situationalMod: input.situationalMod ? Number(input.situationalMod) : 0,
+      situationalMod: (input.situationalMod ? Number(input.situationalMod) : 0) + tool,
       dcModifier: dcMod,
     },
     rt.rng,
