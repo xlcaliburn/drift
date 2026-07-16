@@ -113,9 +113,12 @@ and on a clean clear/crit reaches `useful`, rarely `rare`.
   tier to the prompt, and the "no invented stations; `place` is flavor within canon"
   rule. Directly answers "makes up places and forgets them." Smallest slice, no
   migration.
-- **Phase 2b — Loot tables.** `content/lootTables.json` (tier × archetype) +
-  `rollSiteLoot`; route scavenge/loot through tables. Answers "crates/data cores from
-  nowhere." No migration (content + engine only).
+- **Phase 2b — Loot tables.** TABLES + ROLLER SHIPPED (`shared/lootTables.ts` — 7
+  archetypes × T1-T3 authored constants, every consumable id catalog-validated,
+  higher tier pays more; `rollTableLoot` mirrors generateScavengeLoot's rhythm).
+  WIRING PENDING: the scavenge path (`runtimeCombat.ts` → `generateScavengeLoot`)
+  should use `field-<locationTier>` — deferred one line while that file is under
+  active parallel work; site archetypes activate with 2c.
 - **Phase 2c — Procedural sites.** `shared/sites.ts` + the `sites` campaign slice
   (migration) + generation wired into QUESTS (site-archetype jobs spawn a site) and
   COMBAT (site `enemyTier`, clamp override) + the Map/Sites UI with danger tiers. The
