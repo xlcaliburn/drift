@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign } from "@/lib/auth";
-import { runOpenSceneAnalyst } from "@/lib/analystRun";
+import { runOpenSceneAnalyst, repairDegradedScenes } from "@/lib/analystRun";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -33,6 +33,14 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error("[analyze] manual run failed:", e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "Analysis failed — try again." }, { status: 502 });
+  }
+  // The re-sync is the player saying "the memory is off" — also heal any degraded
+  // scene summaries (failed compressions) from their preserved slices.
+  try {
+    const repaired = await repairDegradedScenes(campaignId, 3);
+    if (repaired > 0) changed = true;
+  } catch (e) {
+    console.error("[analyze] degraded repair failed:", e instanceof Error ? e.message : e);
   }
 
   const after = await getSession(campaignId);

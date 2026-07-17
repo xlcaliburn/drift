@@ -1,8 +1,34 @@
 import "server-only";
-import { getSession, setSession, persistSession, type SessionData } from "@/lib/state";
-import { analyzeScene, type NpcAnalysis, type ItemAnalysis, type ThreadAnalysis } from "@/llm/summarizer";
+import { getSession, setSession, persistSession, hasSupabase, type SessionData } from "@/lib/state";
+import { analyzeScene, type NpcAnalysis, type ItemAnalysis, type ThreadAnalysis, type SummaryTelemetry } from "@/llm/summarizer";
+import { recordAiCall } from "@/lib/audit";
 import { isPlaceholderOneBreath } from "@/shared/scene";
 import type { ChatEntry } from "@/shared/chat";
+
+/**
+ * Record one analyst call into ai_calls (kind "summary") — the memory tier used
+ * to be the system's only UNAUDITED model path, which is how a summarizer
+ * epidemic silently junked 30-86% of scene summaries per campaign before a
+ * player felt it. Best-effort like every audit write.
+ */
+export async function recordSummaryCall(
+  campaignId: string,
+  label: string,
+  t: SummaryTelemetry,
+  summary: string,
+): Promise<void> {
+  await recordAiCall({
+    campaignId,
+    kind: "summary",
+    model: t.model,
+    latencyMs: t.latencyMs,
+    usage: t.usage,
+    fellBack: t.fellBack,
+    prompt: label,
+    response: summary || undefined,
+    error: t.error ?? (t.repaired ? "truncated (salvaged by jsonRepair)" : undefined),
+  });
+}
 
 /**
  * Fold the scene analyst's NPC + item updates into a live session — register
@@ -100,8 +126,73 @@ export async function runOpenSceneAnalyst(campaignId: string): Promise<boolean> 
     console.error("[analyst] open-scene run failed:", e instanceof Error ? e.message : e);
     return false;
   }
+  await recordSummaryCall(campaignId, `mid-scene analyst (scene ${live.sceneCard.seq})`, res.telemetry, res.summary);
   const changed = await applyAnalystUpdates(live, res.npcs, res.items, res.threads);
   setSession(campaignId, live);
   if (changed) await persistSession(campaignId, live);
   return changed;
+}
+
+/**
+ * SELF-HEALING MEMORY (CONTINUITY): re-run the analyst over DEGRADED scene rows —
+ * failed compressions that persisted as F-3 stubs but kept their raw transcript
+ * slice (migration 026). A success replaces the stub with a real summary (and
+ * folds in the NPC/thread updates the original failure dropped); a failure
+ * leaves the row flagged for the next attempt. Bounded per run so a repair never
+ * meaningfully delays the turn that piggybacks it. NOT retro-editing story: the
+ * same transcript in, the same tier written — just a working compression of it.
+ */
+export async function repairDegradedScenes(campaignId: string, limit = 2): Promise<number> {
+  if (!hasSupabase()) return 0;
+  const live = await getSession(campaignId);
+  if (!live) return 0;
+  const { getServiceClient, listDegradedScenes, saveScene } = await import("@/db/queries");
+  const db = getServiceClient();
+  const queue = await listDegradedScenes(db, campaignId, limit);
+  if (!queue.length) return 0;
+
+  const entityIds = [...live.state.factions.map((f) => f.id), ...live.state.locations.map((l) => l.id)];
+  const roster = live.state.npcs.map((n) => ({ id: n.id, name: n.name, oneBreath: n.oneBreath }));
+  const openThreads = live.state.threads
+    .filter((t) => t.status !== "resolved")
+    .map((t) => ({ id: t.id, title: t.title }));
+
+  let repaired = 0;
+  for (const row of queue) {
+    let res;
+    try {
+      res = await analyzeScene(row.rawSlice, roster, entityIds, openThreads);
+    } catch (e) {
+      console.error(`[analyst] repair of scene ${row.seq} failed:`, e instanceof Error ? e.message : e);
+      continue;
+    }
+    await recordSummaryCall(campaignId, `scene ${row.seq} repair (was degraded)`, res.telemetry, res.summary);
+    if (!res.summary.trim()) continue; // still failing — stays flagged for next time
+
+    const scene = {
+      seq: row.seq,
+      title: row.title || `Scene ${row.seq}`,
+      summary: res.summary.trim(),
+      entityRefs: res.entityRefs,
+      locationId: row.locationId,
+      degraded: false,
+    };
+    try {
+      await saveScene(db, campaignId, scene); // healthy save clears flag + raw_slice
+    } catch (e) {
+      console.error(`[analyst] repair persist of scene ${row.seq} failed:`, e instanceof Error ? e.message : e);
+      continue;
+    }
+    // Reflect the healed summary in the live PREVIOUSLY list, and fold in the
+    // continuity updates the original failed run never delivered.
+    live.recentScenes = live.recentScenes.map((s) => (s.seq === scene.seq ? scene : s));
+    await applyAnalystUpdates(live, res.npcs, res.items, res.threads);
+    repaired++;
+  }
+  if (repaired > 0) {
+    setSession(campaignId, live);
+    await persistSession(campaignId, live);
+    console.info(`[analyst] repaired ${repaired} degraded scene summar${repaired === 1 ? "y" : "ies"} for ${campaignId}`);
+  }
+  return repaired;
 }

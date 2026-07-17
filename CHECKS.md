@@ -51,6 +51,8 @@ Three tiers (design: `CONTINUITY.md`): **NOW** (scene card) → **PREVIOUSLY**
 | Place carry | `carryScene` | scene close | whereabouts never blank between scenes |
 | Situation refresh backstop | `jsonTurn` → `runtime.refreshSituation` | model set no `scene.situation` this turn | "Here & now" going stale (the cheap model rarely sets it) |
 | Scene compression + F-3 fallback | route `compressClosedScene` | background, on close | every closed scene becomes a summary; on summarizer failure a deterministic first-action+last-beat stub — never a hole |
+| **Self-healing degraded summaries** | `scenes.degraded` + `raw_slice` (migration 026), `analystRun.repairDegradedScenes`, triggered by the next healthy scene close (2/run) + manual re-sync (3/run) | analyst failure | an F-3 stub living FOREVER as the scene's memory — born from the Lyra campaign (12 of 14 summaries junk; the narrator improvised the Ren/Renwick/dead-brother tangle over the invisible hole). A failed compression now keeps its raw transcript slice and gets re-summarized once the analyst is healthy; only pre-026 rows are unrecoverable (their slices are gone) |
+| **Summary telemetry** | `SummaryTelemetry` on every `analyzeScene` → `recordSummaryCall` → `ai_calls` kind `summary` | every analyst call | the memory tier failing INVISIBLY — it was the only unaudited model path in the system; `/admin/ai-calls` (filter: summary) is now the memory-health dashboard (model, fallback, jsonRepair salvage, hard errors) |
 | History window | route (`slice(-20)` = ~10 exchanges) | persist | context stays bounded; older context rides summaries (Continuity v2 wants ~6) |
 | Transcript cap | route (`slice(-400)`) | persist | refresh rehydration without unbounded growth |
 

@@ -31,7 +31,7 @@ import { buildFallbackChoices } from "@/shared/recap";
 import { CheckSpec, CombatActionSpec, DownedActionSpec, type ChoiceOption } from "@/shared/turnPlan";
 import { carryScene, isSceneMove, type SceneCard, type SceneMemory } from "@/shared/scene";
 import { analyzeScene, type NpcAnalysis, type ItemAnalysis, type ThreadAnalysis } from "@/llm/summarizer";
-import { applyAnalystUpdates, runOpenSceneAnalyst, ANALYST_INTERVAL } from "@/lib/analystRun";
+import { applyAnalystUpdates, runOpenSceneAnalyst, repairDegradedScenes, recordSummaryCall, ANALYST_INTERVAL } from "@/lib/analystRun";
 import type { ChatEntry } from "@/shared/chat";
 import { hasSupabase } from "@/lib/state";
 
@@ -71,10 +71,16 @@ async function compressClosedScene(
     npcUpdates = res.npcs;
     itemUpdates = res.items;
     threadUpdates = res.threads;
+    // Memory-tier telemetry — this used to be the only unaudited model path.
+    await recordSummaryCall(campaignId, `scene ${closedCard.seq} close`, res.telemetry, summary);
   } catch {
     /* fall through to the deterministic fallback */
   }
-  if (!summary) {
+  // F-3 fired = the compression FAILED. The stub keeps the row from being a hole
+  // NOW, but it's junk as memory — stamp it degraded and keep the raw slice so
+  // repairDegradedScenes can re-summarize it later (self-healing, migration 026).
+  const degraded = !summary;
+  if (degraded) {
     // F-3: never a hole — first action + last beat stand in for the summary.
     const firstPlayer = slice.find((e) => e.role === "player")?.text ?? "";
     const lastDm = [...slice].reverse().find((e) => e.role === "dm")?.text ?? "";
@@ -88,14 +94,26 @@ async function compressClosedScene(
     summary,
     entityRefs: [...new Set([...entityRefs, ...closedCard.presentNpcIds])],
     locationId,
+    ...(degraded ? { degraded: true } : {}),
   };
 
   if (hasSupabase()) {
     try {
       const { getServiceClient, saveScene } = await import("@/db/queries");
-      await saveScene(getServiceClient(), campaignId, scene);
+      await saveScene(getServiceClient(), campaignId, scene, degraded ? { rawSlice: text + beatsNote } : {});
     } catch (e) {
       console.error("[turn] failed to persist scene summary:", e instanceof Error ? e.message : e);
+    }
+  }
+
+  // Piggyback repair: while the analyst is known-healthy (it just produced a real
+  // summary), retry up to 2 older DEGRADED scenes from their preserved slices —
+  // holes heal at the next scene close instead of living forever.
+  if (!degraded) {
+    try {
+      await repairDegradedScenes(campaignId, 2);
+    } catch (e) {
+      console.error("[turn] degraded-scene repair failed:", e instanceof Error ? e.message : e);
     }
   }
   // Surface in the LIVE session (re-read: turns may have advanced meanwhile), and

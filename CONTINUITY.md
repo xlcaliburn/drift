@@ -75,6 +75,21 @@ from ~10 to ~6 exchanges. The 4 dropped exchanges are exactly the ones the scene
 summaries now cover better than raw text did. **Not a same-commit change** — do
 it after summaries have run in play, so a regression is easy to attribute.
 
+### 3a. Self-healing memory tier — **SHIPPED 2026-07-17**
+
+The Lyra analysis showed the real failure shape: the analyst fails, the F-3 stub
+persists FOREVER, and nothing alarms — 12 of 14 summaries junk in one campaign,
+invisible until three appeals. Now: (1) every analyst call is AUDITED —
+`SummaryTelemetry` rides `SceneAnalysis` and lands in `ai_calls` as kind
+`summary` (model, fallback, jsonRepair salvage, error) — `/admin/ai-calls`
+filtered to `summary` is the memory-health dashboard; (2) a failed compression
+is stamped `degraded` and keeps its raw transcript slice (`scenes.raw_slice`,
+migration 026); (3) `repairDegradedScenes` re-runs the analyst from the
+preserved slice — triggered by the next HEALTHY scene close (2 per run) and the
+manual re-sync (3 per run) — replacing the stub and folding in the NPC/thread
+updates the original failure dropped. Not retro-editing: same transcript in,
+same tier written. Pre-026 stub rows have no preserved slice and stay as-is.
+
 ### 3. Bug — summarizer persists raw truncated JSON — **FIXED 2026-07-16**
 
 Some scene summaries were persisted as **raw truncated JSON** (e.g.

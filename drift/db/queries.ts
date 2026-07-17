@@ -266,6 +266,9 @@ export async function saveScene(
   db: SupabaseClient,
   campaignId: string,
   scene: SceneMemory,
+  /** DEGRADED rows (F-3 stub) keep their raw transcript slice so a later pass can
+   *  re-summarize (026); a healthy save clears both flag and slice. */
+  opts: { rawSlice?: string } = {},
 ): Promise<void> {
   await db.from("scenes").upsert({
     id: `scene-${campaignId}-${scene.seq}`,
@@ -275,8 +278,36 @@ export async function saveScene(
     location_id: scene.locationId ?? null,
     summary: scene.summary,
     entity_refs: scene.entityRefs,
+    degraded: scene.degraded ?? false,
+    raw_slice: scene.degraded ? opts.rawSlice ?? null : null,
     ended_at: new Date().toISOString(),
   });
+}
+
+/** Degraded scene rows (failed compressions) that still carry their raw slice —
+ *  the repair pass's work queue, oldest first. */
+export async function listDegradedScenes(
+  db: SupabaseClient,
+  campaignId: string,
+  limit = 2,
+): Promise<{ seq: number; title: string; locationId?: string; rawSlice: string }[]> {
+  const { data, error } = await db
+    .from("scenes")
+    .select("seq,title,location_id,raw_slice")
+    .eq("campaign_id", campaignId)
+    .eq("degraded", true)
+    .not("raw_slice", "is", null)
+    .order("seq", { ascending: true })
+    .limit(limit);
+  if (error || !data) return [];
+  return data
+    .map((r) => ({
+      seq: Number(r.seq),
+      title: String(r.title ?? ""),
+      locationId: r.location_id ? String(r.location_id) : undefined,
+      rawSlice: String(r.raw_slice ?? ""),
+    }))
+    .filter((r) => r.rawSlice.length > 0);
 }
 
 /** Load a campaign's most recent scene summaries, oldest→newest. */
@@ -287,7 +318,7 @@ export async function loadRecentScenes(
 ): Promise<SceneMemory[]> {
   const { data, error } = await db
     .from("scenes")
-    .select("seq,title,summary,entity_refs,location_id")
+    .select("seq,title,summary,entity_refs,location_id,degraded")
     .eq("campaign_id", campaignId)
     .order("seq", { ascending: false })
     .limit(limit);
@@ -299,6 +330,7 @@ export async function loadRecentScenes(
       summary: String(r.summary ?? ""),
       entityRefs: (r.entity_refs as string[]) ?? [],
       locationId: r.location_id ? String(r.location_id) : undefined,
+      ...(r.degraded ? { degraded: true } : {}),
     }))
     .filter((s) => s.summary.length > 0)
     .reverse();

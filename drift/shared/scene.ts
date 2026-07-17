@@ -105,6 +105,10 @@ export interface SceneMemory {
   summary: string;
   entityRefs: string[];
   locationId?: string;
+  /** True when the analyst FAILED and this summary is the F-3 deterministic stub —
+   *  the row keeps its raw transcript slice so a later pass can re-summarize it
+   *  (self-healing memory; see lib/analystRun.repairDegradedScenes). */
+  degraded?: boolean;
 }
 
 /** Engine caps (F-2/F-4): the model can't grow these without bound. */

@@ -46,10 +46,26 @@ export type ThreadAnalysis =
   | { op: "open"; title: string; body?: string }
   | { op: "resolve"; id: string };
 
+/** Observability for one analyst call — the memory tier's model calls used to be
+ *  the ONLY unaudited path in the system, so an epidemic of failed summaries was
+ *  invisible until players felt it. Call sites record this via recordAiCall. */
+export interface SummaryTelemetry {
+  model: string;
+  latencyMs: number;
+  usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
+  /** The primary model errored and a fallback answered. */
+  fellBack: boolean;
+  /** The JSON came back truncated and repairTruncatedJson salvaged it. */
+  repaired: boolean;
+  /** Set when NO model produced a usable summary (the F-3 stub will fire). */
+  error?: string;
+}
+
 export interface SceneAnalysis extends SceneSummary {
   npcs: NpcAnalysis[];
   items: ItemAnalysis[];
   threads: ThreadAnalysis[];
+  telemetry: SummaryTelemetry;
 }
 
 const SYSTEM =
@@ -206,6 +222,15 @@ export async function analyzeScene(
     `Other known entity ids (factions/locations): ${entityIds.join(", ")}\n\n` +
     `Scene transcript:\n${transcript}`;
 
+  const telemetry: SummaryTelemetry = {
+    model: primary,
+    latencyMs: 0,
+    usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    fellBack: false,
+    repaired: false,
+  };
+  const startedAt = Date.now();
+
   async function callModel(model: string): Promise<string> {
     if (isDeepSeekModel(model)) {
       const resp = await deepseekChat({
@@ -218,6 +243,9 @@ export async function analyzeScene(
         system: [{ type: "text", text: ANALYST_SYSTEM }],
         messages: [{ role: "user", content: user }],
       });
+      telemetry.usage.inputTokens = resp.usage?.input_tokens ?? 0;
+      telemetry.usage.outputTokens = resp.usage?.output_tokens ?? 0;
+      telemetry.usage.cacheReadTokens = resp.usage?.cache_read_input_tokens ?? 0;
       const text = resp.content.find((b) => b.type === "text");
       return text && text.type === "text" ? text.text : "{}";
     }
@@ -228,18 +256,31 @@ export async function analyzeScene(
       system: ANALYST_SYSTEM,
       messages: [{ role: "user", content: user }],
     });
+    telemetry.usage.inputTokens = resp.usage.input_tokens;
+    telemetry.usage.outputTokens = resp.usage.output_tokens;
+    telemetry.usage.cacheReadTokens = resp.usage.cache_read_input_tokens ?? 0;
+    telemetry.usage.cacheWriteTokens = resp.usage.cache_creation_input_tokens ?? 0;
     const text = resp.content.find((b) => b.type === "text");
     return text && text.type === "text" ? text.text : "{}";
   }
 
   let raw = "{}";
+  const callErrors: string[] = [];
   for (const model of candidates) {
     try {
       raw = await callModel(model);
+      telemetry.model = model;
+      telemetry.fellBack = model !== primary;
       break;
     } catch (e) {
-      console.error(`[analyst] model ${model} failed:`, e instanceof Error ? e.message : e);
+      const msg = e instanceof Error ? e.message : String(e);
+      callErrors.push(`${model}: ${msg}`);
+      console.error(`[analyst] model ${model} failed:`, msg);
     }
+  }
+  telemetry.latencyMs = Date.now() - startedAt;
+  if (callErrors.length === candidates.length) {
+    telemetry.error = `all models failed — ${callErrors.join(" · ")}`.slice(0, 400);
   }
 
   const knownIds = new Set(npcs.map((n) => n.id));
@@ -255,6 +296,7 @@ export async function analyzeScene(
       // scene (or worse, persisting the raw JSON text as a summary).
       const repaired = repairTruncatedJson(unfenced);
       if (!repaired) throw new Error("unparseable");
+      telemetry.repaired = true;
       parsed = JSON.parse(repaired);
     }
     const npcUpdates: NpcAnalysis[] = (Array.isArray(parsed.npcs) ? parsed.npcs : [])
@@ -293,16 +335,20 @@ export async function analyzeScene(
       })
       .filter((t: ThreadAnalysis | null): t is ThreadAnalysis => t !== null)
       .slice(0, 3);
+    const summary = String(parsed.summary ?? "");
+    if (!summary && !telemetry.error) telemetry.error = "model returned no summary field";
     return {
-      summary: String(parsed.summary ?? ""),
+      summary,
       entityRefs: Array.isArray(parsed.entityRefs) ? parsed.entityRefs.map(String) : [],
       npcs: npcUpdates,
       items: itemUpdates,
       threads: threadUpdates,
+      telemetry,
     };
   } catch {
     // Empty summary = honest failure: the caller's deterministic F-3 stub takes
     // over. Never persist raw model text as memory.
-    return { summary: "", entityRefs: [], npcs: [], items: [], threads: [] };
+    if (!telemetry.error) telemetry.error = `unparseable response (${raw.length} chars, repair failed)`;
+    return { summary: "", entityRefs: [], npcs: [], items: [], threads: [], telemetry };
   }
 }
