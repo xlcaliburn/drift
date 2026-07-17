@@ -1,5 +1,12 @@
 # HANDOFF — finish the NPC canon work (drift-audit findings #3–#5 + quest cast manifests)
 
+> **This effort is FULLY SHIPPED and this doc is now the WORKED EXAMPLE of the
+> house workflow — the process itself is codified in `WORKFLOW.md`** (the
+> non-negotiables and house-mechanics sections below were extracted there;
+> future handoffs reference WORKFLOW.md instead of restating them). Kept intact,
+> shipped-annotations and all, so a new session can see one full
+> strategy→implement→review cycle end to end.
+
 *Written 2026-07-17 for the implementing session. This is a COMPLETE spec: the
 design decisions are already made and owner-approved — implement, don't
 re-litigate. Read CLAUDE.md first (invariants, commands, multi-window rules),

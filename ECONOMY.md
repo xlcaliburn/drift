@@ -1,7 +1,9 @@
 # ECONOMY.md — Income, Upkeep, and Path Balance
 
 *Ties together ITEMS.md (sinks), CREW.md (upkeep), COMBAT.md (risk), and
-WORLD_SYSTEMS.md (artifact returns). Status: draft for review.*
+WORLD_SYSTEMS.md (artifact returns). Status: E-1/E-2/E-3 RESOLVED (engine-owned
+money, tenday clock, dock repair + debt). LEFT: E-4/E-5/E-6, gated on
+trade/cargo-capacity work — tracked in STATUS.md.*
 
 ---
 

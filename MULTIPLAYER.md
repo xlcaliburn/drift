@@ -1,5 +1,9 @@
 # DRIFT — Shared-World Multiplayer (Season Concept)
 
+*Status: §1 dossiers, §2 relationship ledger, §3 cross-campaign reads SHIPPED
+(+ universe-shared NPCs, migration 014). LEFT: §4 break-from-faction trigger,
+§5 seasons + reckoning, §6 canon review queue, Rolodex UI — see STATUS.md.*
+
 *A shared-world narrative game for ~5–6 friends. Space-opera setting kept. This
 is NOT a strategy/4X game — no meters, scores, or captured planets. Influence and
 expansion are emergent and judged as story.*

@@ -95,35 +95,18 @@ with accept/abandon, and an `activeJobs` narrator context section. The engine de
 completion from real signals — arrival / won fight / matching skill success — and
 pays the reward; offloads quest STRUCTURE off DeepSeek. Phase 1b backlog in the doc).
 
-**What's LEFT to build** (rough order; each has a design doc):
+**What's LEFT to build:** `STATUS.md` is THE single backlog (kept current at
+every feature close-out — don't duplicate it here). Headline order: shared-world
+runtime remainder (break-trigger, seasons, Rolodex — `MULTIPLAYER.md` §4-6),
+world systems (`WORLD_SYSTEMS.md`), Locations Phase 2, Continuity v2 remainder
+(history-window shrink, GATED — `CONTINUITY_HARDENING.md` Task 7), Backstory
+Phase 2, plus per-feature phase backlogs (QUESTS 1b+, RELATIONSHIPS 2, CREW 1.1).
 
-- **Crew v1** (`CREW.md`) — recruitment + scaling upkeep. Nothing built yet.
-- **Shared-world runtime** (`MULTIPLAYER.md`) — dossiers (§1), cross-campaign reads
-  (§3), and the **relationship ledger** (§2 — `shared/ledger.ts`, gates cross-player
-  cameos to what the character knows, persisted on `campaign_runtime.player_ledger`,
-  migration 020) are SHIPPED. LEFT: the break-from-faction trigger (§4), seasons +
-  season-end reckoning (§5), a Rolodex UI, and the deferred canon-review queue (§6).
-- **World systems** (`WORLD_SYSTEMS.md`) — exploration / artifacts / consequence-web.
-- **Continuity v2** (`CONTINUITY.md`) — a durable facts ledger, and the history-
-  window shrink (~10→6 exchanges) after a playtest cycle.
-- **Scene-analyst inference layer** (NEXT) — the player **directive** SHIPPED, and
-  the reasoning-model scene ANALYST itself SHIPPED (`llm/summarizer.ts`, configurable
-  `SCENE_ANALYST_MODEL` default deepseek-v4-flash (NEVER a thinking model — the
-  reasoner default's hidden thinking truncated 30-86% of scene summaries per
-  campaign into junk, the fleet's biggest memory-loss source), runs on scene close + mid-scene +
-  a manual re-sync; picks up/categorizes NPCs + items, refreshes relationship logs,
-  and **reconciles quest threads** — opens an emergent objective the live `threads:[]`
-  missed, resolves a finished one (`llm/threadReconcile.ts`; QUESTS.md backstop).
-  Still TODO: have it also INFER a rolling playstyle read + relationship deltas + a
-  facts note, accumulated on the campaign and fed alongside the directive (first
-  slice of the facts ledger above).
-- **Feature phase-backlogs** — QUESTS Phase 1b+ (model-signalled "report back" steps,
-  inventory-tracked cargo, NPC-given jobs, faction arcs) and RELATIONSHIPS Phase 2
-  (betrayable secrets, favor ledger, reputation-aware greetings, hostility escalation).
-- **Small deferred:** the I-2 combat backstop (auto-START combat when the model
-  narrates a fight but under-fires `combatStart` — the player-triggered gun-skill
-  reroute half already ships); a summarizer bug that persisted raw truncated JSON as
-  a few scene summaries (FIXED — see CONTINUITY.md).
+**How work gets built:** `WORKFLOW.md` — the strategy→implement→review loop
+(strong model writes a decision-final `HANDOFF_*.md`, fast model implements it
+task-by-task, strong model reviews the diffs against the original failure and
+fixes forward). The non-negotiables, house mechanics, and the review checklist
+live THERE, once — handoffs only carry what's feature-specific.
 
 Don't add prose rules for things the engine can enforce.
 
@@ -144,6 +127,11 @@ Don't add prose rules for things the engine can enforce.
 
 ## Watch-outs
 
+- **`campaign_runtime` jsonb slices load UNPARSED** (jobs, sceneCard,
+  npcRelations… — `loadCampaignRuntime` casts, never Zod-parses, so schema
+  defaults never run on old rows). A NEW field on a persisted type MUST ship
+  with load-time normalization in `lib/state.ts` — this exact miss would have
+  crashed every live campaign once (the cast-manifest review catch).
 - `profiles` / `turn_usage` have RLS enabled with **no policies** (deny-all) — by
   design; all DB access is server-side via the service key. Supabase's advisor
   flags this; it's expected, not a bug.
@@ -211,16 +199,19 @@ Don't add prose rules for things the engine can enforce.
   section forces an explicit directive once enough tendays pass in silence. Phase 2
   (arrival tie-in, NPC-initiated contact, milestone beats, structured backstory tags)
   not yet built.
-- `HANDOFF_NPC_CANON.md` — the NPC canon spec, now FULLY SHIPPED (2026-07-18:
-  combat-tier pin, faction set-once, voice/age facets, quest cast manifests +
-  the review-pass hardening). Kept as the record of what was built and as the
-  TEMPLATE for future analysis→implement→review handoffs — each task carries
-  shipped-annotations describing what the implementer decided and what the
-  closing review caught.
-- `IMPLEMENTATION.md` — what's left to build, in rough order
+- `WORKFLOW.md` — **the strategy→implement→review loop**: non-negotiables, house
+  mechanics (golden test / migrations / multi-window git / Windows traps), the
+  handoff template, and the phase-3 review checklist. Handoffs reference it
+  instead of restating it.
+- `HANDOFF_NPC_CANON.md` — the NPC canon spec, FULLY SHIPPED (2026-07-18) —
+  kept as the WORKED EXAMPLE of the workflow: each task carries shipped-
+  annotations describing what the implementer decided and what the closing
+  review caught.
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
-- `STATUS.md` — remaining-work snapshot + how to run/verify
+- `STATUS.md` — **THE single backlog** (what's left, in order, updated at every
+  feature close-out) + how to run/verify. `IMPLEMENTATION.md` is a retired stub
+  pointing here.
 
 ## Multi-window coordination
 

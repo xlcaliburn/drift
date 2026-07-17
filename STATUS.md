@@ -1,19 +1,23 @@
 # DRIFT — Status & Resume Notes
 
-*What's left to build + how to run. For the "why", see `ARCHITECTURE.md`; for the
-fast orientation, `CLAUDE.md`.*
+*THE single "what's left" list + how to run. Kept current at every feature
+close-out (WORKFLOW.md Phase 3). For the "why", see `ARCHITECTURE.md`; for fast
+orientation, `CLAUDE.md` (its docs map carries per-doc status). IMPLEMENTATION.md
+is retired into this file.*
 
-The app is built, playable, persistent, and multiplayer-seeded. Everything through
-the core platform is shipped (engine, character creation, structured JSON narrator
-turns, Supabase persistence + durable sessions, Google auth, admin panel + campaign
-editor, per-user budgets, retrieval tuning, multi-turn combat both scales +
-**net-worth enemy scaling**, bounded-accuracy leveling, verb actions, **items
-COMPLETE** (catalog, slots, ammo, shops, swap chips, dock repair/debt), scene-memory
-continuity v1 + the reasoning-model **scene analyst**, quest-gated relationships +
-**relationship tiers/personal jobs** (RELATIONSHIPS Phase 1), Bleeding Out death
-saves, universe-shared NPCs + backstory NPCs, People/Factions UI, the player
-**directive**, the **faction patron / early-game safety net** (STARTER), and the
-**procedural job board Phase 1** (QUESTS)). This file tracks only what remains.
+The app is built, playable, persistent, and multiplayer-seeded. Shipped: the pure
+engine, character creation (+ signature skills, story prompt), structured JSON
+narrator turns, Supabase persistence + durable sessions + optimistic concurrency,
+Google auth, admin panel + **admin campaign editor**, per-user budgets, multi-turn
+combat both scales + net-worth scaling, bounded-accuracy leveling, verb actions,
+items COMPLETE (catalog/slots/shops/cargo/dock repair+debt), scene-memory
+continuity v1 + the scene analyst + the **facts ledger** (grounding/pinning/
+correction loop), travel (routes/risk/arrival richness + engine-owned location
+backstop), **crew v1**, quests Phase 1 + diegetic offers + **cast manifests**,
+relationship tiers + personal jobs, Bleeding Out + self-harm gate, universe-shared
+NPCs + **NPC canon pins** (home/role/quirk/backstory/appearance/sex/tier/faction/
+voice/age, fate recording, name-collision + companion + presence guards — see
+CHECKS.md §2), the faction patron, backstory pressure, and the player directive.
 
 ## How to run / verify
 
@@ -23,75 +27,54 @@ npm install
 cp .env.example .env.local     # DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY; + Supabase vars for auth
 npm run dev                    # http://localhost:3000
 npx tsc --noEmit               # fast typecheck (never touches .next)
-npm test                       # ~525 engine/llm tests, no keys needed
+npx vitest run                 # ~834 model-free tests, no keys needed
 ```
 
 - **Keyless mode** (no Supabase vars): no login, stub dev admin, nothing persists.
-  With the vars, Google sign-in is required.
-- **Don't `npm run build` while the dev server runs** — they fight over `.next` and
-  it fails with spurious errors. Verify with `tsc --noEmit` + `npm test`; only build
-  after stopping the server. Stale `.next` → `rm -rf .next && npm run dev` + hard
-  refresh. Never run two dev servers against the same `.next`.
-- Supabase MCP connector is authenticated — run migrations with `apply_migration`
-  (project `mgsogqnrpvoblqxkfgge`, the "drift" project). Migrations are hand-run SQL
-  in `drift/db/migrations/`.
+- **Don't `npm run build` while the dev server runs** (they fight over `.next`).
+- Migrations: hand-run SQL in `drift/db/migrations/`, applied via the Supabase MCP
+  (`apply_migration`, project `mgsogqnrpvoblqxkfgge`). Reconcile numbering against
+  `list_migrations` first — see WORKFLOW.md.
 
 ## What's left to build (rough order)
 
-1. **Crew v1** (`CREW.md`): recruitment + scaling upkeep. Nothing built yet.
-2. **Shared-world runtime** (`MULTIPLAYER.md`): dossiers (§1), cross-campaign reads
-   (§3), and the **relationship ledger** (§2 — gates cross-player cameos to what the
-   character knows, `shared/ledger.ts`, migration 020) are SHIPPED. LEFT: the
-   break-away-from-faction trigger (§4), seasons with fixed end dates + a season-end
-   "state of the universe" reckoning (§5), a Rolodex UI, and the optional canon
-   review queue (§6, `world_events.visibility` already exists).
-3. **World systems** (`WORLD_SYSTEMS.md`): exploration / artifacts / consequence-web.
-4. **Continuity v2** (`CONTINUITY.md`): a durable **facts ledger**; the scene-analyst
-   **playstyle/facts inference** layer (analyst infra shipped; the rolling playstyle
-   read + relationship deltas + facts note accumulated on the campaign remains);
-   history-window shrink (~10→6 exchanges) after a playtest cycle.
+1. **Shared-world runtime** (`MULTIPLAYER.md`): dossiers (§1), cross-campaign
+   reads (§3), and the relationship ledger (§2) are SHIPPED. LEFT: the
+   break-away-from-faction trigger (§4), seasons with fixed end dates + the
+   season-end reckoning (§5), a Rolodex UI, and the optional canon review queue
+   (§6 — `world_events.visibility` already exists).
+2. **World systems** (`WORLD_SYSTEMS.md`): exploration / artifacts /
+   consequence-web. Unbuilt.
+3. **Locations Phase 2** (`LOCATIONS.md`): tiered canonical places + persisted
+   procedural SITES with loot tables. Design only.
+4. **Continuity v2 remainder** (`CONTINUITY.md` + `CONTINUITY_HARDENING.md`):
+   the history-window shrink (Task 7) — GATED on ~1 week of healthy production
+   summary telemetry; the analyst's rolling playstyle read + relationship deltas.
+5. **Backstory Phase 2** (`BACKSTORY.md`): arrival tie-in, NPC-initiated contact,
+   milestone beats, structured backstory tags.
 
 ## Feature-doc phase backlogs (next phases of shipped features)
 
 - **Quests Phase 1b+** (`QUESTS.md`): model-signalled "report back" steps,
-  inventory-tracked cargo, NPC-given jobs, faction arcs, board top-up tuning.
-- **Relationships Phase 2** (`RELATIONSHIPS.md`): betrayable secrets, favor ledger,
-  reputation-aware greetings, ally-tier mechanics, hostility escalation.
+  NPC-given jobs (`giver` = npc id), faction arcs, the incidental-NPC reusable
+  pool, board top-up tuning. (Cargo + cast manifests SHIPPED.)
+- **Relationships Phase 2** (`RELATIONSHIPS.md`): betrayable secrets, favor
+  ledger, reputation-aware greetings, hostility escalation.
+- **Crew v1.1** (`CREW.md`): crew statuses/resists, downed-crew rules, mutiny,
+  ship-scale crew actions.
 
 ## Small deferred items
 
-- Optimistic-lock guard on `campaign_runtime` (`updated_at` is written but not checked).
-- I-2 combat backstop (`COMBAT.md` §4): auto-START combat when the model narrates a
-  fight but doesn't emit `combatStart` (the player-triggered gun-skill reroute half
-  already ships).
-- Summarizer bug: a few scene summaries persisted raw truncated JSON (`{\n "summary":
-  "…`) instead of clean text — an output-parsing bug to fix.
-- ECONOMY E-4/E-5/E-6 (`ECONOMY.md`): retire per-job wage once crew upkeep lands,
-  cargo-capacity rules, a payout variance floor — all gated on unbuilt crew/trade.
-
-## Design decisions locked (don't re-litigate)
-
-- Engine does all math; the LLM only narrates + proposes via tools.
-- Multiplayer = shared **narrative** world, NOT a strategy game. No meters/scores/
-  planet-capturing. Mechanics never cross campaigns; only lore does.
-- Each player = one character in a canon faction, own private async campaign in a
-  shared universe, fully AI-run, seasons with a fixed end date. Cross-player contact
-  via dossiers + ledgers.
-- Cheapest-model-first: DeepSeek default, Sonnet for cinematic/combat. Equal footing
-  at character creation.
-- Open signup → admin approval → players see only their own campaigns → hard per-user
-  budget caps protect the API keys.
+- **I-2 combat backstop** (`COMBAT.md`): auto-START combat when the model
+  narrates a fight but under-fires `combatStart` (the player-triggered gun-skill
+  reroute half already ships).
+- Allegiance CHANGES as story events (the faction pin is set-once; a defection
+  needs its own beat — consequence-web territory).
+- ECONOMY E-4/E-5/E-6 (`ECONOMY.md`): gated on trade/cargo-capacity work.
+- Job-cast members lost-on-death cleanup nuance (QUESTS.md).
 
 ## Watch-outs
 
-- `profiles` / `turn_usage` have RLS enabled with **no policies** (deny-all) — by
-  design; all DB access is server-side via the service key. Supabase's advisor flags
-  it; expected, not a bug.
-- Budget check is per-turn and non-locking: two concurrent turns can both pass, so a
-  cap can overshoot by ~one turn. Fine at playtest scale.
-- DeepSeek's discipline is weaker than Claude's; the failure mode is a turn that
-  narrates without rolling. It can't corrupt state (the engine is the only mutator) —
-  tighten the prompt if it appears.
-- The in-memory session cache in `lib/state.ts` is the per-turn fast path; the
-  `campaign_runtime` snapshot is the durable source. A running dev server can
-  re-persist stale in-memory NPCs after a direct DB cleanup — restart to cold-load.
+Live in `CLAUDE.md` (single copy — RLS deny-all is deliberate, budget check is
+non-locking, DeepSeek under-fire failure mode, warm-cache vs direct DB writes,
+jsonb slices load unparsed).
