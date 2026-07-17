@@ -34,6 +34,7 @@ The three recurring failure modes every family defends against:
 | Ordered apply registry | `llm/applyPlan/index.ts` | Plan intents apply in a fixed order (money → trade → npcs → gear → continuity → quests → sceneEnd → combatStart LAST), unit-tested model-free |
 | History structural repair | `llm/history.ts` `sanitizeHistory` | Orphan tool_use/tool_result pairs are repaired on read so one bad old turn can't wedge a campaign (400s) |
 | Turn-failure rollback | `app/api/turn/route.ts` `memorySnapshot` | Scene card / npcRelations / npcs are snapshotted per turn and restored on error — a failed turn *never happened*; retry resumes exactly |
+| **`campaign_runtime` CAS** | `db/queries.saveCampaignRuntime` (`updated_at` compare-and-swap) + `lib/state.persistSession` (conflict → merge → retry once → force-write) + `shared/runtimeMerge.ts` (pure facts/npcs/recentScenes merges) | every persist | last-write-wins clobber — writers on this row multiplied (live turn, scene compression, mid-scene analyst, degraded repair, manual re-sync); `updated_at` used to be written but never checked, so a background pass finishing mid-turn could silently overwrite fresher facts/npcs with a stale copy. A CONFLICT now reloads + merges the background-owned slices before one retry; a second conflict force-writes rather than blocking a turn |
 
 ---
 
@@ -203,8 +204,6 @@ mapping it to a field.
   suit is narrative-only.
 - **Crew v1.1** — crew don't track statuses/resists; downed crew can't be finished
   off; mutiny events; ship-scale crew actions.
-- **Optimistic lock on `campaign_runtime`** — `updated_at` written, never checked;
-  two concurrent turns can interleave a stale save.
 
 ## Incident → check (the lineage, for the record)
 

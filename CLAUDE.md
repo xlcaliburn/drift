@@ -120,11 +120,10 @@ pays the reward; offloads quest STRUCTURE off DeepSeek. Phase 1b backlog in the 
 - **Feature phase-backlogs** — QUESTS Phase 1b+ (model-signalled "report back" steps,
   inventory-tracked cargo, NPC-given jobs, faction arcs) and RELATIONSHIPS Phase 2
   (betrayable secrets, favor ledger, reputation-aware greetings, hostility escalation).
-- **Small deferred:** optimistic-lock guard on `campaign_runtime` (`updated_at` is
-  written, not checked); the I-2 combat backstop (auto-START combat when the model
+- **Small deferred:** the I-2 combat backstop (auto-START combat when the model
   narrates a fight but under-fires `combatStart` — the player-triggered gun-skill
   reroute half already ships); a summarizer bug that persisted raw truncated JSON as
-  a few scene summaries.
+  a few scene summaries (FIXED — see CONTINUITY.md).
 
 Don't add prose rules for things the engine can enforce.
 

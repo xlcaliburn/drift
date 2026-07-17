@@ -231,7 +231,25 @@ export async function loadCampaignRuntime(
   };
 }
 
-/** Upsert a campaign's runtime snapshot (transcript, history, log, focus). */
+/**
+ * Upsert a campaign's runtime snapshot (transcript, history, log, focus).
+ *
+ * OPTIMISTIC CONCURRENCY (CHECKS.md §0): writers on this row have multiplied —
+ * the live turn, background scene compression, the mid-scene analyst, degraded
+ * repair, manual re-sync — and a plain upsert is last-write-wins, so a
+ * background pass finishing DURING a player's turn could silently persist a
+ * STALE copy of facts/npcs/etc over the turn's fresher one. When
+ * `expectedUpdatedAt` is passed, the write is a compare-and-swap: it only lands
+ * if the row's `updated_at` still matches what the caller last saw. 0 rows
+ * matching means either a genuine CONFLICT (someone else wrote first — the
+ * caller is expected to reload, merge, and retry) or the row doesn't exist yet
+ * (first save reached with a stale/undefined expectation) — falls through to a
+ * plain upsert in that case. Omitting `expectedUpdatedAt` keeps the old
+ * unconditional-upsert behavior (used at first save / when no prior load
+ * happened). Never throws — a persistence hiccup must not break a turn; errors
+ * are logged and degrade to a best-effort plain write, same laxness as before
+ * this feature existed.
+ */
 export async function saveCampaignRuntime(
   db: SupabaseClient,
   campaignId: string,
@@ -239,8 +257,10 @@ export async function saveCampaignRuntime(
     CampaignRuntime,
     "transcript" | "history" | "log" | "focusIds" | "tickedThisScene" | "combat" | "npcs" | "sceneCard" | "npcRelations" | "lastChoices" | "jobs" | "playerLedger" | "facts"
   >,
-): Promise<void> {
-  await db.from("campaign_runtime").upsert({
+  opts: { expectedUpdatedAt?: string } = {},
+): Promise<{ conflict: boolean; updatedAt: string }> {
+  const updatedAt = new Date().toISOString();
+  const payload = {
     campaign_id: campaignId,
     transcript: rt.transcript,
     history: rt.history,
@@ -255,8 +275,35 @@ export async function saveCampaignRuntime(
     jobs: rt.jobs,
     player_ledger: rt.playerLedger,
     facts: rt.facts,
-    updated_at: new Date().toISOString(),
-  });
+    updated_at: updatedAt,
+  };
+
+  if (opts.expectedUpdatedAt) {
+    const { data, error } = await db
+      .from("campaign_runtime")
+      .update(payload)
+      .eq("campaign_id", campaignId)
+      .eq("updated_at", opts.expectedUpdatedAt)
+      .select("campaign_id");
+    if (!error && data && data.length > 0) return { conflict: false, updatedAt };
+    if (!error) {
+      // 0 rows matched the CAS condition — a genuine conflict, unless the row
+      // simply doesn't exist yet (falls through to the plain upsert below).
+      const { data: existing } = await db
+        .from("campaign_runtime")
+        .select("campaign_id")
+        .eq("campaign_id", campaignId)
+        .maybeSingle();
+      if (existing) return { conflict: true, updatedAt: opts.expectedUpdatedAt };
+    } else {
+      console.error("[queries] saveCampaignRuntime CAS update failed:", error.message);
+      // fall through to a best-effort plain upsert.
+    }
+  }
+
+  const { error } = await db.from("campaign_runtime").upsert(payload);
+  if (error) console.error("[queries] saveCampaignRuntime upsert failed:", error.message);
+  return { conflict: false, updatedAt };
 }
 
 // ── Scene summaries (CONTINUITY.md tier RECENT) ──────────────────────────────

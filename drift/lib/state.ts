@@ -14,6 +14,7 @@ import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
 import type { Fact } from "@/shared/facts";
 import type { Dossier } from "@/shared/multiplayer";
+import type { CampaignRuntime } from "@/db/queries";
 
 /** Campaign-scoped NPCs (narrator-introduced or creation relations) carry these id
  *  prefixes; universe-seed NPCs do not. Used to split the two for persistence. */
@@ -58,6 +59,11 @@ export interface SessionData {
   /** The FACTS LEDGER (CONTINUITY.md v2) — durable standing facts (deal terms,
    *  appointments, bans, debts), engine-capped + deduped. */
   facts: Fact[];
+  /** The `campaign_runtime` row's `updated_at` AS LAST SEEN by this session —
+   *  the optimistic-concurrency baseline `persistSession` compares against on
+   *  write (CHECKS.md §0 "campaign_runtime CAS"). Undefined for a session that
+   *  hasn't round-tripped the DB yet (fresh creation, or keyless dev mode). */
+  runtimeUpdatedAt?: string;
 }
 
 const store = new Map<string, SessionData>();
@@ -129,6 +135,9 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               jobs: runtime.jobs ?? [],
               playerLedger: runtime.playerLedger ?? {},
               facts: runtime.facts ?? [],
+              // CAS baseline (CHECKS.md §0): the version of campaign_runtime this
+              // session was loaded from — persistSession compares against it.
+              runtimeUpdatedAt: runtime.updatedAt,
             }
           : {
               state,
@@ -146,6 +155,9 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               jobs: [],
               playerLedger: {},
               facts: [],
+              // No prior runtime row (legacy pre-M7 campaign) — first save is a
+              // plain upsert (persistSession passes no expectedUpdatedAt).
+              runtimeUpdatedAt: undefined,
             };
       store.set(campaignId, session);
       return session;
@@ -215,7 +227,18 @@ export async function persistSession(campaignId: string, session: SessionData): 
         e instanceof Error ? e.message : e,
       );
     }
-    await saveCampaignRuntime(db, campaignId, {
+    // OPTIMISTIC CONCURRENCY (CHECKS.md §0): writers on campaign_runtime have
+    // multiplied (the live turn, background scene compression, the mid-scene
+    // analyst, degraded repair, manual re-sync), so this write is a
+    // compare-and-swap against the row's `updated_at` AS LAST SEEN by this
+    // session, not a blind upsert. On CONFLICT, fold the other writer's
+    // background-owned slices (facts/npcs/recentScenes) into ours and retry
+    // ONCE; a second conflict force-writes (never let bookkeeping block a turn).
+    // `runtimeNpcs`/`facts` are mutable locals so a conflict-merge can update
+    // what the retry writes without touching `session` until we know it stuck.
+    let runtimeNpcs = campaignNpcs;
+    let facts = session.facts ?? [];
+    const runtimePayload = () => ({
       transcript: session.transcript,
       history: session.history,
       log: session.log,
@@ -224,14 +247,59 @@ export async function persistSession(campaignId: string, session: SessionData): 
       combat: session.combat,
       // Keep writing the campaign's OWN NPCs to the runtime snapshot too, for
       // back-compat: a campaign saved before 014's promotion still restores them.
-      npcs: campaignNpcs,
+      npcs: runtimeNpcs,
       sceneCard: session.sceneCard,
       npcRelations: session.npcRelations,
       lastChoices: session.lastChoices,
       jobs: session.jobs ?? [],
       playerLedger: session.playerLedger ?? {},
-      facts: session.facts ?? [],
+      facts,
     });
+
+    let result = await saveCampaignRuntime(db, campaignId, runtimePayload(), {
+      expectedUpdatedAt: session.runtimeUpdatedAt,
+    });
+
+    if (result.conflict) {
+      let fresh: CampaignRuntime | null = null;
+      try {
+        const { loadCampaignRuntime, loadRecentScenes } = await import("@/db/queries");
+        const { mergeFactsOnConflict, mergeNpcsOnConflict, mergeRecentScenesOnConflict } = await import(
+          "@/shared/runtimeMerge"
+        );
+        const [freshRuntime, freshScenes] = await Promise.all([
+          loadCampaignRuntime(db, campaignId),
+          loadRecentScenes(db, campaignId),
+        ]);
+        fresh = freshRuntime;
+        if (fresh) {
+          facts = mergeFactsOnConflict(fresh.facts, facts);
+          runtimeNpcs = mergeNpcsOnConflict(fresh.npcs, runtimeNpcs);
+          session.recentScenes = mergeRecentScenesOnConflict(freshScenes, session.recentScenes);
+        }
+      } catch (e) {
+        console.error(
+          `[state] conflict-merge reload failed for campaign ${campaignId}:`,
+          e instanceof Error ? e.message : e,
+        );
+      }
+      result = fresh
+        ? await saveCampaignRuntime(db, campaignId, runtimePayload(), { expectedUpdatedAt: fresh.updatedAt })
+        : { conflict: true, updatedAt: session.runtimeUpdatedAt ?? new Date().toISOString() };
+
+      if (result.conflict) {
+        // Two conflicts in a row (or the reload itself failed) — stop trying to
+        // be clever and just land the write. Rare at playtest scale; a stuck
+        // turn is worse than a rare overwrite of a meanwhile-superseded pass.
+        console.warn(`[state] campaign_runtime CAS conflicted twice for ${campaignId} — force-writing`);
+        result = await saveCampaignRuntime(db, campaignId, runtimePayload());
+      }
+    }
+    // Reflect what actually landed, and advance the CAS baseline so the NEXT
+    // persist on this (in-memory-cached) session object compares against what
+    // we just wrote, not a stale version.
+    session.facts = facts;
+    session.runtimeUpdatedAt = result.updatedAt;
     // Build this PC's PUBLIC dossier and promote it into the UNIVERSE-scoped
     // dossiers table so other campaigns in the same world can cameo the character
     // (shared canon — mirrors the NPC promotion above). Recent world_events feed
