@@ -3,6 +3,7 @@ import { hasSupabase } from "@/lib/state";
 import { getServiceClient, listCampaigns, type CampaignSummary } from "@/db/queries";
 import { getAuthedUser, type AuthedUser } from "@/lib/auth";
 import { factionBriefs } from "@/content/briefs";
+import { MAX_CHARACTERS } from "@/shared/multiplayer";
 import UserMenu from "@/components/UserMenu";
 import LoadingLink from "@/components/LoadingLink";
 
@@ -28,9 +29,10 @@ export default async function Home() {
   if (user.status !== "approved") redirect("/pending");
 
   const campaigns = await getCampaigns(user);
-  // One character per player (for now): only offer creation when they have none.
-  // Admins may hold several (seeded/unowned worlds), so keep create available.
-  const canCreate = campaigns.length === 0 || user.role === "admin";
+  // Roster cap: up to MAX_CHARACTERS LIVING characters (deceased don't count).
+  // Admins may hold several (seeded/unowned worlds), so create stays available.
+  const aliveCount = campaigns.filter((c) => c.status !== "deceased").length;
+  const canCreate = aliveCount < MAX_CHARACTERS || user.role === "admin";
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-16">
@@ -62,7 +64,7 @@ export default async function Home() {
       {campaigns.length > 0 && (
         <div className="mt-8">
           <h2 className="text-xs uppercase tracking-widest text-neutral-500">
-            {user.role === "admin" ? "Campaigns" : "Your character"}
+            {user.role === "admin" ? "Campaigns" : "Your characters"}
           </h2>
           <div className="mt-3 space-y-2">
             {campaigns.map((c) => (
@@ -96,7 +98,7 @@ export default async function Home() {
           </div>
           {!canCreate && (
             <p className="mt-3 text-xs text-neutral-500">
-              One character per player for now — continue yours above.
+              Roster full — {MAX_CHARACTERS} living characters is the cap. A slot frees when one falls.
             </p>
           )}
         </div>

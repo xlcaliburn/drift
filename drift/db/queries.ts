@@ -419,6 +419,17 @@ export async function listCampaigns(
  * campaign, so the ranking below only ever matters for the pre-cleanup /
  * transient-duplicate case.
  */
+/** How many LIVING characters a player currently has — the roster-cap check.
+ *  Deceased campaigns never count (death already frees the slot). */
+export async function countAliveCampaigns(db: SupabaseClient, playerId: string): Promise<number> {
+  const { count } = await db
+    .from("campaigns")
+    .select("id", { count: "exact", head: true })
+    .eq("player_id", playerId)
+    .neq("status", "deceased");
+  return count ?? 0;
+}
+
 export async function getOwnedCampaign(
   db: SupabaseClient,
   playerId: string,

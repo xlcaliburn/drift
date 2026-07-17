@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { CreationInput } from "@/shared/multiplayer";
+import { CreationInput, MAX_CHARACTERS } from "@/shared/multiplayer";
 import { buildCharacterFromCreation, buildBackstoryNpcs, buildPatronNpc } from "@/engine";
 import { finalizeCreation, quickCreationNotes } from "@/llm/creationFinalize";
 import { buildNewCampaignState } from "@/lib/newCampaign";
@@ -7,7 +7,7 @@ import { getSession, setSession, persistSession, hasSupabase } from "@/lib/state
 import { buildOpeningHistory } from "@/shared/recap";
 import { freshSceneCard } from "@/shared/scene";
 import { requireApprovedUser, isDevUser } from "@/lib/auth";
-import { getServiceClient, getOwnedCampaign } from "@/db/queries";
+import { getServiceClient, countAliveCampaigns } from "@/db/queries";
 import { recordAiCall } from "@/lib/audit";
 import { takePrewarm } from "@/lib/creationPrewarm";
 
@@ -30,18 +30,15 @@ export async function POST(req: NextRequest) {
   if (auth.error) return auth.error;
   const user = auth.user;
 
-  // One character per player (for now). Enforced here at the API so it can't be
+  // Roster cap: up to MAX_CHARACTERS LIVING characters per player (deceased never
+  // count — death frees the slot). Enforced here at the API so it can't be
   // bypassed by hitting the endpoint directly. Skipped in keyless dev (no owner)
-  // and for admins (who may hold seeded/unowned worlds). A DB partial-unique
-  // index on campaigns(player_id) backs this at the storage layer.
+  // and for admins (who may hold seeded/unowned worlds).
   if (hasSupabase() && !isDevUser(user) && user.role !== "admin") {
-    const existing = await getOwnedCampaign(getServiceClient(), user.id);
-    if (existing) {
+    const alive = await countAliveCampaigns(getServiceClient(), user.id);
+    if (alive >= MAX_CHARACTERS) {
       return NextResponse.json(
-        {
-          error: "You already have a character. Only one per player for now.",
-          existingCampaignId: existing.id,
-        },
+        { error: `You already have ${MAX_CHARACTERS} living characters — the roster cap. Retire one (or let the lanes do it) to make room.` },
         { status: 409 },
       );
     }

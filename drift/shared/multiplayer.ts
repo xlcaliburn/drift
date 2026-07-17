@@ -105,6 +105,11 @@ export const CreationFlavor = z.object({
 });
 export type CreationFlavor = z.infer<typeof CreationFlavor>;
 
+/** Roster cap: how many LIVING characters one player may hold at once. Deceased
+ *  characters never count. Keeps the shared world's cast (and the per-user token
+ *  budget) from being spread across a dozen half-played alts. */
+export const MAX_CHARACTERS = 3;
+
 export const CreationInput = z.object({
   name: z.string().min(1),
   parentFactionId: z.string(),

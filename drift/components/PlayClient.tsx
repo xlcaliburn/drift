@@ -45,7 +45,14 @@ function lastExchanges(transcript: ChatEntry[], n: number): ChatEntry[] {
   return transcript.slice(playerIdxs[playerIdxs.length - n]);
 }
 
-export default function PlayClient({ campaignId }: { campaignId: string }) {
+export default function PlayClient({
+  campaignId,
+  roster = [],
+}: {
+  campaignId: string;
+  /** The player's own characters (from the server) — powers the Switch menu. */
+  roster?: { id: string; name: string; status: string }[];
+}) {
   const [state, setState] = useState<CampaignState | null>(null);
   const [chat, setChat] = useState<ChatEntry[]>([]);
   const [choices, setChoices] = useState<ChoiceOption[]>([]);
@@ -75,6 +82,8 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
   const [sceneStripOpen, setSceneStripOpen] = useState(false);
   // Composer stays compact (1 row) until the player actually engages with it.
   const [inputFocused, setInputFocused] = useState(false);
+  // Header Switch-characters dropdown (multi-character roster).
+  const [showSwitcher, setShowSwitcher] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackState, setFeedbackState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   // The player's own submitted reports + status, shown inside the feedback modal.
@@ -384,6 +393,63 @@ export default function PlayClient({ campaignId }: { campaignId: string }) {
         </span>
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
           {!hasApiKey && <span className="hidden text-sm text-bad sm:inline">narration disabled</span>}
+          {/* Switch characters — the player's roster (each character is its own
+              campaign). Shown whenever the server passed a roster. */}
+          {roster.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setShowSwitcher((v) => !v)}
+                className="rounded-md border border-edge px-2.5 py-1.5 text-xs text-neutral-300 transition hover:border-accent hover:text-accent"
+                title="Switch characters"
+              >
+                ⇄<span className="hidden sm:inline"> Switch</span>
+              </button>
+              {showSwitcher && (
+                <>
+                  {/* Click-away backdrop. */}
+                  <div className="fixed inset-0 z-40" onClick={() => setShowSwitcher(false)} />
+                  <div className="absolute right-0 z-50 mt-1.5 w-56 rounded-lg border border-edge bg-panel p-1.5 shadow-xl">
+                    <div className="px-2 pb-1 pt-0.5 text-[10px] uppercase tracking-wide text-neutral-600">
+                      Your characters
+                    </div>
+                    {roster.map((c) =>
+                      c.id === campaignId ? (
+                        <div key={c.id} className="rounded-md bg-ink/60 px-2 py-1.5 text-[13px] text-accent">
+                          {c.name} <span className="text-[10px] text-neutral-500">· playing now</span>
+                        </div>
+                      ) : (
+                        <Link
+                          key={c.id}
+                          href={`/play/${c.id}`}
+                          className="block rounded-md px-2 py-1.5 text-[13px] text-neutral-200 transition hover:bg-ink/60 hover:text-accent"
+                          onClick={() => setShowSwitcher(false)}
+                        >
+                          {c.name}
+                          {c.status === "deceased" && <span className="ml-1.5 text-[10px] text-bad">☠</span>}
+                        </Link>
+                      ),
+                    )}
+                    <div className="mt-1 border-t border-edge pt-1">
+                      <Link
+                        href="/"
+                        className="block rounded-md px-2 py-1.5 text-[12px] text-neutral-400 transition hover:bg-ink/60 hover:text-neutral-200"
+                        onClick={() => setShowSwitcher(false)}
+                      >
+                        All characters…
+                      </Link>
+                      <Link
+                        href="/create"
+                        className="block rounded-md px-2 py-1.5 text-[12px] text-accent/90 transition hover:bg-ink/60 hover:text-accent"
+                        onClick={() => setShowSwitcher(false)}
+                      >
+                        + New character
+                      </Link>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           {isAdmin && (
             <Link
               href="/admin"
