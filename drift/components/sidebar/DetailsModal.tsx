@@ -4,13 +4,14 @@ import { useState } from "react";
 import type { CampaignState } from "@/shared/schemas";
 import type { NpcRelations, SceneCard } from "@/shared/scene";
 import type { PlayerLedger } from "@/shared/ledger";
+import type { Fact } from "@/shared/facts";
 import { SheetSection } from "./ui";
 import { PeopleView } from "./PeopleTab";
 import { RolodexTab } from "./RolodexTab";
 import { FactionsDetail } from "./FactionsTab";
 import { ShipTab } from "./ShipTab";
 import { EquipmentDetail, ItemsDetail } from "./GearTabs";
-import { StoryDetail, StoryThreads } from "./StoryTab";
+import { StoryDetail, StoryThreads, FactsMemory } from "./StoryTab";
 import { AimEditor } from "./AimEditor";
 import { RemakeEditor } from "./RemakeEditor";
 
@@ -27,6 +28,8 @@ export function DetailsModal({
   npcRelations,
   sceneCard,
   playerLedger = {},
+  facts = [],
+  onFlagFact,
   initialTab = "equipment",
   onRefresh,
   onClose,
@@ -37,6 +40,10 @@ export function DetailsModal({
   sceneCard: SceneCard | null;
   /** The relationship ledger (MULTIPLAYER.md §2) — feeds the Contacts/Rolodex tab. */
   playerLedger?: PlayerLedger;
+  /** The durable facts ledger (CONTINUITY.md v2) — feeds "The game remembers". */
+  facts?: Fact[];
+  /** Flag a remembered fact as wrong — opens the feedback modal prefilled. */
+  onFlagFact?: (text: string) => void;
   initialTab?: DetailsTab;
   onRefresh?: () => void;
   onClose: () => void;
@@ -102,6 +109,7 @@ export function DetailsModal({
                 <RemakeEditor state={state} character={c} onSaved={onRefresh} />
                 <StoryDetail character={c} />
                 <StoryThreads state={state} />
+                <FactsMemory facts={facts} onFlag={onFlagFact} />
               </>
             )}
           </div>

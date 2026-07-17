@@ -7,6 +7,7 @@ import type { NpcRelations, SceneCard } from "@/shared/scene";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
+import type { Fact } from "@/shared/facts";
 import { StatusTab } from "./sidebar/StatusTab";
 import { TraitsTab } from "./sidebar/TraitsTab";
 import { MapTab } from "./sidebar/MapTab";
@@ -29,6 +30,8 @@ export default function Sidebar({
   sceneCard = null,
   jobs = [],
   playerLedger = {},
+  facts = [],
+  onFlagFact,
   onJobAction,
   onRefresh,
   mobileOpen = false,
@@ -45,6 +48,11 @@ export default function Sidebar({
   jobs?: Job[];
   /** The relationship ledger (MULTIPLAYER.md §2) — feeds the Rolodex tab. */
   playerLedger?: PlayerLedger;
+  /** The durable facts ledger (CONTINUITY.md v2) — feeds "The game remembers"
+   *  in the Story tab. */
+  facts?: Fact[];
+  /** Flag a remembered fact as wrong — opens the feedback modal prefilled. */
+  onFlagFact?: (text: string) => void;
   /** Accept/abandon a job: fires a turn carrying the chip. Undefined while busy. */
   onJobAction?: (choice: ChoiceOption) => void;
   /** Re-pull fresh server state; fired when the details modal opens so it never
@@ -106,6 +114,8 @@ export default function Sidebar({
           npcRelations={npcRelations}
           sceneCard={sceneCard}
           playerLedger={playerLedger}
+          facts={facts}
+          onFlagFact={onFlagFact}
           initialTab={detailsTab}
           onRefresh={onRefresh}
           onClose={() => setDetailsTab(null)}

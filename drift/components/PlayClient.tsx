@@ -10,6 +10,7 @@ import { stripInlineMenu } from "@/shared/narration";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
+import type { Fact } from "@/shared/facts";
 import { combatActions, type CombatState } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
 import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
@@ -61,6 +62,7 @@ export default function PlayClient({
   const [sceneCard, setSceneCard] = useState<SceneCard | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [playerLedger, setPlayerLedger] = useState<PlayerLedger>({});
+  const [facts, setFacts] = useState<Fact[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   // Terminal state — the PC has died; the story is over and input is locked.
@@ -117,6 +119,7 @@ export default function PlayClient({
         if (d.sceneCard) setSceneCard(d.sceneCard);
         if (d.jobs) setJobs(d.jobs);
         if (d.playerLedger) setPlayerLedger(d.playerLedger);
+        if (d.facts) setFacts(d.facts);
 
         // The opening recap + starter choices are derived from stored state — free.
         const recap: ChatEntry = { role: "recap", text: buildOpeningRecap(d.state) };
@@ -197,6 +200,7 @@ export default function PlayClient({
       if (d.sceneCard) setSceneCard(d.sceneCard);
       if (d.jobs) setJobs(d.jobs);
       if (d.playerLedger) setPlayerLedger(d.playerLedger);
+      if (d.facts) setFacts(d.facts);
     } catch {
       /* keep the current view on a transient failure */
     }
@@ -268,6 +272,7 @@ export default function PlayClient({
             sceneCard?: SceneCard | null;
             jobs?: Job[];
             playerLedger?: PlayerLedger;
+            facts?: Fact[];
             tutorialGraduated?: boolean;
           };
           try {
@@ -291,6 +296,7 @@ export default function PlayClient({
             if (evt.sceneCard) setSceneCard(evt.sceneCard);
             if (evt.jobs) setJobs(evt.jobs);
             if (evt.playerLedger) setPlayerLedger(evt.playerLedger);
+            if (evt.facts) setFacts(evt.facts);
             if (evt.dead) {
               // The character has died — end the story: lock input, drop choices,
               // and show a final beat instead of the scene-end line.
@@ -352,6 +358,15 @@ export default function PlayClient({
     } catch {
       setFeedbackState("error");
     }
+  }
+
+  // "This is wrong" on a remembered fact — prefills the existing feedback modal
+  // rather than mutating state directly (correction is triage input, not a write;
+  // the engine still owns the ledger).
+  function flagFact(text: string) {
+    setFeedbackText(`Memory correction: "${text}" is wrong — `);
+    setFeedbackState("idle");
+    setShowFeedback(true);
   }
 
   const headerPc = state?.characters.find((c) => c.kind === "pc");
@@ -560,13 +575,19 @@ export default function PlayClient({
         </div>
       )}
 
-      {/* Feature-request modal */}
+      {/* Feature-request modal — z-[60], above the Sidebar/DetailsModal (z-50), so
+          flagging a remembered fact from inside the details modal surfaces this
+          on top instead of being hidden behind it. */}
       {showFeedback && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 p-4" onClick={() => setShowFeedback(false)}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/80 p-4" onClick={() => setShowFeedback(false)}>
           <div className="w-full max-w-md rounded-xl border border-edge bg-panel p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-neutral-100">Request a feature</h3>
+            <h3 className="text-lg font-semibold text-neutral-100">
+              {feedbackText.startsWith("Memory correction:") ? "Flag a memory" : "Request a feature"}
+            </h3>
             <p className="mt-1 text-sm text-neutral-400">
-              Broken, unbalanced, or missing something? Describe it in your own words — it gets tidied up automatically for review.
+              {feedbackText.startsWith("Memory correction:")
+                ? "Say why it's wrong — this goes to the review queue, not a live edit."
+                : "Broken, unbalanced, or missing something? Describe it in your own words — it gets tidied up automatically for review."}
             </p>
             <textarea
               value={feedbackText}
@@ -840,6 +861,8 @@ export default function PlayClient({
             sceneCard={sceneCard}
             jobs={jobs}
             playerLedger={playerLedger}
+            facts={facts}
+            onFlagFact={flagFact}
             onJobAction={busy ? undefined : (c) => send(c)}
             onRefresh={refreshState}
             mobileOpen={showSheet}

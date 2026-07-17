@@ -66,6 +66,7 @@ export async function GET(req: NextRequest) {
           }),
     jobs: session.jobs ?? [],
     playerLedger: session.playerLedger ?? {},
+    facts: session.facts ?? [],
   });
 }
 

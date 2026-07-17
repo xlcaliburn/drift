@@ -943,6 +943,7 @@ export async function POST(req: NextRequest) {
           sceneCard: updatedSession.sceneCard,
           jobs: updatedSession.jobs,
           playerLedger: updatedSession.playerLedger,
+          facts: updatedSession.facts,
           tutorialGraduated: result.tutorialGraduated,
           model: result.model,
           usage: result.usage,
