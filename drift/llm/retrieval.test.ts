@@ -110,6 +110,49 @@ describe("retrieveEntities — threads", () => {
   });
 });
 
+describe("retrieveEntities — role-token scoring (CONTINUITY_HARDENING.md Task 4)", () => {
+  // Players address people by their HANDLE as often as their name ("ask the
+  // harbormaster") — retrieval used to score name/alias tokens only, so a
+  // role-only reference dropped the NPC from context entirely.
+  const quist = { id: "npc-quist", name: "Harbormaster Quist", role: "harbormaster", locationId: "loc-far" };
+  const fixer = { id: "npc-fixer", name: "Doc", role: "fixer", locationId: "loc-far" };
+
+  it("'ask the harbormaster about berths' retrieves the NPC by role alone", () => {
+    const { npcs } = retrieveEntities(state({ npcs: [quist], currentLoc: "loc-rook" }), "ask the harbormaster about berths");
+    expect(npcs.map((n) => n.id)).toContain("npc-quist");
+  });
+
+  it("a role word inside an unrelated sentence still retrieves that NPC ('the fixer's price')", () => {
+    const { npcs } = retrieveEntities(state({ npcs: [fixer], currentLoc: "loc-rook" }), "what's the fixer's price for the job?");
+    expect(npcs.map((n) => n.id)).toContain("npc-fixer");
+  });
+
+  it("patron role words do NOT retrieve the patron (same exclusion as co-location — the phantom-nearby bug)", () => {
+    const patron = { id: "npc-patron-camp-1", name: "Steward Harrow", role: "patron", locationId: "loc-far" };
+    const { npcs } = retrieveEntities(state({ npcs: [patron], currentLoc: "loc-rook" }), "I look for the patron to ask for help");
+    expect(npcs.map((n) => n.id)).not.toContain("npc-patron-camp-1");
+  });
+
+  it("an explicit NAME still outranks a role mention when both are present", () => {
+    const { npcs } = retrieveEntities(
+      state({ npcs: [quist, fixer], currentLoc: "loc-rook" }),
+      "I go find Harbormaster Quist to ask about the fixer's reputation",
+    );
+    expect(npcs[0]?.id).toBe("npc-quist"); // named (60) beats role-only (30)
+  });
+
+  it("role tokens under 4 chars don't false-match", () => {
+    const shortRole = { id: "npc-short", name: "Nix", role: "fan", locationId: "loc-far" };
+    const { npcs } = retrieveEntities(state({ npcs: [shortRole], currentLoc: "loc-rook" }), "I am a fan of the show");
+    expect(npcs.map((n) => n.id)).not.toContain("npc-short");
+  });
+
+  it("a role hit sets named=true so focus carries into next turn", () => {
+    const { namedNpcIds } = retrieveEntities(state({ npcs: [quist], currentLoc: "loc-rook" }), "talk to the harbormaster");
+    expect(namedNpcIds).toContain("npc-quist");
+  });
+});
+
 describe("retrieveEntities — carried focus", () => {
   it("carries forward only entities the player named this turn", () => {
     const r = retrieveEntities(state({ npcs: [ilyana, kesh], currentLoc: "loc-meridian" }), "I ask Ilyana about the run");

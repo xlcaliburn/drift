@@ -79,6 +79,19 @@ export function retrieveEntities(state: CampaignState, playerText: string, focus
           named = true;
         }
       }
+      // ROLE reference ("ask the harbormaster about berths") — players address
+      // people by their handle as often as their name, and a role-only mention used
+      // to drop the NPC from context entirely. Weighted BELOW an explicit name (30
+      // vs 60/40) so a real name always wins when both are somehow present. Excluded
+      // for the patron for the same reason as the passive signals below (the "Steward
+      // Harrow randomly in the berth" bug) — a role mention shouldn't summon them.
+      if (n.role && !isPatronNpcId(n.id)) {
+        const roleTokens = (n.role.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((t) => t.length >= 4);
+        if (roleTokens.some((t) => textTokens.has(t))) {
+          score += 30;
+          named = true;
+        }
+      }
       // The PATRON is permanently seeded at the player's home station, so PASSIVE
       // signals (co-location, faction) would surface it into every home-station scene
       // as a phantom "nearby" figure — the "Steward Harrow randomly in the berth" bug.
