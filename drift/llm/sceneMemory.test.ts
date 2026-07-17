@@ -40,7 +40,14 @@ describe("scene card (tier NOW)", () => {
     expect(next.situation).toBe(""); // scene-specific reset
     expect(next.beats).toEqual([]);
     expect(next.presentNpcIds).toEqual([]);
+    // COMPANION CONTINUITY: who was just with the player is remembered for one
+    // scene, so a traveling companion isn't stranded by the home-location gate
+    // the moment the scene turns over (the "Ren with Lyra at Halcyon" gap).
+    expect(next.prevPresentNpcIds).toEqual([id]);
     expect(next.startTranscriptIdx).toBe(42);
+    // And it decays: a full scene without them present → gone from the next carry.
+    const third = carryScene(next, 60);
+    expect(third.prevPresentNpcIds).toEqual([]);
   });
 
   it("a genuine place change clears present NPCs (old crowd left behind); a reword keeps them", () => {

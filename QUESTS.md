@@ -134,6 +134,19 @@ outcomes → low false-positive; the live `threads:[]` path stays primary.
   delivered AND still carried. Still open from the original idea: lost on death.
 - **NPC-given jobs** — `giver` = an NPC id; the board surfaces jobs a present
   contact offers, not just the panel.
+- **Quest CAST MANIFESTS** (owner-locked direction, 2026-07-16 — the NPC half of the
+  world-constants push, CANON.md). Each archetype PREDETERMINES its cast: how many
+  people the score involves and which ROLES they play (courier: {giver}; bounty:
+  {giver, target}; broker: {giver, contact}; heist: {giver, inside-contact?};
+  protection: {giver, ward}) — the engine GENERATES those specific people at job
+  creation (name pool + `npcFlavor`, detail variation from the same formula as the
+  job parts) and feeds them to the narrator as THE cast for that job ("these are
+  the people in this score — use exactly these, invent no one"). Kills the live
+  failure where a running job accretes 4-5 model-invented randos (Wren's 8-of-22
+  thin "Spoke with the player" shells): a quest's people become constants like its
+  objectives and payout, with the model free on personality and dialogue, never on
+  WHO exists. Incidental non-quest figures stay possible but should draw from a
+  reusable pregenerated pool rather than minting — same slice.
 - **Faction arcs** — standing thresholds unlock higher-tier faction lines; ties into
   MULTIPLAYER.md dossiers/ledgers and the season Fault-Line.
 - **Board top-up cadence tuning** — currently a flat board of 4, refreshed each turn

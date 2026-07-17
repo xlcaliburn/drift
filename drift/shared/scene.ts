@@ -17,6 +17,13 @@ export interface SceneCard {
   turnCount: number;
   /** NPC ids seen/used this scene — forced into retrieval every turn. */
   presentNpcIds: string[];
+  /** Who was present in the PREVIOUS scene (engine-set by carryScene). Presence
+   *  continuity for traveling companions: someone who was just at the player's side
+   *  is exempt from the home-location presence gate for one scene, so a courier
+   *  riding along to another station can be re-inferred present there instead of
+   *  being gated out as "based elsewhere" (the live "Ren traveling with Lyra but
+   *  never present at Halcyon" gap). Decays naturally: absent a full scene → gone. */
+  prevPresentNpcIds?: string[];
   /** Model-maintained one-liner: what is happening right now (overwrite). */
   situation: string;
   /** Model-maintained whereabouts — where the player actually IS ("the black,
@@ -161,6 +168,9 @@ export function carryScene(prev: SceneCard, startTranscriptIdx: number): SceneCa
     seq: prev.seq + 1,
     turnCount: 0,
     presentNpcIds: [],
+    // Companion continuity: remember who was JUST with the player so the presence
+    // gate doesn't strand a traveling companion the moment the scene turns over.
+    prevPresentNpcIds: [...prev.presentNpcIds],
     situation: "",
     place: prev.place,
     placeSeq: prev.placeSeq,

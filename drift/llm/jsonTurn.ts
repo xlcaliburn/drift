@@ -370,9 +370,14 @@ export function inferPresentNpcs(
   situation: string | undefined,
   npcs: { id: string; name: string; locationId?: string }[],
   currentLocationId?: string,
+  /** Companion exemption from the home gate: NPCs present THIS scene or the one
+   *  just closed (sceneCard.presentNpcIds ∪ prevPresentNpcIds). Someone who was
+   *  just at the player's side can still be there wherever the party traveled —
+   *  the gate exists to stop teleporting people who WEREN'T around. */
+  companionIds?: Set<string>,
 ): Set<string> {
   const local = currentLocationId
-    ? npcs.filter((n) => !n.locationId || n.locationId === currentLocationId)
+    ? npcs.filter((n) => !n.locationId || n.locationId === currentLocationId || companionIds?.has(n.id))
     : npcs;
   const present = new Set<string>();
   const placeText = `${place ?? ""} ${situation ?? ""}`.toLowerCase();
@@ -604,7 +609,17 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   const system = buildJsonSystem(input.state);
   // NPCs present in the CURRENT SCENE ride retrieval every turn — no re-naming
   // needed for someone standing in the room (CONTINUITY tier NOW).
-  const focusWithPresent = [...new Set([...(input.focusIds ?? []), ...runtime.sceneCard.presentNpcIds])];
+  // prevPresentNpcIds rides along so a traveling COMPANION still surfaces in the
+  // NPC block on the first turn after a scene turnover — without it there's no
+  // context line for the "[WITH the player]" tag to attach to, and the companion
+  // vanishes from the prompt exactly when the party arrives somewhere new.
+  const focusWithPresent = [
+    ...new Set([
+      ...(input.focusIds ?? []),
+      ...runtime.sceneCard.presentNpcIds,
+      ...(runtime.sceneCard.prevPresentNpcIds ?? []),
+    ]),
+  ];
   const retrieved = retrieveEntities(input.state, input.playerText, focusWithPresent);
   const contextSlice = buildContextSlice(
     input.state,
@@ -983,7 +998,15 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     const metPlace = runtime.sceneCard.place?.trim();
     const spokeHandles = extractDialogueNpcs(narration, new Set(), 20).map((s) => s.handle.toLowerCase());
     const hereLoc = runtime.state.campaign.currentLocationId;
-    const impliedPresent = inferPresentNpcs(narration, runtime.sceneCard.place, runtime.sceneCard.situation, runtime.state.npcs, hereLoc);
+    // COMPANIONS (presence continuity): whoever is present this scene, or was
+    // present in the scene that just closed, travels with the party — exempt from
+    // the home gate below so a courier riding along isn't stranded the moment the
+    // location changes (the live "Ren with Lyra, never present at Halcyon" gap).
+    const companionIds = new Set([
+      ...runtime.sceneCard.presentNpcIds,
+      ...(runtime.sceneCard.prevPresentNpcIds ?? []),
+    ]);
+    const impliedPresent = inferPresentNpcs(narration, runtime.sceneCard.place, runtime.sceneCard.situation, runtime.state.npcs, hereLoc, companionIds);
     for (const n of runtime.state.npcs) {
       const nm = n.name.toLowerCase();
       if (nm.length < 3) continue;
@@ -993,7 +1016,8 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       // Halcyon while based on Meridian" bug). A DELIBERATE story move still works:
       // the model's explicit plan.npcs[] path (applyPlan) marks presence without
       // this gate, so travel-to-the-player beats aren't blocked — only inference is.
-      if (n.locationId && hereLoc && n.locationId !== hereLoc) continue;
+      // Recent companions are exempt (they came along; see companionIds above).
+      if (n.locationId && hereLoc && n.locationId !== hereLoc && !companionIds.has(n.id)) continue;
       const named = new RegExp(`\\b${escapeRe(nm)}\\b`).test(lower);
       const spoke = named && spokeHandles.some((h) => nm === h || nm.includes(h) || h.includes(nm));
       if (!spoke && !impliedPresent.has(n.id)) continue;

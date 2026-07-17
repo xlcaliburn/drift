@@ -55,4 +55,23 @@ describe("inferPresentNpcs — presence beyond the strict speech-verb match", ()
     const ungated = inferPresentNpcs("Ilyana taps the desk. 'Sit.'", "Ilyana's office", "", based);
     expect(ungated.has("npc-ilyana")).toBe(true);
   });
+
+  it("COMPANION EXEMPTION: an NPC who was just with the player passes the home gate", () => {
+    // The live gap: a courier (based loc-meridian) rides the shuttle WITH the player
+    // to Halcyon. She acts-then-speaks in the arrival scene — but her home base
+    // would gate her out. Being in companionIds (present last scene) exempts her; a
+    // genuinely remote NPC with the same home stays gated. (A 3-char name like
+    // "Ren" is below this inference's ≥4-char token floor — short names ride the
+    // speech-verb presence loop instead, which carries the same exemption.)
+    const based = [
+      { id: "npc-sera", name: "Sera", locationId: "loc-meridian" },
+      { id: "npc-ilyana", name: "Ilyana", locationId: "loc-meridian" },
+    ];
+    const narration = "Sera scans the bar from the corner. 'Watch the barman.' Somewhere back home, Ilyana waits by the comm. 'Report in.'";
+    const gated = inferPresentNpcs(narration, "Halcyon — the Rust Anchor", "", based, "loc-freeport");
+    expect(gated.has("npc-sera")).toBe(false); // no exemption → gated like anyone remote
+    const withCompanions = inferPresentNpcs(narration, "Halcyon — the Rust Anchor", "", based, "loc-freeport", new Set(["npc-sera"]));
+    expect(withCompanions.has("npc-sera")).toBe(true); // she came along — inferable again
+    expect(withCompanions.has("npc-ilyana")).toBe(false); // still gated — she did NOT come along
+  });
 });

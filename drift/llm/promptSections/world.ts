@@ -22,8 +22,14 @@ function proximityTag(
   present: Set<string>,
   currentLoc?: string,
   locName?: (id: string) => string,
+  recentlyPresent?: Set<string>,
 ): string {
   if (present.has(n.id)) return " [HERE — in this scene]";
+  // Companion continuity: present in the scene that JUST closed — traveling with
+  // the party until the story parts them, even when their home base is elsewhere.
+  // Without this, a courier riding along reads "[based at Meridian — NOT here]" the
+  // moment the scene turns over, and the model writes them out of their own trip.
+  if (recentlyPresent?.has(n.id)) return " [WITH the player — was at their side last scene; still along unless the story parted you]";
   const home = n.locationId ? locName?.(n.locationId) ?? n.locationId : undefined;
   if (n.locationId && currentLoc && n.locationId === currentLoc) {
     // Same station but NOT in the scene — around, findable, never auto-appearing
@@ -107,6 +113,8 @@ function otherCharactersBlock(
 export const npcs: Section = ({ state, npcs, memory, loc }) => {
   const rels = memory?.npcRelations ?? {};
   const presentSet = new Set(memory?.sceneCard?.presentNpcIds ?? []);
+  // Companions: present in the scene that just closed → still with the party.
+  const recentSet = new Set(memory?.sceneCard?.prevPresentNpcIds ?? []);
   const locName = (id: string) => state.locations.find((l) => l.id === id)?.name ?? id;
   return [
     npcs.length
@@ -119,7 +127,7 @@ export const npcs: Section = ({ state, npcs, memory, loc }) => {
             // can't be forgotten — the "Agnes forgot her whole scene with Sera" bug.
             const hist = relationHistory(rels[n.id]);
             const histLine = hist ? `\n      history: ${hist}` : "";
-            return `  - ${n.name} (id: ${n.id})${proximityTag(n, presentSet, loc?.id, locName)}: ${n.oneBreath} (plays: ${quirk})${relationSuffix(rels[n.id])}${hook}${histLine}`;
+            return `  - ${n.name} (id: ${n.id})${proximityTag(n, presentSet, loc?.id, locName, recentSet)}: ${n.oneBreath} (plays: ${quirk})${relationSuffix(rels[n.id])}${hook}${histLine}`;
           })
           .join("\n")}`
       : `NPCs in play: none flagged`,
