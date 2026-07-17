@@ -267,6 +267,11 @@ export const Npc = z.object({
    *  spawning). Stops a named cast member from being a T3 boss one fight and a
    *  re-spawned T1 mook the next (CHECKS.md §2). */
   tier: z.enum(["T1", "T2", "T3"]).optional(),
+  /** Pinned SPEECH PATTERN — engine-generated (deterministic off id), set once,
+   *  universe-shared: HOW they talk (rhythm, formality, slang), distinct from
+   *  `quirk`'s demeanor+tell. Stops a dockworker sounding like a poet one scene
+   *  and a soldier the next. */
+  voice: z.string().optional(),
   notes: z.string().optional(),
 });
 export type Npc = z.infer<typeof Npc>;

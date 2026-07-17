@@ -199,7 +199,20 @@ drift.
 
 ---
 
-## Task C — voice + age facets in npcFlavor
+## Task C — voice + age facets in npcFlavor ✅ SHIPPED 2026-07-18
+
+*Implemented as specced: a 14-entry `VOICES` pool + `generateVoice`, a 7-entry
+`AGES` pool folded into `generateAppearance` (build → age → face → mark, ~14000
+combos now). `Npc.voice` + migration `029_npc_voice.sql` (029 was free both
+locally and live). `registerNpc`'s backfill branch gates voice on
+`originCampaignId` exactly like appearance/backstory; the new-NPC branch gets it
+free via `generateNpcFlavor`'s expanded return. Context feed: `[voice: …]` rides
+right after `[looks: …]`, same relevance gate (present or companion), same
+render-time fallback. `npcFlavor.test.ts` extended (determinism, shape, variety,
+distinct-from-quirk) rather than a new file. 815 tests pass; golden diff
+inspected line-by-line (age clause + voice tag only) before `-u`. Folded into
+the EXISTING CHECKS.md appearance row per the doc's own instruction, plus a
+fresh incident-lineage line for the new failure class (age + voice drift).*
 
 **Failure class:** quirk pins demeanor + a tell, but not HOW they talk (clipped
 vs. florid, slang, formality) or their age — "the old man" drifts young, a

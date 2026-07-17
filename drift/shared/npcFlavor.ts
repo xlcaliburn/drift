@@ -1,16 +1,20 @@
 /**
- * Deterministic NPC flavor — a physical description, a personality quirk, and a
- * backstory (origin + want + complication).
+ * Deterministic NPC flavor — a physical description, a personality quirk, a
+ * speech pattern, and a backstory (origin + want + complication).
  *
  * NPCs are universe-shared, so their character must be STABLE and canonical: every
  * player who meets the same NPC sees the same person. All facets are seeded off the
  * NPC's id (engine-owned, free, no LLM) and assigned once at registration.
  *
- * - `appearance` = build + face/hair + one distinguishing mark — the FIXED physical
- *                  description, so the narrator can't re-invent the same person's
- *                  body scene to scene (the live failure: an NPC's look drifting —
- *                  scarred one scene, unmarked the next).
+ * - `appearance` = build + AGE BAND + face/hair + one distinguishing mark — the
+ *                  FIXED physical description, so the narrator can't re-invent the
+ *                  same person's body (or age) scene to scene (the live failure:
+ *                  an NPC's look drifting — scarred one scene, unmarked the next;
+ *                  "the old man" drifting young).
  * - `quirk`      = a demeanor + a tell the narrator plays so the NPC is recognizable.
+ * - `voice`      = HOW they talk — sentence rhythm, formality, slang — so the same
+ *                  dockworker doesn't speak like a poet one scene and a soldier
+ *                  the next.
  * - `backstory`  = an origin + a want + a complication — where they came from and
  *                  what they're after; a hook a future quest can hang on (kept
  *                  role-agnostic so it never contradicts an NPC's job/faction).
@@ -160,6 +164,35 @@ const MARKS = [
   "old shrapnel pocking one cheek",
 ];
 
+// ── Age bands, folded into appearance (not a separate field/column) ──────────
+const AGES = [
+  "young, barely past apprentice age",
+  "in their late twenties",
+  "in their thirties",
+  "mid-forties and weathered",
+  "in their fifties",
+  "grey and past sixty",
+  "old enough that people wonder how they've lasted this long",
+];
+
+// ── Voice pools — HOW they talk, distinct from quirk's demeanor+tell ─────────
+const VOICES = [
+  "clipped sentences, dock slang thick enough to cut",
+  "over-formal, never contracts a word",
+  "a slow drawl, picks every word with care",
+  "rapid-fire, swallows the ends of words",
+  "spacer cant nobody outside the lanes would follow",
+  "quiet, makes you lean in to catch it",
+  "florid, loves a metaphor more than a straight answer",
+  "blunt monosyllables, nothing wasted",
+  "constant low profanity, oddly warm underneath it",
+  "answers questions with questions of their own",
+  "talks about themselves in the third person",
+  "quotes prices and odds for everything, even feelings",
+  "old lane-freighter slang, half of it decades out of date",
+  "precise, like reading off a manifest",
+];
+
 /** Where they came from — the past that shaped them. Role-agnostic like DRIVES. */
 const ORIGINS = [
   "Grew up in the gutter-decks of a Crown station and clawed out",
@@ -198,14 +231,26 @@ export function generateQuirk(seed: string): string {
 }
 
 /**
- * A stable physical description — build + face/hair + one distinguishing mark
- * (~2000 combinations). The narrator DESCRIBES from this and never re-invents it:
- * the same person is scarred in every scene, not just the one that coined it.
+ * A stable physical description — build + age band + face/hair + one
+ * distinguishing mark (~14000 combinations). The narrator DESCRIBES from this
+ * and never re-invents it: the same person is scarred (and the same AGE) in
+ * every scene, not just the one that coined it.
  */
 export function generateAppearance(seed: string): string {
   const key = (seed || "npc").trim().toLowerCase();
   const build = pick(BUILDS, "build:" + key);
-  return `${build.charAt(0).toUpperCase()}${build.slice(1)}, with ${pick(FACES, "face:" + key)} and ${pick(MARKS, "mark:" + key)}.`;
+  return `${build.charAt(0).toUpperCase()}${build.slice(1)}, ${pick(AGES, "age:" + key)}, with ${pick(FACES, "face:" + key)} and ${pick(MARKS, "mark:" + key)}.`;
+}
+
+/**
+ * A stable speech pattern — HOW they talk, not what they say (~14 options).
+ * Distinct from `quirk`'s demeanor+tell: this pins sentence rhythm, formality,
+ * and slang so the narrator can't drift a dockworker's voice from soldier to
+ * poet scene to scene.
+ */
+export function generateVoice(seed: string): string {
+  const key = (seed || "npc").trim().toLowerCase();
+  return pick(VOICES, "voice:" + key);
 }
 
 /**
@@ -220,6 +265,11 @@ export function generateBackstory(seed: string): string {
 }
 
 /** All facets at once — used when an NPC is first registered. */
-export function generateNpcFlavor(seed: string): { quirk: string; backstory: string; appearance: string } {
-  return { quirk: generateQuirk(seed), backstory: generateBackstory(seed), appearance: generateAppearance(seed) };
+export function generateNpcFlavor(seed: string): { quirk: string; backstory: string; appearance: string; voice: string } {
+  return {
+    quirk: generateQuirk(seed),
+    backstory: generateBackstory(seed),
+    appearance: generateAppearance(seed),
+    voice: generateVoice(seed),
+  };
 }
