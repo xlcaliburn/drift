@@ -33,6 +33,16 @@ describe("inferPresentNpcs — presence beyond the strict speech-verb match", ()
     expect(p.size).toBe(0);
   });
 
+  it("ALIASES: presence + speaker attribution match every name the person is known by", () => {
+    const cast = [{ id: "npc-ren-fixer", name: "Ren (fixer)", aliases: ["Renwick"] }];
+    // Prose uses the alias only — still the same record, present.
+    const p = inferPresentNpcs("Renwick sets down his glass. 'You found me.'", "the Rust Anchor", "", cast);
+    expect(p.has("npc-ren-fixer")).toBe(true);
+    // Place text using the alias also marks them.
+    const p2 = inferPresentNpcs("You wait.", "Renwick's back room", "", cast);
+    expect(p2.has("npc-ren-fixer")).toBe(true);
+  });
+
   it("HOME-LOCATION GATE: an NPC based at another station never infers as present", () => {
     // The live bug: Ilyana (based on Meridian) quoted over comms while the player is
     // at Halcyon — the dialogue reads exactly like a real appearance to these

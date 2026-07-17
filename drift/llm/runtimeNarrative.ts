@@ -253,6 +253,45 @@ function baseNameOf(n: string): string {
   return n.toLowerCase().replace(/\s*\([^)]*\)\s*$/, "");
 }
 
+const MAX_ALIASES = 4;
+
+/**
+ * Harvest alternate names for an NPC from their own description (CHECKS.md §2 —
+ * the Ren/Renwick bug): a record named "Ren (fixer)" whose oneBreath reads
+ * "Renwick Duross on the dockmaster's ledger, 'Ren' to everyone…" is called
+ * "Renwick" in prose, so retrieval/presence/dedupe must recognize that name too.
+ * Conservative on purpose: only capitalized words that EXTEND the NPC's own first
+ * name (Ren → Renwick) qualify — never shorter prefixes, which would collide with
+ * a genuinely different same-prefix person (the other Ren). Exported for tests.
+ */
+export function extractNameAliases(name: string, text: string | undefined): string[] {
+  const first = baseNameOf(name).split(/\s+/)[0] ?? "";
+  if (first.length < 3 || !text) return [];
+  const out = new Set<string>();
+  for (const m of text.matchAll(/\b([A-Z][a-z]{2,})\b/g)) {
+    const word = m[1];
+    if (word.length > first.length && word.toLowerCase().startsWith(first)) out.add(word);
+  }
+  out.delete(name);
+  return [...out].slice(0, MAX_ALIASES);
+}
+
+/** Merge new aliases into a record's list — deduped case-insensitively, capped,
+ *  never containing the record's own (base) name. */
+function mergeAliases(current: string[] | undefined, incoming: string[], ownName: string): string[] | undefined {
+  const own = new Set([ownName.toLowerCase(), baseNameOf(ownName)]);
+  const seen = new Set((current ?? []).map((a) => a.toLowerCase()));
+  const merged = [...(current ?? [])];
+  for (const a of incoming) {
+    const lc = a.toLowerCase();
+    if (own.has(lc) || seen.has(lc)) continue;
+    seen.add(lc);
+    merged.push(a);
+  }
+  const capped = merged.slice(0, MAX_ALIASES);
+  return capped.length ? capped : undefined;
+}
+
 /**
  * Persist a named NPC the narrator introduced/used this turn, so the world
  * REMEMBERS them (continuity — an NPC recognized on return). Deduped by name (and,
@@ -284,7 +323,12 @@ export function registerNpc(rt: NarrativeRT, name: string, oneBreath?: string, r
     (pn) => pn === tn || pn.split(/\s+/)[0] === tn || pn === tn.split(/\s+/)[0],
   );
   if (isDossierName) return { added: false, id: "" };
-  const sameBaseName = rt.state.npcs.filter((n) => baseNameOf(n.name) === tn);
+  // A mention matches a record by its (base) name OR any of its ALIASES — so a
+  // "Renwick" mention resolves to the record stored as "Ren (fixer)" instead of
+  // forking a new person (CHECKS.md §2, the Ren/Renwick bug).
+  const sameBaseName = rt.state.npcs.filter(
+    (n) => baseNameOf(n.name) === tn || (n.aliases ?? []).some((a) => a.toLowerCase() === tn),
+  );
   const { existingId, collision } = resolveNpcNameMatch(sameBaseName, cleanRole);
   const existing = existingId ? sameBaseName.find((n) => n.id === existingId) : undefined;
   if (existing) {
@@ -307,6 +351,9 @@ export function registerNpc(rt: NarrativeRT, name: string, oneBreath?: string, r
               oneBreath: n.oneBreath || oneBreath || n.oneBreath,
               // Fill a role only if we didn't already know one (set-once).
               role: n.role ?? cleanRole,
+              // Harvest any longer form of their name this mention revealed
+              // ("Renwick" from a oneBreath naming Renwick Duross).
+              aliases: mergeAliases(n.aliases, extractNameAliases(n.name, oneBreath), n.name),
               // Backfill canonical flavor for NPCs that predate it (set-once).
               quirk: n.quirk ?? generateQuirk(n.id),
               backstory: n.backstory ?? (n.originCampaignId ? generateBackstory(n.id) : undefined),
@@ -330,6 +377,9 @@ export function registerNpc(rt: NarrativeRT, name: string, oneBreath?: string, r
   const displayName = collision ? `${trimmed} (${cleanRole})` : trimmed;
   const slug = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "npc";
   const id = `npc-gen-${slug}-${rt.state.npcs.length}`;
+  // Longer forms of the name revealed by their own description ("Renwick" from a
+  // oneBreath naming Renwick Duross) become aliases at birth.
+  const bornAliases = mergeAliases(undefined, extractNameAliases(displayName, oneBreath), displayName);
   const npc = {
     id,
     universeId: rt.state.universe.id,
@@ -337,6 +387,7 @@ export function registerNpc(rt: NarrativeRT, name: string, oneBreath?: string, r
     oneBreath: (oneBreath ?? "").trim() || `Someone the player met${here ? " here" : ""}.`,
     ...(here ? { locationId: here } : {}),
     ...(cleanRole ? { role: cleanRole } : {}),
+    ...(bornAliases ? { aliases: bornAliases } : {}),
     // Provenance so a promoted NPC (persistSession) traces back to this campaign.
     originCampaignId: rt.state.campaign.id,
     // Canonical personality + backstory hook — engine-generated, shared, set once.
@@ -354,7 +405,18 @@ export function setNpcOneBreath(rt: NarrativeRT, id: string, oneBreath: string, 
   if (!text) return;
   rt.state = {
     ...rt.state,
-    npcs: rt.state.npcs.map((n) => (n.id === id ? { ...n, oneBreath: text, role: n.role ?? shortRole(role) } : n)),
+    npcs: rt.state.npcs.map((n) =>
+      n.id === id
+        ? {
+            ...n,
+            oneBreath: text,
+            role: n.role ?? shortRole(role),
+            // A refreshed identity often reveals the person's FULL name — harvest
+            // longer forms as aliases so prose using them resolves to this record.
+            aliases: mergeAliases(n.aliases, extractNameAliases(n.name, text), n.name),
+          }
+        : n,
+    ),
   };
 }
 

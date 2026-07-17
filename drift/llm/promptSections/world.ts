@@ -131,7 +131,10 @@ export const npcs: Section = ({ state, npcs, memory, loc }) => {
             // can't be forgotten — the "Agnes forgot her whole scene with Sera" bug.
             const hist = relationHistory(rels[n.id]);
             const histLine = hist ? `\n      history: ${hist}` : "";
-            return `  - ${n.name} (id: ${n.id})${proximityTag(n, presentSet, loc?.id, locName, recentSet)}: ${n.oneBreath} (plays: ${quirk})${looks}${relationSuffix(rels[n.id])}${hook}${histLine}`;
+            // Every name this person answers to — one record, however the prose
+            // names them (the Ren/"Renwick" split identity, CHECKS.md §2).
+            const aka = n.aliases?.length ? ` (aka ${n.aliases.join(", ")} — the SAME person)` : "";
+            return `  - ${n.name}${aka} (id: ${n.id})${proximityTag(n, presentSet, loc?.id, locName, recentSet)}: ${n.oneBreath} (plays: ${quirk})${looks}${relationSuffix(rels[n.id])}${hook}${histLine}`;
           })
           .join("\n")}`
       : `NPCs in play: none flagged`,

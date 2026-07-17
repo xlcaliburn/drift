@@ -65,13 +65,15 @@ export function retrieveEntities(state: CampaignState, playerText: string, focus
     .map((n) => {
       let score = 0;
       let named = false; // player typed this NPC's name/handle this turn
-      const nameLc = n.name.toLowerCase();
+      // Every name this person is KNOWN by — the record name plus aliases, so a
+      // typed "Renwick" retrieves the record stored as "Ren (fixer)" (CHECKS.md §2).
+      const knownNames = [n.name, ...(n.aliases ?? [])].map((x) => x.toLowerCase());
       if (focusIds.includes(n.id)) score += 100;
-      if (text.includes(nameLc)) {
+      if (knownNames.some((nameLc) => text.includes(nameLc))) {
         score += 60;
         named = true;
       } else {
-        const parts = nameLc.match(/[a-z0-9]+/g) ?? [];
+        const parts = knownNames.flatMap((nameLc) => nameLc.match(/[a-z0-9]+/g) ?? []);
         if (parts.some((p) => p.length >= 3 && textTokens.has(p))) {
           score += 40;
           named = true;

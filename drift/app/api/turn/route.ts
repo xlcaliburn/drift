@@ -30,7 +30,7 @@ import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { buildFallbackChoices } from "@/shared/recap";
 import { CheckSpec, CombatActionSpec, DownedActionSpec, type ChoiceOption } from "@/shared/turnPlan";
 import { carryScene, isSceneMove, type SceneCard, type SceneMemory } from "@/shared/scene";
-import { analyzeScene, type NpcAnalysis, type ItemAnalysis, type ThreadAnalysis } from "@/llm/summarizer";
+import { analyzeScene, type NpcAnalysis, type ItemAnalysis, type ThreadAnalysis, type FactAnalysis } from "@/llm/summarizer";
 import { applyAnalystUpdates, runOpenSceneAnalyst, repairDegradedScenes, recordSummaryCall, ANALYST_INTERVAL } from "@/lib/analystRun";
 import type { ChatEntry } from "@/shared/chat";
 import { hasSupabase } from "@/lib/state";
@@ -50,6 +50,8 @@ async function compressClosedScene(
   knownEntityIds: string[],
   sceneNpcs: { id: string; name: string; oneBreath: string }[] = [],
   openThreads: { id: string; title: string }[] = [],
+  /** Facts already on the ledger — fed so the analyst doesn't re-emit them. */
+  knownFacts: string[] = [],
 ): Promise<void> {
   const slice = transcript.slice(closedCard.startTranscriptIdx);
   if (slice.length === 0) return;
@@ -64,13 +66,17 @@ async function compressClosedScene(
   let npcUpdates: NpcAnalysis[] = [];
   let itemUpdates: ItemAnalysis[] = [];
   let threadUpdates: ThreadAnalysis[] = [];
+  let factUpdates: FactAnalysis[] = [];
   try {
-    const res = await analyzeScene(text + beatsNote, sceneNpcs, knownEntityIds, openThreads);
+    const res = await analyzeScene(text + beatsNote, sceneNpcs, knownEntityIds, openThreads, {
+      establishedFacts: knownFacts,
+    });
     summary = res.summary.trim();
     entityRefs = res.entityRefs;
     npcUpdates = res.npcs;
     itemUpdates = res.items;
     threadUpdates = res.threads;
+    factUpdates = res.facts;
     // Memory-tier telemetry — this used to be the only unaudited model path.
     await recordSummaryCall(campaignId, `scene ${closedCard.seq} close`, res.telemetry, summary);
   } catch {
@@ -123,7 +129,7 @@ async function compressClosedScene(
   live.recentScenes = [...live.recentScenes.filter((s) => s.seq !== scene.seq), scene]
     .sort((a, b) => a.seq - b.seq)
     .slice(-20);
-  const changed = await applyAnalystUpdates(live, npcUpdates, itemUpdates, threadUpdates);
+  const changed = await applyAnalystUpdates(live, npcUpdates, itemUpdates, threadUpdates, factUpdates);
   setSession(campaignId, live);
   if (changed) await persistSession(campaignId, live);
 }
@@ -858,7 +864,12 @@ export async function POST(req: NextRequest) {
           const openThreads = result.state.threads
             .filter((t) => t.status !== "resolved")
             .map((t) => ({ id: t.id, title: t.title }));
-          after(() => compressClosedScene(campaignId, closedCard, newTranscript, title, locId, entityIds, sceneNpcs, openThreads));
+          after(() =>
+            compressClosedScene(
+              campaignId, closedCard, newTranscript, title, locId, entityIds, sceneNpcs, openThreads,
+              (session.facts ?? []).map((f) => f.text),
+            ),
+          );
         } else if (
           !resultCombat?.active &&
           session.sceneCard.turnCount > 0 &&

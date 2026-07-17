@@ -1,6 +1,6 @@
 import "server-only";
 import { getSession, setSession, persistSession, hasSupabase, type SessionData } from "@/lib/state";
-import { analyzeScene, type NpcAnalysis, type ItemAnalysis, type ThreadAnalysis, type SummaryTelemetry } from "@/llm/summarizer";
+import { analyzeScene, type NpcAnalysis, type ItemAnalysis, type ThreadAnalysis, type FactAnalysis, type SummaryTelemetry } from "@/llm/summarizer";
 import { recordAiCall } from "@/lib/audit";
 import { isPlaceholderOneBreath } from "@/shared/scene";
 import type { ChatEntry } from "@/shared/chat";
@@ -43,8 +43,9 @@ export async function applyAnalystUpdates(
   npcUpdates: NpcAnalysis[],
   itemUpdates: ItemAnalysis[],
   threadUpdates: ThreadAnalysis[] = [],
+  factUpdates: FactAnalysis[] = [],
 ): Promise<boolean> {
-  if (!npcUpdates.length && !itemUpdates.length && !threadUpdates.length) return false;
+  if (!npcUpdates.length && !itemUpdates.length && !threadUpdates.length && !factUpdates.length) return false;
   const { TurnRuntime } = await import("@/llm/engineBridge");
   const { liveRng } = await import("@/engine");
   const { isPlausibleNpcName, isCollectiveName } = await import("@/shared/npcExtract");
@@ -76,6 +77,15 @@ export async function applyAnalystUpdates(
   // (or an OPEN thread the scene finished) — reconcile it into the tracked threads.
   const { applyThreadUpdates } = await import("@/llm/threadReconcile");
   applyThreadUpdates(rt, threadUpdates);
+
+  // FACTS backstop (CONTINUITY v2): the turn path under-fires `facts` (live data:
+  // zero emitted across a 164-turn campaign), so the analyst is the ledger's real
+  // writer — same capped/deduped fold as the live path.
+  if (factUpdates.length) {
+    const { applyFactUpdates } = await import("@/shared/facts");
+    const next = applyFactUpdates(live.facts ?? [], factUpdates, live.state.campaign.tendaysElapsed ?? 0);
+    live.facts.splice(0, live.facts.length, ...next);
+  }
 
   live.state = rt.state;
   live.npcRelations = rt.npcRelations;
@@ -121,13 +131,15 @@ export async function runOpenSceneAnalyst(campaignId: string): Promise<boolean> 
 
   let res;
   try {
-    res = await analyzeScene(text + beatsNote, sceneNpcs, entityIds, openThreads);
+    res = await analyzeScene(text + beatsNote, sceneNpcs, entityIds, openThreads, {
+      establishedFacts: (live.facts ?? []).map((f) => f.text),
+    });
   } catch (e) {
     console.error("[analyst] open-scene run failed:", e instanceof Error ? e.message : e);
     return false;
   }
   await recordSummaryCall(campaignId, `mid-scene analyst (scene ${live.sceneCard.seq})`, res.telemetry, res.summary);
-  const changed = await applyAnalystUpdates(live, res.npcs, res.items, res.threads);
+  const changed = await applyAnalystUpdates(live, res.npcs, res.items, res.threads, res.facts);
   setSession(campaignId, live);
   if (changed) await persistSession(campaignId, live);
   return changed;
@@ -161,7 +173,9 @@ export async function repairDegradedScenes(campaignId: string, limit = 2): Promi
   for (const row of queue) {
     let res;
     try {
-      res = await analyzeScene(row.rawSlice, roster, entityIds, openThreads);
+      res = await analyzeScene(row.rawSlice, roster, entityIds, openThreads, {
+        establishedFacts: (live.facts ?? []).map((f) => f.text),
+      });
     } catch (e) {
       console.error(`[analyst] repair of scene ${row.seq} failed:`, e instanceof Error ? e.message : e);
       continue;
@@ -186,7 +200,7 @@ export async function repairDegradedScenes(campaignId: string, limit = 2): Promi
     // Reflect the healed summary in the live PREVIOUSLY list, and fold in the
     // continuity updates the original failed run never delivered.
     live.recentScenes = live.recentScenes.map((s) => (s.seq === scene.seq ? scene : s));
-    await applyAnalystUpdates(live, res.npcs, res.items, res.threads);
+    await applyAnalystUpdates(live, res.npcs, res.items, res.threads, res.facts);
     repaired++;
   }
   if (repaired > 0) {

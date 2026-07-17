@@ -237,6 +237,10 @@ export const Npc = z.object({
   /** Occupational handle, e.g. "data broker" — the UI shows this when a player
    *  doesn't (yet) know the NPC's name. Universe-shared, set once at creation. */
   role: z.string().optional(),
+  /** Alternate names this person is known by ("Ren (fixer)" aka "Renwick") —
+   *  dedupe, retrieval, and presence matching honor these, so every name the
+   *  prose uses resolves to the SAME record (CHECKS.md §2, the Ren/Renwick bug). */
+  aliases: z.array(z.string()).optional(),
   /** Campaign that first spawned this NPC (provenance for generated NPCs that
    *  are promoted into the shared universe cast). Absent on the hand-seeded cast. */
   originCampaignId: z.string().optional(),

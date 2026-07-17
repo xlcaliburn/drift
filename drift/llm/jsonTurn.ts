@@ -323,16 +323,20 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  * the quote. Taking the subject (not the nearest name) avoids attributing "Valis
  * warns you that Calvo is holed up… 'Watch yourself.'" to Calvo (who's off-screen).
  */
-function speakersBeforeQuotes(narration: string, npcs: { id: string; name: string }[]): Set<string> {
+function speakersBeforeQuotes(narration: string, npcs: { id: string; name: string; aliases?: string[] }[]): Set<string> {
   const out = new Set<string>();
   const openQuoteRe = /(^|[\s—–-])["'“‘]/g;
   const positions: number[] = [];
   let m: RegExpExecArray | null;
   while ((m = openQuoteRe.exec(narration)) !== null) positions.push(m.index + m[1].length);
   if (!positions.length) return out;
-  // Distinctive name tokens (≥4 chars, so short common words can't false-match).
+  // Distinctive name tokens (≥4 chars, so short common words can't false-match) —
+  // drawn from EVERY name the person is known by (record name + aliases), so a
+  // "Renwick said…" attribution resolves to the record stored as "Ren (fixer)".
   const cands = npcs.flatMap((n) =>
-    n.name.toLowerCase().split(/\s+/).filter((t) => t.length >= 4).map((tok) => ({ id: n.id, tok })),
+    [n.name, ...(n.aliases ?? [])].flatMap((nm) =>
+      nm.toLowerCase().split(/\s+/).filter((t) => t.length >= 4).map((tok) => ({ id: n.id, tok })),
+    ),
   );
   for (const qp of positions) {
     // The last COMPLETE sentence before the quote (drop the trailing sentence-ender).
@@ -371,7 +375,7 @@ export function inferPresentNpcs(
   narration: string,
   place: string | undefined,
   situation: string | undefined,
-  npcs: { id: string; name: string; locationId?: string }[],
+  npcs: { id: string; name: string; locationId?: string; aliases?: string[] }[],
   currentLocationId?: string,
   /** Companion exemption from the home gate: NPCs present THIS scene or the one
    *  just closed (sceneCard.presentNpcIds ∪ prevPresentNpcIds). Someone who was
@@ -385,10 +389,12 @@ export function inferPresentNpcs(
   const present = new Set<string>();
   const placeText = `${place ?? ""} ${situation ?? ""}`.toLowerCase();
   for (const n of local) {
-    const inPlace = n.name
-      .toLowerCase()
-      .split(/\s+/)
-      .some((tok) => tok.length >= 4 && new RegExp(`\\b${escapeRe(tok)}\\b`).test(placeText));
+    const inPlace = [n.name, ...(n.aliases ?? [])].some((nm) =>
+      nm
+        .toLowerCase()
+        .split(/\s+/)
+        .some((tok) => tok.length >= 4 && new RegExp(`\\b${escapeRe(tok)}\\b`).test(placeText)),
+    );
     if (inPlace) present.add(n.id);
   }
   for (const id of speakersBeforeQuotes(narration, local)) present.add(id);
@@ -1037,7 +1043,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   // "Clean" from "'Clean. Payout's on the tab.'" into junk NPCs).
   if (!combat) {
     const known = knownEntityNames([
-      ...runtime.state.npcs.map((n) => n.name),
+      ...runtime.state.npcs.flatMap((n) => [n.name, ...(n.aliases ?? [])]),
       ...runtime.state.locations.map((l) => l.name),
       ...runtime.state.factions.map((f) => f.name),
       ...runtime.state.characters.map((c) => c.name),

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { CampaignState } from "@/shared/schemas";
 import { TurnRuntime } from "./engineBridge";
+import { extractNameAliases } from "./runtimeNarrative";
 import type { RNG } from "@/engine";
 
 const rng: RNG = { int: (min) => min };
@@ -58,6 +59,30 @@ describe("registerNpc — continuity", () => {
     expect(rt.state.npcs).toHaveLength(0);
     // An unrelated name still registers fine.
     expect(rt.registerNpc("Doyle", "supply officer").added).toBe(true);
+  });
+
+  it("ALIASES: a longer form of the name in the oneBreath is harvested, and later mentions of it resolve to the SAME record (the Lyra Ren/Renwick tangle)", () => {
+    const rt = new TurnRuntime(stateAt("loc-rook"), rng);
+    // The live case: registered as "Ren" (fixer), but his oneBreath names him Renwick.
+    const first = rt.registerNpc("Ren", "Renwick Duross on the dockmaster's ledger, 'Ren' to everyone who's ever needed a favor.", "fixer");
+    const npc = rt.state.npcs.find((n) => n.id === first.id)!;
+    expect(npc.aliases).toContain("Renwick");
+    // Prose later calls him "Renwick" — same person, NOT a fourth Ren.
+    const again = rt.registerNpc("Renwick");
+    expect(again.added).toBe(false);
+    expect(again.id).toBe(first.id);
+    expect(rt.state.npcs).toHaveLength(1);
+  });
+
+  it("extractNameAliases: only capitalized EXTENSIONS of the first name qualify — never shorter prefixes or unrelated words", () => {
+    expect(extractNameAliases("Ren", "Renwick Duross keeps the ledger.")).toEqual(["Renwick"]);
+    expect(extractNameAliases("Ren (fixer)", "Renwick to his family; Ren to the docks.")).toEqual(["Renwick"]);
+    // Shorter prefix never harvested — it would collide with a different same-prefix person.
+    expect(extractNameAliases("Renwick Duross", "Ren to his friends.")).toEqual([]);
+    // Unrelated capitalized words don't qualify.
+    expect(extractNameAliases("Ren", "The Rust Anchor bar hums; Doran watches.")).toEqual([]);
+    // Too-short first names never match (no 2-char fuzz).
+    expect(extractNameAliases("Jo", "Jonas waits by the airlock.")).toEqual([]);
   });
 
   it("dedupes by name (case-insensitive); does NOT re-add the entry", () => {
