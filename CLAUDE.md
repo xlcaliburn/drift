@@ -212,6 +212,9 @@ Don't add prose rules for things the engine can enforce.
   section forces an explicit directive once enough tendays pass in silence. Phase 2
   (arrival tie-in, NPC-initiated contact, milestone beats, structured backstory tags)
   not yet built.
+- `HANDOFF_NPC_CANON.md` — **ready-to-implement spec** for the remaining NPC
+  canon work (combat-tier stamp, faction set-once, voice/age facets, quest cast
+  manifests). Owner-approved designs; a session picking these up starts THERE.
 - `IMPLEMENTATION.md` — what's left to build, in rough order
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
