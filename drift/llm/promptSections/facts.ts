@@ -9,7 +9,9 @@ import type { Section } from "./types";
 export const establishedFacts: Section = ({ memory }) => {
   const facts = memory?.facts ?? [];
   if (!facts.length) return [];
-  const lines = facts.map((f) => `  - ${f.text}${f.tenday != null ? ` (tenday ${f.tenday})` : ""}`);
+  // Pinned (load-bearing) facts first — same ordering otherwise; no other visual change.
+  const ordered = [...facts].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+  const lines = ordered.map((f) => `  - ${f.text}${f.tenday != null ? ` (tenday ${f.tenday})` : ""}`);
   return [
     `ESTABLISHED FACTS (durable canon — honor these exactly; they do NOT expire with scenes. A deal's terms stay struck until a scene DELIBERATELY changes them — then record the change via "facts"):\n${lines.join("\n")}`,
     ``,

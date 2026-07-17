@@ -19,11 +19,21 @@ export const Fact = z.object({
   entityRefs: z.array(z.string()).default([]),
   /** In-world tenday when established (display + eventual aging). */
   tenday: z.number().int().optional(),
+  /** Load-bearing — a term whose loss would contradict the story (a deal's
+   *  exact split, a debt, a kinship). Only the ANALYST may set this (the live
+   *  turn path's TurnPlan has no such field — a cheap per-turn model choosing
+   *  what's load-bearing is exactly the poisoning risk pinning exists to avoid).
+   *  Pinned facts evict last, not first. */
+  pinned: z.boolean().optional(),
 });
 export type Fact = z.infer<typeof Fact>;
 
 /** All 20 ≈ ~300 tokens — small enough to send whole every turn. */
 export const FACTS_CAP = 20;
+
+/** A cheap model over-pinning would defeat the point (everything "load-bearing"
+ *  means nothing is). Capped well under FACTS_CAP; a 9th pin bumps the oldest. */
+export const PINNED_CAP = 8;
 
 /** Normalize for dedupe: lowercase, strip punctuation, collapse whitespace. */
 function norm(s: string): string {
@@ -63,25 +73,47 @@ function sameFact(a: string, b: string): boolean {
 /**
  * Fold the turn's proposed facts into the ledger: an addition matching an
  * existing fact REPLACES it (the newest wording wins — that's how a deal's terms
- * get corrected deliberately instead of duplicated); genuinely new facts append;
- * the cap evicts oldest-first. Pure — returns the new ledger.
+ * get corrected deliberately instead of duplicated, and a restated PINNED fact
+ * keeps its pin even when the addition itself doesn't repeat it); genuinely new
+ * facts append. Eviction at the cap prefers UNPINNED facts (oldest first);
+ * pinned facts only evict once everything is pinned. A pin count over
+ * PINNED_CAP bumps the OLDEST pinned fact back to unpinned (a cheap model
+ * over-pinning would defeat the point). Pure — returns the new ledger.
  */
 export function applyFactUpdates(
   facts: Fact[],
-  additions: { text: string; entityRefs?: string[] }[],
+  additions: { text: string; entityRefs?: string[]; pinned?: boolean }[],
   tenday?: number,
 ): Fact[] {
   let next = [...facts];
   for (const raw of additions) {
     const text = (raw.text ?? "").trim().slice(0, 160);
     if (!text) continue;
-    const fact: Fact = { text, entityRefs: (raw.entityRefs ?? []).slice(0, 6), tenday };
     const dupIdx = next.findIndex((f) => sameFact(f.text, text));
+    const wasPinned = dupIdx >= 0 && next[dupIdx].pinned === true;
+    const pinned = wasPinned || raw.pinned === true;
+    const fact: Fact = {
+      text,
+      entityRefs: (raw.entityRefs ?? []).slice(0, 6),
+      tenday,
+      ...(pinned ? { pinned: true } : {}),
+    };
     if (dupIdx >= 0) {
       // Replace in place but move to the END (freshest — safest from eviction).
       next.splice(dupIdx, 1);
     }
     next = [...next, fact];
+    if (pinned && !wasPinned) {
+      const pinnedCount = next.filter((f) => f.pinned).length;
+      if (pinnedCount > PINNED_CAP) {
+        const oldestPinnedIdx = next.findIndex((f, i) => f.pinned && i !== next.length - 1);
+        if (oldestPinnedIdx >= 0) next[oldestPinnedIdx] = { ...next[oldestPinnedIdx], pinned: undefined };
+      }
+    }
   }
-  return next.slice(-FACTS_CAP);
+  while (next.length > FACTS_CAP) {
+    const unpinnedIdx = next.findIndex((f) => !f.pinned);
+    next.splice(unpinnedIdx >= 0 ? unpinnedIdx : 0, 1);
+  }
+  return next;
 }

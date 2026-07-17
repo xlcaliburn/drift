@@ -57,6 +57,10 @@ export type ThreadAnalysis =
 export interface FactAnalysis {
   text: string;
   entityRefs?: string[];
+  /** Only the analyst may set this — a term whose loss would contradict the
+   *  story (a deal's exact split, a debt, a kinship). The live turn path
+   *  can't pin (TurnPlan has no such field). */
+  pinned?: boolean;
 }
 
 /** Observability for one analyst call — the memory tier's model calls used to be
@@ -99,7 +103,7 @@ const ANALYST_SYSTEM =
   ' "npcs": [ EVERY distinct CHARACTER who figured in the scene — whether or not they are in the KNOWN list, and whether they were PRESENT or only TALKED ABOUT. For each: {"name": string (their name or a short handle if unnamed — REQUIRED), "id": string (the KNOWN id ONLY if this is clearly that same person; OMIT for anyone new), "presence": "present" (physically in the immediate area — someone the player spoke to or faced) or "mentioned" (referenced/off-screen — talked ABOUT but not here, e.g. a target named by a contact), "role": string (their job/handle — "dockmaster", "fixer" — if shown), "oneBreath": string (one vivid line: who this person REALLY is, as the scene revealed them), "note": string (ONE concrete beat of what passed between THEM and the PLAYER this scene — omit for a merely-mentioned figure), "relationship": string (a SHORT label for who they are to the player — only if clear), "fate": "dead" or "gone" (ONLY for a KNOWN character (id set) the scene CONCRETELY showed dying or leaving permanently — executed, spaced, shipped off for good. Never infer from a threat or an injury; omit unless certain)} ],\n' +
   ' "items": [ props the PLAYER clearly came away with this scene — a gift, a token, a keepsake, a document: {"name": string, "note": string}. Do NOT list weapons, armor, ammo, or valuable gear (the game grants those separately); do NOT list things the player merely saw or wanted. Usually empty. ],\n' +
   ' "threads": [ QUEST tracking. Compare what happened against the OPEN THREADS list. If the player COMMITTED to a real objective this scene that is NOT already an open thread — a job accepted, a hunt begun, a delivery promised, a debt taken on, a target set — add {"op": "open", "title": string (short, concrete: "Loot the derelict for Yarl"), "body": string (one line: who set it and what it needs)}. If an OPEN THREAD was clearly COMPLETED or ABANDONED this scene, add {"op": "resolve", "id": string (its id from the OPEN THREADS list, exactly)}. ONLY concrete commitments or outcomes — never a vague idea or something the player merely considered. Usually 0-1 entries; omit when nothing changed. ],\n' +
-  ' "facts": [ DURABLE standing facts this scene ESTABLISHED that must outlive it — a struck deal\'s exact terms ("split with Kaela: 50/50 — agreed"), a scheduled meeting ("Dex at the Rust Bucket, two hours"), a kinship or history REVEALED ("Renwick is the brother of Ren\'s dead partner"), a ban, a debt, a standing arrangement: {"text": string (≤15 words, concrete), "entityRefs": string[] (KNOWN ids it touches)}. Skip anything already in ESTABLISHED FACTS. Facts are the game\'s long-term memory of agreements and relationships — scene color and one-off events do NOT belong. Usually 0-2. ]}\n' +
+  ' "facts": [ DURABLE standing facts this scene ESTABLISHED that must outlive it — a struck deal\'s exact terms ("split with Kaela: 50/50 — agreed"), a scheduled meeting ("Dex at the Rust Bucket, two hours"), a kinship or history REVEALED ("Renwick is the brother of Ren\'s dead partner"), a ban, a debt, a standing arrangement: {"text": string (≤15 words, concrete), "entityRefs": string[] (KNOWN ids it touches), "pinned": boolean (true ONLY for a term whose LOSS would contradict the story — a deal\'s exact split, a debt, a kinship; omit/false for routine facts)}. GROUNDING: a fact must be DIRECTLY evidenced by what the scene showed — never inferred, never a prediction ("will probably..."), never mood or scene color. Skip anything already in ESTABLISHED FACTS. Facts are the game\'s long-term memory of agreements and relationships — scene color and one-off events do NOT belong. Usually 0-2. ]}\n' +
   'Ground EVERY field in what actually happened — never invent a person, item, quest, or fact. Do NOT list the player\'s own character. Omit any field you cannot fill.';
 
 function defaultSummarizerModel() {
@@ -369,6 +373,7 @@ export async function analyzeScene(
       .map((f: Record<string, unknown>) => ({
         text: str(f.text, 160) ?? "",
         entityRefs: (Array.isArray(f.entityRefs) ? f.entityRefs.map(String) : []).slice(0, 6),
+        pinned: f.pinned === true,
       }))
       .filter((f: FactAnalysis) => f.text)
       .slice(0, 3);

@@ -23,7 +23,7 @@ import { applyFactUpdates, type Fact } from "./facts";
 export function mergeFactsOnConflict(theirs: Fact[], mine: Fact[]): Fact[] {
   return applyFactUpdates(
     theirs,
-    mine.map((f) => ({ text: f.text, entityRefs: f.entityRefs })),
+    mine.map((f) => ({ text: f.text, entityRefs: f.entityRefs, pinned: f.pinned })),
   );
 }
 
