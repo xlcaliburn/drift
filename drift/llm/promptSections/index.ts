@@ -9,9 +9,11 @@ import { threat, market, dock, patron, bodyMod } from "./economy";
 import { npcs, cameos, threads, worldStatus } from "./world";
 import { activeJobs, offeredJobs } from "./quests";
 import { npcTiers } from "./npcTiers";
+import { establishedFacts } from "./facts";
 import { backstoryPressure } from "./backstoryPressure";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
+import type { Fact } from "@/shared/facts";
 
 /**
  * The per-turn context slice, composed from ordered SECTIONS. The order IS the
@@ -28,7 +30,7 @@ const SECTIONS: (Section | "")[] = [
   "",
   npcs, npcTiers,
   "",
-  cameos, threads, activeJobs, offeredJobs,
+  cameos, threads, establishedFacts, activeJobs, offeredJobs,
   "",
   worldStatus,
 ];
@@ -45,8 +47,8 @@ export function buildContextSlice(
   retrieved?: { npcs: CampaignState["npcs"]; threads: CampaignState["threads"] },
   /** JSON-turn variant: tutorial directive phrased for fields, not tools. */
   jsonMode = false,
-  /** Scene memory (CONTINUITY.md): card + relations + recent summaries. */
-  memory?: { sceneCard?: SceneCard; npcRelations?: NpcRelations; recentScenes?: SceneMemory[] },
+  /** Scene memory (CONTINUITY.md): card + relations + recent summaries + facts. */
+  memory?: { sceneCard?: SceneCard; npcRelations?: NpcRelations; recentScenes?: SceneMemory[]; facts?: Fact[] },
   /** Reachable dossiers of OTHER players' characters in this universe (cameos). */
   otherDossiers?: Dossier[],
   /** The active job board (QUESTS.md) — feeds the active-jobs section. */

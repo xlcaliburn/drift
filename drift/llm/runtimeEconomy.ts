@@ -373,6 +373,12 @@ export function sellItem(rt: EconRT, name: string): { line?: string; error?: str
     pc.gear.find((g) => g.itemId && g.itemId.toLowerCase() === norm) ??
     pc.gear.find((g) => g.name.toLowerCase().includes(norm));
   if (!existing) return { error: `not carrying "${name.trim()}"` };
+  // Job cargo isn't the player's to fence (QUESTS.md 1b) — selling it is how the
+  // Wren campaign ended up with one crate sold AND delivered AND still carried.
+  // Walking away from the job (abandon) is the legitimate way to shed it.
+  if (existing.jobId) {
+    return { error: `${existing.name} is job cargo — deliver it, or drop the job first` };
+  }
   const unitValue = existing.itemId
     ? catalogItem(existing.itemId)?.price ?? 0
     : gearValue({ ...existing, qty: 1 });

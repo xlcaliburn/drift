@@ -4,6 +4,7 @@ import { money } from "./money";
 import { trade, gearItems } from "./inventory";
 import { services } from "./services";
 import { npcs, continuity, quests, sceneEnd } from "./world";
+import { facts } from "./facts";
 import { combatStart } from "./combat";
 
 export type { ApplyCtx } from "./types";
@@ -30,6 +31,7 @@ const HANDLERS: PlanHandler[] = [
   npcs,         // register + present + relations
   gearItems,    // items[] → real gear
   continuity,   // scene card + world event
+  facts,        // durable standing facts (CONTINUITY v2 ledger)
   quests,       // threads + clock advances
   sceneEnd,     // scene close / auto-close
   combatStart,  // LAST — skipped when a reroute already set ctx.combat

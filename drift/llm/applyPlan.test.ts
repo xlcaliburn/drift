@@ -172,6 +172,31 @@ describe("applyPlan — quests & world", () => {
   });
 });
 
+describe("applyPlan — facts ledger (CONTINUITY v2)", () => {
+  it("records plan facts onto the runtime's SESSION-OWNED array (mutated in place)", () => {
+    const { runtime, toolCalls } = run(
+      state({}),
+      mkPlan({ facts: [{ text: "Split with Kaela on the crate: 50/50 — agreed", entityRefs: ["npc-kaela"] }] }),
+    );
+    expect(toolCalls).toContain("record_facts");
+    expect(runtime.facts).toHaveLength(1);
+    expect(runtime.facts[0].text).toContain("50/50");
+  });
+
+  it("a restated fact replaces its older wording — the ledger can't accumulate contradictions", () => {
+    const runtime0 = new TurnRuntime(state({}), minRng, {
+      facts: [{ text: "Split with Kaela on the crate: 50/50 — agreed", entityRefs: [] }],
+    });
+    const ctx: ApplyCtx = {
+      runtime: runtime0, preState: runtime0.state, pc: runtime0.state.characters[0],
+      emit: () => {}, toolCalls: [], lastRoll: null, combat: null, reconcile: [],
+    };
+    applyPlan(mkPlan({ facts: [{ text: "Split with Kaela on the crate now 60/40 — renegotiated at the dock" }] }), ctx);
+    expect(runtime0.facts).toHaveLength(1);
+    expect(runtime0.facts[0].text).toContain("60/40");
+  });
+});
+
 describe("applyPlan — NPC registration gate", () => {
   it("registers a named NPC that appears in the narration; skips one that doesn't", () => {
     const { runtime } = run(

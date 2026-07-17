@@ -3,6 +3,7 @@ import type { SceneCard, NpcRelations, SceneMemory } from "@/shared/scene";
 import type { Dossier } from "@/shared/multiplayer";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
+import type { Fact } from "@/shared/facts";
 
 /**
  * Shared input for every context section. The broadly-used derivations (pc, loc,
@@ -20,8 +21,9 @@ export interface SectionCtx {
   /** Retrieved this turn (retrieveEntities) — surfaced NPCs and active threads. */
   npcs: CampaignState["npcs"];
   threads: CampaignState["threads"];
-  /** Scene memory (CONTINUITY.md): card + relations + recent summaries. */
-  memory?: { sceneCard?: SceneCard; npcRelations?: NpcRelations; recentScenes?: SceneMemory[] };
+  /** Scene memory (CONTINUITY.md): card + relations + recent summaries + the
+   *  durable facts ledger (v2). */
+  memory?: { sceneCard?: SceneCard; npcRelations?: NpcRelations; recentScenes?: SceneMemory[]; facts?: Fact[] };
   /** Reachable dossiers of OTHER players' characters (cross-campaign cameos). */
   otherDossiers?: Dossier[];
   /** The job board (QUESTS.md) — the active-job section narrates the next step. */

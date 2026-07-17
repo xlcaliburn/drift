@@ -47,6 +47,9 @@ export interface NarrativeRT extends RelationRT {
   tickedThisScene: Set<string>;
   sceneEndReport: ReturnType<typeof runSceneEnd> | null;
   questCompletedThisTurn: boolean;
+  /** Other players' character names (lowercased) — registerNpc refuses these;
+   *  cameos ride dossiers, never a local npc-gen fork (MULTIPLAYER.md). */
+  protectedNames?: Set<string>;
   markQuestCompleted(): void;
 }
 
@@ -270,6 +273,16 @@ export function registerNpc(rt: NarrativeRT, name: string, oneBreath?: string, r
     return cn === tn || cn.split(/\s+/)[0] === tn || cn === tn.split(/\s+/)[0];
   });
   if (isPlayerName) return { added: false, id: "" };
+  // NEVER register ANOTHER PLAYER'S CHARACTER as a plain NPC either. Cameos ride
+  // the gated dossiers (MULTIPLAYER.md) — a local npc-gen row for them forks the
+  // person into a second, driftable record that then promotes to the universe
+  // table and collides with the REAL character's identity everywhere (the live
+  // "npc-gen-wren-31" incident: Ekko's game registered Wren Sung, and a duplicate
+  // 'Wren' later walked up to Wren's own player mid-scene).
+  const isDossierName = [...(rt.protectedNames ?? [])].some(
+    (pn) => pn === tn || pn.split(/\s+/)[0] === tn || pn === tn.split(/\s+/)[0],
+  );
+  if (isDossierName) return { added: false, id: "" };
   const sameBaseName = rt.state.npcs.filter((n) => baseNameOf(n.name) === tn);
   const { existingId, collision } = resolveNpcNameMatch(sameBaseName, cleanRole);
   const existing = existingId ? sameBaseName.find((n) => n.id === existingId) : undefined;

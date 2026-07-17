@@ -56,6 +56,10 @@ export const GearItem = z.object({
   itemId: z.string().optional(),
   /** Stack size for consumables (e.g. "Stim ×3"); 1/absent for single items. */
   qty: z.number().int().positive().optional(),
+  /** Set when this gear IS a delivery job's cargo (QUESTS.md 1b) — granted on
+   *  accept, consumed by the engine on delivery, unsellable, slot-free (hauled,
+   *  not packed). Kills the "sold AND delivered AND still carried" class. */
+  jobId: z.string().optional(),
 });
 
 /**

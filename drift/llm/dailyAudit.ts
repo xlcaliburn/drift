@@ -139,7 +139,11 @@ export const RECENTLY_FIXED_NOTE =
   "- Bleeding Out death saves are engine-rolled (downed players are no longer improvised)\n" +
   "- NPC home stations are pinned; someone based elsewhere can't be inferred into the scene by a comms quote (FIXED)\n" +
   "- Two different people sharing a name no longer merge into one NPC record (FIXED)\n" +
-  "- Job offers are engine-generated with giver/adversary coherence (Crown-smuggles-past-Crown postings: FIXED)";
+  "- Job offers are engine-generated with giver/adversary coherence (Crown-smuggles-past-Crown postings: FIXED)\n" +
+  "- Delivery cargo is REAL inventory now — granted on accept, unsellable, consumed by the engine on delivery (sold-AND-delivered-AND-still-carried: FIXED)\n" +
+  "- Durable facts ledger exists — struck deal terms and appointments persist across scenes (renegotiated-deal / forgotten-meeting class: FIXED)\n" +
+  "- The player character's name is pinned in the prompt; other players' characters can no longer be registered as local NPCs (duplicate-PC breaks: FIXED)\n" +
+  "- A passed haggle roll moves the actual purchase price (narrated-price vs charged-price splits: FIXED)";
 
 export function buildAuditUser(i: AuditInputs): string {
   return (

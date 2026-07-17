@@ -288,6 +288,20 @@ export const TurnPlan = z.object({
       }),
     ).max(4),
   ),
+  /** FACTS LEDGER (CONTINUITY.md v2): durable standing facts that outlive scenes —
+   *  a struck deal's exact terms, a scheduled meeting, a ban, a debt, a spoofed
+   *  transponder. Emit when a LASTING fact is established or deliberately changed;
+   *  the engine stores (capped + deduped — a restated fact replaces its older
+   *  wording) and feeds them back every turn as canon. Not for scene color. */
+  facts: optionalNullable(
+    z.array(
+      z.object({
+        text: z.string().min(1).max(160),
+        /** Entity ids the fact touches (NPCs/factions/locations), for retrieval. */
+        entityRefs: optionalNullable(z.array(z.string()).max(6)),
+      }),
+    ).max(3),
+  ),
   /** Scene-card updates (CONTINUITY.md tier NOW): `situation` overwrites the
    *  one-line "what is happening"; `beats` appends promises/threats/agreements
    *  made this turn (engine caps both). */

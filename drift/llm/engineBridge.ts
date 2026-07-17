@@ -51,6 +51,7 @@ import {
   setAppearance,
 } from "./runtimeNarrative";
 import { freshSceneCard, type SceneCard, type NpcRelations } from "@/shared/scene";
+import type { Fact } from "@/shared/facts";
 import { inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
 import type { DownedAction, DeathOutcome } from "@/shared/death";
 
@@ -122,16 +123,35 @@ export class TurnRuntime {
    *  runtimeEconomy's gear gate can read it. */
   lootedThisTurn = false;
 
+  /** Other players' character names — registerNpc's dossier-name guard reads it. */
+  protectedNames?: Set<string>;
+
+  /** FACTS LEDGER (CONTINUITY v2) — durable standing facts. Passed BY REFERENCE
+   *  from the session (like sceneCard) and mutated IN PLACE by the facts handler,
+   *  so the route's session slice sees the updates without extra plumbing. */
+  facts: Fact[];
+
   constructor(
     state: CampaignState,
     rng: RNG = liveRng,
-    opts?: { tickedThisScene?: Set<string>; sceneCard?: SceneCard; npcRelations?: NpcRelations },
+    opts?: {
+      tickedThisScene?: Set<string>;
+      sceneCard?: SceneCard;
+      npcRelations?: NpcRelations;
+      /** Other players' character names — registerNpc refuses these (cameos ride
+       *  dossiers, never a local npc-gen fork). */
+      protectedNames?: Set<string>;
+      /** The session's facts ledger — mutated in place (CONTINUITY v2). */
+      facts?: Fact[];
+    },
   ) {
     this.state = state;
     this.rng = rng;
     this.tickedThisScene = opts?.tickedThisScene ?? new Set();
     this.sceneCard = opts?.sceneCard ?? freshSceneCard();
     this.npcRelations = opts?.npcRelations ?? {};
+    this.protectedNames = opts?.protectedNames;
+    this.facts = opts?.facts ?? [];
   }
 
   /** Is this character dead (an injury marks it)? Guards further play. */

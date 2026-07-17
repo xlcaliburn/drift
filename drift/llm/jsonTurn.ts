@@ -25,6 +25,7 @@ import { inferConsumableUse } from "@/shared/items";
 import { routeBetween, rollTransitIncident, riskLabel } from "@/shared/routes";
 import type { CombatState } from "@/shared/combat";
 import type { Dossier } from "@/shared/multiplayer";
+import type { Fact } from "@/shared/facts";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
 import { stripInlineMenu } from "@/shared/narration";
@@ -74,6 +75,8 @@ export interface JsonTurnInput {
   /** Scene working memory + NPC relations (CONTINUITY.md); mutated in place. */
   sceneCard?: SceneCard;
   npcRelations?: NpcRelations;
+  /** The session's FACTS LEDGER (CONTINUITY v2); mutated in place like sceneCard. */
+  facts?: Fact[];
   /** Recent scene summaries for the PREVIOUSLY block (oldest→newest). */
   recentScenes?: SceneMemory[];
   /** Other players' reachable dossiers in this universe (cross-campaign cameos). */
@@ -440,6 +443,13 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     tickedThisScene: input.tickedSet,
     sceneCard: input.sceneCard,
     npcRelations: input.npcRelations,
+    facts: input.facts,
+    // Other players' characters can CAMEO (via their dossier) but never fork into
+    // a local npc-gen record — the duplicate then promotes universe-wide and
+    // collides with the real character (the live "second Wren" break).
+    protectedNames: new Set(
+      (input.otherDossiers ?? []).map((d) => d.name.toLowerCase()).filter(Boolean),
+    ),
   });
   // This turn counts against the scene (the auto-close backstop reads it).
   runtime.sceneCard.turnCount += 1;
@@ -606,6 +616,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       sceneCard: runtime.sceneCard,
       npcRelations: runtime.npcRelations,
       recentScenes: input.recentScenes ?? [],
+      facts: runtime.facts,
     },
     input.otherDossiers,
     input.jobs,

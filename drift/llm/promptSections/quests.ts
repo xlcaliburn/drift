@@ -13,7 +13,8 @@ export const activeJobs: Section = ({ jobs }) => {
   const lines = active.map((j) => {
     const next = j.objectives.find((o) => !o.done);
     const step = next ? next.summary : "wrap it up";
-    return `  - ${j.title}: next → ${step}${j.complication ? ` (complication: ${j.complication})` : ""}`;
+    const freight = j.cargo ? ` [they are CARRYING ${j.cargo} — real inventory; it leaves their hands ONLY when the engine reports delivery. Never narrate it sold, handed off early, or duplicated]` : "";
+    return `  - ${j.title}: next → ${step}${j.complication ? ` (complication: ${j.complication})` : ""}${freight}`;
   });
   return [
     `ACTIVE JOBS the player has taken (weave the NEXT step into the fiction; the ENGINE tracks completion and pays the reward — never declare a job done or grant credits yourself):\n${lines.join("\n")}`,

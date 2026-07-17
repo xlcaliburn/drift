@@ -352,6 +352,9 @@ const STACK_PER_SLOT = 3;
  *  2, a light one 1, armor 2, anything else 1. */
 export function gearSlotCost(g: GearEntry): number {
   const qty = g.qty ?? 1;
+  // Job cargo is hauled, not packed (QUESTS.md 1b): it must never wedge an accept
+  // behind a full pack, and it leaves the moment the engine detects delivery.
+  if (g.jobId) return 0;
   const cat = g.itemId ? catalogItem(g.itemId) : undefined;
   if (cat) {
     if (cat.type === "consumable") return Math.ceil(qty / STACK_PER_SLOT);

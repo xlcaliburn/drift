@@ -13,9 +13,13 @@ import {
   turnSignals,
   rollJobCredits,
   canOffer,
+  grantJobCargo,
+  consumeJobCargo,
   type Job,
   type Objective,
 } from "./quests";
+import { slotsUsed } from "./items";
+import { resolveJobsTurn } from "./jobsRuntime";
 
 function state(over: { bias?: string; directive?: string; currentLocationId?: string; credits?: number } = {}): CampaignState {
   return {
@@ -128,6 +132,52 @@ describe("job coherence (giver/adversary alignment)", () => {
     expect(crownGiver).toBeGreaterThan(total / 3);
     // Alignment lean: sanctioned work (+2) outdraws the underworld pool (2 archetypes, no lean).
     expect(official).toBeGreaterThan(underworld);
+  });
+});
+
+describe("cargo as inventory (QUESTS 1b — one crate, one fate)", () => {
+  const courier = (): Job => ({
+    id: "j-cargo", title: "Courier run", blurb: "", giver: "board", playstyle: "commerce",
+    archetype: "courier", tier: "T1", cargo: "a sealed medcrate",
+    objectives: [{ id: "o1", kind: "deliver", summary: "Haul it to Rook", done: false, locationId: "loc-b" }],
+    reward: { tier: "T1" }, status: "active", createdTenday: 0,
+  });
+
+  it("generateJob stamps `cargo` on delivery archetypes", () => {
+    for (let seed = 0; seed < 60; seed++) {
+      const j = generateJob(state({ credits: 400 }), seededRng(seed), 0);
+      if (!j) continue;
+      const hasDeliver = j.objectives.some((o) => o.kind === "deliver");
+      if (hasDeliver) expect(j.cargo).toBeTruthy();
+      else expect(j.cargo).toBeUndefined();
+    }
+  });
+
+  it("grant puts a jobId-tagged, SLOT-FREE item in hand (idempotent); consume takes it back", () => {
+    const s0 = state();
+    const before = slotsUsed(s0.characters[0]);
+    let s = grantJobCargo(s0, courier());
+    s = grantJobCargo(s, courier()); // re-grant must not duplicate
+    const pc = s.characters[0];
+    const carried = pc.gear.filter((g) => g.jobId === "j-cargo");
+    expect(carried).toHaveLength(1);
+    expect(carried[0].name).toBe("Sealed medcrate");
+    expect(slotsUsed(pc)).toBe(before); // hauled, not packed
+    const { state: s2, removedName } = consumeJobCargo(s, "j-cargo");
+    expect(removedName).toBe("Sealed medcrate");
+    expect(s2.characters[0].gear.some((g) => g.jobId === "j-cargo")).toBe(false);
+  });
+
+  it("the ENGINE hands the cargo over when delivery completes (resolveJobsTurn)", () => {
+    // Player carries the crate, arrives at the drop — the completion that pays the
+    // reward also removes the freight and says so (📦 line).
+    let s = grantJobCargo(state({ currentLocationId: "loc-b" }), courier());
+    const res = resolveJobsTurn({
+      state: s, jobs: [courier()], events: [], combatResolvedAlive: false, rng: seededRng(1),
+    });
+    expect(res.jobs.find((j) => j.id === "j-cargo")!.status).toBe("complete");
+    expect(res.state.characters[0].gear.some((g) => g.jobId === "j-cargo")).toBe(false);
+    expect(res.lines.join(" ")).toContain("📦 Cargo handed over: Sealed medcrate");
   });
 });
 

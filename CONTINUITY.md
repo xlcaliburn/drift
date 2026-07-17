@@ -49,17 +49,22 @@ the route with the bearer secret.
 
 ## Remaining work
 
-### 1. Facts ledger — CANON tier v2 (deferred per D-2)
+### 1. Facts ledger — CANON tier v2 — **SHIPPED 2026-07-16 (v1)**
 
-Standing facts that outlive scenes and fit neither NPC nor thread:
-"banned from the Meridian dock bar", "the Wren's transponder is spoofed",
-"Doyle owes you 200¢" (if the scene ended before payment).
+Standing facts that outlive scenes and fit neither NPC nor thread: struck deal
+terms, appointments, bans, debts. Born urgent from the audit pattern — "50/50 —
+Done" renegotiated scenes later as "30%... that was a different conversation",
+and Dex's Rust Bucket meet overwritten because nothing durable remembered it.
 
-- `TurnPlan.facts: [{text, entityRefs?}]` — model proposes; engine stores on
-  the campaign runtime, **capped at 20**, deduped by fuzzy text match, oldest
-  evicted. All 20 ≈ ~200 tokens — small enough to send the relevant slice (or
-  all, v1) every turn.
-- Facts referencing an entity ride retrieval like threads do.
+Shipped shape: `TurnPlan.facts [{text ≤160, entityRefs}]` (model proposes, rule
+10) → `applyPlan/facts.ts` handler → `shared/facts.ts` `applyFactUpdates` (pure,
+tested): **capped at 20**, deduped — exact/containment, 80% token overlap, or a
+matching 3-content-word SUBJECT ("split kaela crate"), so a RESTATED deal
+replaces its older wording instead of contradicting it — oldest evicted. Stored
+on `campaign_runtime.facts` (migration 025), session slice like jobs/relations.
+Fed back every turn via the `establishedFacts` prompt section ("durable canon —
+honor these exactly"). Still TODO from the original design: facts riding
+retrieval by entityRef (v1 sends all 20 — ~300 tokens, fine).
 
 ### 2. Shrink the verbatim history window 10 → 6 exchanges (D-3)
 

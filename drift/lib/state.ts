@@ -12,6 +12,7 @@ import { ensureStartingGun, ensurePatronSeed } from "@/engine/creation";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
+import type { Fact } from "@/shared/facts";
 import type { Dossier } from "@/shared/multiplayer";
 
 /** Campaign-scoped NPCs (narrator-introduced or creation relations) carry these id
@@ -54,6 +55,9 @@ export interface SessionData {
   /** The relationship ledger (MULTIPLAYER.md §2) — who this character has MET among
    *  other players' characters; gates cross-player cameos. */
   playerLedger: PlayerLedger;
+  /** The FACTS LEDGER (CONTINUITY.md v2) — durable standing facts (deal terms,
+   *  appointments, bans, debts), engine-capped + deduped. */
+  facts: Fact[];
 }
 
 const store = new Map<string, SessionData>();
@@ -124,6 +128,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               lastChoices: runtime.lastChoices ?? [],
               jobs: runtime.jobs ?? [],
               playerLedger: runtime.playerLedger ?? {},
+              facts: runtime.facts ?? [],
             }
           : {
               state,
@@ -140,6 +145,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               lastChoices: [],
               jobs: [],
               playerLedger: {},
+              facts: [],
             };
       store.set(campaignId, session);
       return session;
@@ -224,6 +230,7 @@ export async function persistSession(campaignId: string, session: SessionData): 
       lastChoices: session.lastChoices,
       jobs: session.jobs ?? [],
       playerLedger: session.playerLedger ?? {},
+      facts: session.facts ?? [],
     });
     // Build this PC's PUBLIC dossier and promote it into the UNIVERSE-scoped
     // dossiers table so other campaigns in the same world can cameo the character

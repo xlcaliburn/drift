@@ -127,7 +127,11 @@ outcomes → low false-positive; the live `threads:[]` path stays primary.
 - **Model-signalled steps** — a `report`/`deliver-to-NPC` objective the narrator can
   flag done (hybrid completion's second half), for beats the engine can't see in
   state.
-- **Inventory-tracked cargo** — `deliver` actually carries an item, lost if you die.
+- ~~**Inventory-tracked cargo**~~ — SHIPPED 2026-07-16: delivery jobs stamp `cargo`;
+  on accept it becomes a jobId-tagged gear item (slot-free — hauled, not packed;
+  unsellable), and the ENGINE consumes it with a 📦 line when the deliver objective
+  completes (abandon forfeits it). Born from the Wren audit's core that was sold AND
+  delivered AND still carried. Still open from the original idea: lost on death.
 - **NPC-given jobs** — `giver` = an NPC id; the board surfaces jobs a present
   contact offers, not just the panel.
 - **Faction arcs** — standing thresholds unlock higher-tier faction lines; ties into

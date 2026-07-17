@@ -12,7 +12,7 @@ import { repairQuote } from "@/engine/market";
 import { patronHelp } from "@/shared/netWorth";
 import { advanceLedger } from "@/shared/ledger";
 import type { Dossier } from "@/shared/multiplayer";
-import { acceptJob, abandonJob, generatePersonalJob, inferJobAccept } from "@/shared/quests";
+import { acceptJob, abandonJob, generatePersonalJob, inferJobAccept, grantJobCargo, consumeJobCargo } from "@/shared/quests";
 import { resolveJobsTurn } from "@/shared/jobsRuntime";
 import { personalJobAvailable, TRUST_THRESHOLD } from "@/shared/scene";
 import { liveRng } from "@/engine/rng";
@@ -20,6 +20,7 @@ import { advanceTendays, tendaysForSceneClose } from "@/engine/time";
 import { routeBetween } from "@/shared/routes";
 import { recruitOffer, chargeCrewUpkeep } from "@/shared/crew";
 import { backstoryPressureDue } from "@/shared/backstoryPressure";
+import { inferLocationFromPlace } from "@/shared/locationSync";
 import { getSession, setSession, persistSession, loadReachableDossiers } from "@/lib/state";
 import { requireApprovedUser, canAccessCampaign, isDevUser } from "@/lib/auth";
 import { getMonthUsage, checkBudget, recordTurnUsage } from "@/lib/usage";
@@ -490,6 +491,7 @@ export async function POST(req: NextRequest) {
                 // Scene memory (mutated in place by the runtime; session owns it).
                 sceneCard: session.sceneCard,
                 npcRelations: session.npcRelations,
+                facts: session.facts,
                 recentScenes: session.recentScenes,
                 otherDossiers,
                 jobs: session.jobs ?? [],
@@ -506,6 +508,33 @@ export async function POST(req: NextRequest) {
         // no fallbacks; the client goes terminal on the `dead` flag.
         const pcDied = !!resultPc && (resultPc.injuries ?? []).some((i) => i.name === "Dead");
 
+        // ── Engine-owned LOCATION backstop (CHECKS.md §8 / shared/locationSync.ts):
+        //    currentLocationId's only writer used to be the model's sceneEnd
+        //    arrivedAtLocationId — under-fired like every structured field, leaving
+        //    6/10 live campaigns engine-pinned to a different station than the
+        //    fiction. Infer the station from the scene's own place line ("Halcyon —
+        //    Rust Anchor" → loc-freeport) and correct it HERE, before the job board
+        //    reads location signals (so a narrated arrival completes a delivery the
+        //    same turn) and before `moved` is computed (so the route tendays charge
+        //    and scene boundary fire off the corrected value like a real arrival).
+        //    Skipped whenever the model DID move the player this turn (an explicit
+        //    arrivedAtLocationId already changed the location) — the place line can
+        //    lag a turn behind an explicit arrival, and the backstop must never
+        //    revert the primary path it exists to back up.
+        const locLines: string[] = [];
+        if (!wasCombatTurn && !pcDied && result.state.campaign.currentLocationId === prevLoc) {
+          const inferredLoc = inferLocationFromPlace(session.sceneCard.place, result.state.locations);
+          if (inferredLoc && inferredLoc !== result.state.campaign.currentLocationId) {
+            const locName = result.state.locations.find((l) => l.id === inferredLoc)?.name ?? inferredLoc;
+            result.state = {
+              ...result.state,
+              campaign: { ...result.state.campaign, currentLocationId: inferredLoc },
+            };
+            result.events = [...result.events, { type: "note", breakdown: `Arrived: ${locName}` }];
+            locLines.push(`📍 Arrived: ${locName}`);
+          }
+        }
+
         // ── Job board (QUESTS.md): fold any accept/abandon click into the board,
         //    then advance active jobs from THIS turn's real signals (arrival, a won
         //    fight, a successful skill roll), pay out completions, and top the board
@@ -520,8 +549,22 @@ export async function POST(req: NextRequest) {
         // choice, but when it under-fires and the player's text is an unmistakable
         // take ("I'll take the courier run"), resolve it deterministically here.
         const effectiveAcceptId = acceptJobId ?? (!wasCombatTurn ? inferJobAccept(playerText, jobsBoard) : undefined);
-        if (effectiveAcceptId) jobsBoard = acceptJob(jobsBoard, effectiveAcceptId);
-        if (abandonJobId) jobsBoard = abandonJob(jobsBoard, abandonJobId);
+        if (effectiveAcceptId) {
+          jobsBoard = acceptJob(jobsBoard, effectiveAcceptId);
+          // Delivery jobs: the freight becomes REAL inventory the moment the job is
+          // taken (jobId-tagged, slot-free, unsellable; the engine consumes it on
+          // delivery). QUESTS.md 1b.
+          const taken = jobsBoard.find((j) => j.id === effectiveAcceptId);
+          if (taken?.status === "active" && taken.cargo) {
+            result.state = grantJobCargo(result.state, taken);
+          }
+        }
+        if (abandonJobId) {
+          jobsBoard = abandonJob(jobsBoard, abandonJobId);
+          // Walking away forfeits the freight — it's not the player's to keep.
+          const forfeited = consumeJobCargo(result.state, abandonJobId);
+          if (forfeited.removedName) result.state = forfeited.state;
+        }
         // A trusted NPC's personal favor (RELATIONSHIPS.md): generate their personal
         // job (their backstory want) straight to ACTIVE — it never lists on the public
         // board — and mark the arc started so it isn't re-offered.
@@ -685,7 +728,7 @@ export async function POST(req: NextRequest) {
         // Engine display lines (dice/ticks/damage/payment/combat/time) — the handlers
         // return them pre-prefixed; they become system transcript lines so a
         // refresh shows the same mechanics seen live.
-        const engineLineTexts = [...(result.engineLines ?? []), ...jobsRes.lines, ...timeLines];
+        const engineLineTexts = [...(result.engineLines ?? []), ...locLines, ...jobsRes.lines, ...timeLines];
         const engineLines = engineLineTexts.map((text) => ({ role: "system" as const, text }));
 
         const transcriptAdds = [

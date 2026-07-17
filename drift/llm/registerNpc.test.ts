@@ -45,6 +45,21 @@ describe("registerNpc — continuity", () => {
     expect(rt.registerNpc("Wren").added).toBe(false); // "Wren" == first name of "Wren Sung"
   });
 
+  it("REFUSES to register ANOTHER PLAYER'S character (dossier names) — cameos never fork into npc-gen rows", () => {
+    // The live incident: Ekko's game registered "Wren" (Wren Sung, another player's
+    // PC) as a plain NPC; the duplicate promoted universe-wide and later walked up
+    // to Wren's own player mid-scene.
+    const rt = new TurnRuntime(stateAt("loc-rook"), rng, {
+      protectedNames: new Set(["wren sung", "ekko dresch"]),
+    });
+    expect(rt.registerNpc("Wren Sung").added).toBe(false); // exact
+    expect(rt.registerNpc("Wren").added).toBe(false); // first-name match
+    expect(rt.registerNpc("Ekko", "salvager the player heard about").added).toBe(false);
+    expect(rt.state.npcs).toHaveLength(0);
+    // An unrelated name still registers fine.
+    expect(rt.registerNpc("Doyle", "supply officer").added).toBe(true);
+  });
+
   it("dedupes by name (case-insensitive); does NOT re-add the entry", () => {
     const rt = new TurnRuntime(stateAt("loc-meridian"), rng);
     const first = rt.registerNpc("Doyle", "supply officer");

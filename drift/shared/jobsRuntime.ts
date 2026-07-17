@@ -9,6 +9,7 @@ import {
   refreshBoard,
   acceptJob,
   abandonJob,
+  consumeJobCargo,
   type Job,
 } from "./quests";
 
@@ -77,6 +78,14 @@ export function resolveJobsTurn(input: {
 
   for (const { job } of progress.completed) {
     if (!pc) break;
+    // Delivery jobs: the freight LEAVES the player's hands the moment the engine
+    // detects completion — one crate, one fate (QUESTS.md 1b; the Wren audit's
+    // sold-AND-delivered-AND-still-carried core).
+    const handedOver = consumeJobCargo(state, job.id);
+    if (handedOver.removedName) {
+      state = handedOver.state;
+      lines.push(`📦 Cargo handed over: ${handedOver.removedName}.`);
+    }
     const credits = rollJobCredits(job.reward.tier, rng);
     state = {
       ...state,

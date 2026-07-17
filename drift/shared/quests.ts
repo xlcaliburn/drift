@@ -62,6 +62,10 @@ export const Job = z.object({
   archetype: z.string(),
   tier: z.enum(["T0", "T1", "T2", "T3"]),
   complication: z.string().optional(),
+  /** Delivery jobs: the actual freight ("a sealed medcrate"). On accept it becomes
+   *  REAL inventory (a jobId-tagged gear item); the engine consumes it when the
+   *  deliver objective completes. QUESTS.md 1b — kills sold-AND-still-carried. */
+  cargo: z.string().optional(),
   locationId: z.string().optional(), // where it mainly plays out (the destination)
   /** The station this job was POSTED at — the board is local, so an offer only shows
    *  while the player is here. Undefined on legacy jobs (shown anywhere). */
@@ -286,6 +290,8 @@ export function generateJob(state: CampaignState, rng: RNG, tenday = 0, avoidArc
     archetype: arch.id,
     tier,
     complication,
+    // A job with a deliver step carries REAL freight — becomes inventory on accept.
+    ...(arch.steps.some((s) => s.kind === "deliver") ? { cargo } : {}),
     locationId: dest?.id,
     postedLocationId: state.campaign.currentLocationId,
     objectives,
@@ -293,6 +299,55 @@ export function generateJob(state: CampaignState, rng: RNG, tenday = 0, avoidArc
     status: "offered",
     createdTenday: tenday,
     expiresTenday: tenday + 3,
+  };
+}
+
+// ── Cargo as inventory (QUESTS.md 1b) ──────────────────────────────────────────
+// Born from the live Wren audit: the SAME data core was sold (+212), delivered
+// (+155), and later narrated "still under your arm" — three fates for one crate,
+// including a double payout. The fix is ownership: a delivery job's freight is a
+// REAL, jobId-tagged gear item — granted on accept, unsellable, slot-free, and
+// consumed by the ENGINE the moment the deliver objective completes.
+
+/** Display name for a cargo string: "a sealed medcrate" → "Sealed medcrate". */
+function cargoDisplayName(cargo: string): string {
+  const stripped = cargo.replace(/^(a|an|the)\s+/i, "").trim();
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
+/** Put an accepted delivery job's freight in the PC's hands. Idempotent. */
+export function grantJobCargo(state: CampaignState, job: Job): CampaignState {
+  const pc = state.characters.find((c) => c.kind === "pc");
+  if (!pc || !job.cargo) return state;
+  if (pc.gear.some((g) => g.jobId === job.id)) return state; // already carrying it
+  const item = {
+    name: cargoDisplayName(job.cargo),
+    jobId: job.id,
+    detail: `cargo for "${job.title}" — hand it over at the drop to close the job`,
+  };
+  return {
+    ...state,
+    characters: state.characters.map((c) => (c.id === pc.id ? { ...c, gear: [...c.gear, item] } : c)),
+  };
+}
+
+/** Take the job's freight back out of the PC's hands (delivered, or the job was
+ *  dropped/failed — either way it's no longer theirs). Returns the removed name. */
+export function consumeJobCargo(
+  state: CampaignState,
+  jobId: string,
+): { state: CampaignState; removedName?: string } {
+  const pc = state.characters.find((c) => c.kind === "pc");
+  const carried = pc?.gear.find((g) => g.jobId === jobId);
+  if (!pc || !carried) return { state };
+  return {
+    state: {
+      ...state,
+      characters: state.characters.map((c) =>
+        c.id === pc.id ? { ...c, gear: c.gear.filter((g) => g !== carried) } : c,
+      ),
+    },
+    removedName: carried.name,
   };
 }
 

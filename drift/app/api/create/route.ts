@@ -90,6 +90,7 @@ export async function POST(req: NextRequest) {
     lastChoices: [],
     jobs: [], // the board seeds on first load (QUESTS.md)
     playerLedger: {}, // no cross-player contacts met yet (MULTIPLAYER.md §2)
+    facts: [], // the durable facts ledger starts empty (CONTINUITY v2)
   };
   setSession(campaignId, session0);
   await persistSession(campaignId, session0);

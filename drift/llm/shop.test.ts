@@ -40,6 +40,16 @@ describe("buyItem — the engine owns the whole transaction", () => {
     expect(pc.gear.find((g) => g.itemId === "medkit")?.qty).toBe(1);
   });
 
+  it("REFUSES to fence job cargo — deliver it or drop the job (QUESTS 1b)", () => {
+    const rt = new TurnRuntime(
+      atLocation(["blackmarket"], { gear: [{ name: "Sealed medcrate", jobId: "j-1" } as never] }),
+      maxRng,
+    );
+    const res = rt.sellItem("sealed medcrate");
+    expect(res.error).toMatch(/job cargo/);
+    expect(rt.state.characters[0].gear).toHaveLength(1); // still carried
+  });
+
   it("HAGGLE: a passed negotiation roll this turn takes 10% off the till (audit-born)", () => {
     // The live appeal: player won the haggle, narration said ¢28, engine charged
     // list ¢30. The price the till charges must follow the dice.
