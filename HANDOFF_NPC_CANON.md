@@ -80,7 +80,16 @@ builds on patterns A–C reinforce.
 
 ---
 
-## Task A — combat tier stamp on cast NPCs
+## Task A — combat tier stamp on cast NPCs ✅ SHIPPED 2026-07-18
+
+*Implemented as specced: `Npc.tier` + migration `028_npc_tier.sql` (028 was
+free both locally and live at apply time — the doc's collision warning about
+028/029 didn't materialize). `resolveGroupTier` in `applyPlan/combat.ts` reuses
+`matchCastCasualty` unchanged; `setNpcTier` copies `setNpcSex`'s shape exactly;
+the context tag rides inside the existing `[looks: …]` bracket as
+`— a T‹n› threat`. 4 new tests in `applyPlan.test.ts` (override, stamp,
+no-match, set-once-across-two-fights); golden untouched (no fixture NPC has a
+tier). 810 tests pass. CHECKS.md §2 row + incident lineage added.*
 
 **Failure class:** spawned enemies have tiers (T1–T3) but a *cast* NPC has no
 stored tier, so every `combatStart` naming a known NPC lets the model re-pick

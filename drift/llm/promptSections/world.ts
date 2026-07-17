@@ -127,7 +127,13 @@ export const npcs: Section = ({ state, npcs, memory, loc }) => {
             // FIXED look, fed for anyone relevant this turn. Render-time fallback
             // (deterministic off id, like quirk) so every existing NPC has one
             // immediately — no data migration; registerNpc persists it set-once.
-            const looks = presentSet.has(n.id) || recentSet.has(n.id) ? ` [looks: ${n.appearance ?? generateAppearance(n.id)}]` : "";
+            // A pinned combat tier (set once they've actually fought) rides the
+            // same bracket, so a boss can't be re-spawned as a mook later.
+            const tierNote = n.tier ? ` — a ${n.tier} threat` : "";
+            const looks =
+              presentSet.has(n.id) || recentSet.has(n.id)
+                ? ` [looks: ${n.appearance ?? generateAppearance(n.id)}${tierNote}]`
+                : "";
             const hook = presentSet.has(n.id) && n.backstory ? ` [hook: ${n.backstory}]` : "";
             // Feed the full relationship history for any NPC relevant this turn (present
             // OR surfaced by the player's text) so an extensive prior scene with them

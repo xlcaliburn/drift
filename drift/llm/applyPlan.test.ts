@@ -258,3 +258,63 @@ describe("applyPlan — combatStart", () => {
     expect(toolCalls).not.toContain("combat_start");
   });
 });
+
+describe("applyPlan — combatStart pins a cast NPC's combat tier (CHECKS.md §2)", () => {
+  /** A rookie state (T1 net-worth ceiling) with one named cast NPC. */
+  function stateWithNpc(npc: Partial<CampaignState["npcs"][number]> & { name: string }): CampaignState {
+    const s = state({});
+    return {
+      ...s,
+      npcs: [{ id: "npc-gen-calvo-1", universeId: "u", oneBreath: "Dock boss.", ...npc } as CampaignState["npcs"][number]],
+    };
+  }
+
+  it("a stored tier OVERRIDES both the model's pick and the net-worth clamp", () => {
+    const { combat } = run(
+      stateWithNpc({ name: "Calvo", tier: "T3" }),
+      mkPlan({ combatStart: { tier: "T1", enemies: [{ tier: "T1", name: "Calvo", count: 1 }], surprise: "none" } }),
+      { rng: minRng },
+    );
+    // A T1 model pick + T1 ceiling would normally clamp to T1 — canon wins instead.
+    expect(combat!.enemies[0].tier).toBe("T3");
+  });
+
+  it("an UN-tiered cast NPC gets stamped from the tier that actually spawned (post-clamp)", () => {
+    const { runtime } = run(
+      stateWithNpc({ name: "Calvo" }), // no tier yet
+      mkPlan({ combatStart: { tier: "T3", enemies: [{ tier: "T3", name: "Calvo", count: 1 }], surprise: "none" } }),
+      { rng: minRng },
+    );
+    // Rookie ceiling clamps T3 → T1; the NPC is stamped with what actually spawned.
+    const npc = runtime.state.npcs.find((n) => n.name === "Calvo");
+    expect(npc?.tier).toBe("T1");
+  });
+
+  it("a generic mook name matches nobody — no stamp, no override", () => {
+    const { runtime, combat } = run(
+      stateWithNpc({ name: "Calvo", tier: "T3" }),
+      mkPlan({ combatStart: { tier: "T1", enemies: [{ tier: "T1", name: "Thug", count: 1 }], surprise: "none" } }),
+      { rng: minRng },
+    );
+    expect(combat!.enemies[0].tier).toBe("T1"); // untouched by Calvo's canon
+    expect(runtime.state.npcs.find((n) => n.name === "Calvo")?.tier).toBe("T3"); // untouched
+  });
+
+  it("SET-ONCE: a later fight with a different model tier still uses the pinned tier", () => {
+    const first = run(
+      stateWithNpc({ name: "Calvo" }), // un-tiered
+      mkPlan({ combatStart: { tier: "T1", enemies: [{ tier: "T1", name: "Calvo", count: 1 }], surprise: "none" } }),
+      { rng: minRng },
+    );
+    expect(first.runtime.state.npcs.find((n) => n.name === "Calvo")?.tier).toBe("T1"); // pinned
+    // The fight must be OVER before a second combatStart can fire (guarded by ctx.combat).
+    const midState = { ...first.runtime.state } as CampaignState;
+    const second = run(
+      midState,
+      mkPlan({ combatStart: { tier: "T3", enemies: [{ tier: "T3", name: "Calvo", count: 1 }], surprise: "none" } }),
+      { rng: minRng },
+    );
+    expect(second.combat!.enemies[0].tier).toBe("T1"); // pinned tier wins over the new T3 pick
+    expect(second.runtime.state.npcs.find((n) => n.name === "Calvo")?.tier).toBe("T1"); // still T1, not overwritten
+  });
+});

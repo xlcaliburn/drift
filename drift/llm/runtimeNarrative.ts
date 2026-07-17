@@ -437,6 +437,16 @@ export function setNpcSex(rt: NarrativeRT, npcId: string, sex: "male" | "female"
   };
 }
 
+/** Pin a cast NPC's COMBAT tier, SET-ONCE — stamped from whichever tier they
+ *  actually spawned/fought at (combat.ts). Stops a named cast member from being
+ *  a T3 boss one fight and a re-spawned T1 mook the next. */
+export function setNpcTier(rt: NarrativeRT, npcId: string, tier: "T1" | "T2" | "T3") {
+  rt.state = {
+    ...rt.state,
+    npcs: rt.state.npcs.map((n) => (n.id === npcId && !n.tier ? { ...n, tier } : n)),
+  };
+}
+
 /** Apply the model's scene-card proposal: `situation`/`place`/`dangers` overwrite,
  *  `beats` append. Engine caps everything (F-2/F-4). */
 export function updateScene(rt: NarrativeRT, situation?: string, beats?: string[], place?: string, dangers?: string[]) {

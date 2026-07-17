@@ -44,6 +44,7 @@ import {
   setNpcOneBreath,
   markPresent,
   setNpcSex,
+  setNpcTier,
   updateScene,
   refreshSituation,
   updateNpcRelation,
@@ -308,6 +309,11 @@ export class TurnRuntime {
   /** Pin an NPC's sex set-once from the fiction (runtimeNarrative.setNpcSex). */
   setNpcSex(npcId: string, sex: "male" | "female") {
     setNpcSex(this, npcId, sex);
+  }
+
+  /** Pin an NPC's combat tier set-once (runtimeNarrative.setNpcTier). */
+  setNpcTier(npcId: string, tier: "T1" | "T2" | "T3") {
+    setNpcTier(this, npcId, tier);
   }
 
   /** Apply the model's scene-card proposal (runtimeNarrative.updateScene). */

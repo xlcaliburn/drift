@@ -1,5 +1,8 @@
 import type { SpawnSpec, ShipClass } from "@/engine/combatEngine";
 import { playerThreatTier, clampTier } from "@/shared/netWorth";
+import { matchCastCasualty } from "@/shared/npcFate";
+import type { CombatTier } from "@/shared/combat";
+import type { CampaignState } from "@/shared/schemas";
 import { TIER_TO_CLASS } from "../openFight";
 import type { PlanHandler } from "./types";
 
@@ -27,6 +30,26 @@ function narratedFoeCount(narration: string): number {
     if (n > max) max = n;
   }
   return Math.min(max, 5);
+}
+
+/**
+ * Which tier a combat group should actually spawn at (CHECKS.md §2 — combat-tier
+ * stamp): a group named after a KNOWN cast NPC with an already-pinned tier uses
+ * THAT tier — stored canon beats both the model's pick and the net-worth clamp,
+ * the same exemption `major` already gets (an established person is who they
+ * are; the clamp exists for generic spawns). Otherwise, the existing model-tier
+ * + clamp behavior is unchanged.
+ */
+function resolveGroupTier(
+  name: string | null | undefined,
+  modelTier: CombatTier,
+  major: boolean | null | undefined,
+  ceiling: CombatTier,
+  preState: CampaignState,
+): CombatTier {
+  const cast = name ? matchCastCasualty(name, preState) : undefined;
+  if (cast?.tier) return cast.tier;
+  return major ? modelTier : clampTier(modelTier, ceiling);
 }
 
 /**
@@ -67,12 +90,12 @@ export const combatStart: PlanHandler = (plan, ctx) => {
     const rawGroups: SpawnSpec[] =
       cs.enemies?.length
         ? cs.enemies.map((g) => ({
-            tier: g.major ? g.tier : clampTier(g.tier, ceiling),
+            tier: resolveGroupTier(g.name, g.tier, g.major, ceiling, preState),
             count: g.count ?? undefined,
             name: g.name ?? undefined,
             major: g.major ?? undefined, // named boss → engine gives 1.8× HP
           }))
-        : [{ tier: clampTier(cs.tier, ceiling), count: cs.count ?? undefined, name: cs.name ?? undefined }];
+        : [{ tier: resolveGroupTier(cs.name, cs.tier, undefined, ceiling, preState), count: cs.count ?? undefined, name: cs.name ?? undefined }];
     const MAX_TOTAL = 5;
     const specs: SpawnSpec[] = [];
     let total = 0;
@@ -95,6 +118,15 @@ export const combatStart: PlanHandler = (plan, ctx) => {
     }
     if (need > 0 && specs.length) specs.push({ tier: specs[0].tier, count: need, name: specs[0].name });
     started = runtime.startCombat(specs, surprise);
+    // TIER STAMP: pin whichever tier a named cast member actually spawned/fought
+    // at — set-once (runtime.setNpcTier no-ops if already pinned), so a canon
+    // match from resolveGroupTier above just re-confirms itself here, and an
+    // un-tiered match gets locked in from here on.
+    for (const s of specs) {
+      if (!s.name) continue;
+      const cast = matchCastCasualty(s.name, preState);
+      if (cast) runtime.setNpcTier(cast.id, s.tier);
+    }
   }
   ctx.combat = started.combat.active ? started.combat : null; // a surprise volley could end it instantly
   if (started.lines.length) emit(started.lines);
