@@ -52,6 +52,8 @@ async function compressClosedScene(
   openThreads: { id: string; title: string }[] = [],
   /** Facts already on the ledger — fed so the analyst doesn't re-emit them. */
   knownFacts: string[] = [],
+  /** Canon factions the analyst may pin a generated NPC's allegiance to. */
+  factions: { id: string; name: string }[] = [],
 ): Promise<void> {
   // Defense in depth against the trim-drift class (appendTranscript now keeps
   // startTranscriptIdx correct going forward, but this still guards any future
@@ -81,6 +83,7 @@ async function compressClosedScene(
   try {
     const res = await analyzeScene(text + beatsNote, sceneNpcs, knownEntityIds, openThreads, {
       establishedFacts: knownFacts,
+      factions,
     });
     summary = res.summary.trim();
     entityRefs = res.entityRefs;
@@ -886,6 +889,7 @@ export async function POST(req: NextRequest) {
             compressClosedScene(
               campaignId, closedCard, newTranscript, title, locId, entityIds, sceneNpcs, openThreads,
               (session.facts ?? []).map((f) => f.text),
+              result.state.factions.map((f) => ({ id: f.id, name: f.name })),
             ),
           );
         } else if (

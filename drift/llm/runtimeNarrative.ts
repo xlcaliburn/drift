@@ -447,6 +447,16 @@ export function setNpcTier(rt: NarrativeRT, npcId: string, tier: "T1" | "T2" | "
   };
 }
 
+/** Pin a generated NPC's FACTION allegiance, SET-ONCE — captured by the scene
+ *  analyst from concrete fiction (HANDOFF_NPC_CANON Task B), never guessed.
+ *  Allegiance CHANGES are a separate, unbuilt slice — this never overwrites. */
+export function setNpcFaction(rt: NarrativeRT, npcId: string, factionId: string) {
+  rt.state = {
+    ...rt.state,
+    npcs: rt.state.npcs.map((n) => (n.id === npcId && !n.factionId ? { ...n, factionId } : n)),
+  };
+}
+
 /** Apply the model's scene-card proposal: `situation`/`place`/`dangers` overwrite,
  *  `beats` append. Engine caps everything (F-2/F-4). */
 export function updateScene(rt: NarrativeRT, situation?: string, beats?: string[], place?: string, dangers?: string[]) {

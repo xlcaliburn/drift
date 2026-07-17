@@ -86,6 +86,11 @@ export async function applyAnalystUpdates(
         live.sceneCard.seq,
       );
     }
+    // FACTION backstop (HANDOFF_NPC_CANON Task B): only a KNOWN cast member —
+    // the summarizer already gates factionId to a real known faction id — and
+    // set-once (rt.setNpcFaction no-ops if already pinned); an allegiance
+    // CHANGE is a separate, unbuilt slice.
+    if (known && u.factionId) rt.setNpcFaction(known.id, u.factionId);
   }
   for (const it of itemUpdates) rt.grantSceneItem(it.name, it.note);
 
@@ -149,6 +154,7 @@ export async function runOpenSceneAnalyst(campaignId: string): Promise<boolean> 
   try {
     res = await analyzeScene(text + beatsNote, sceneNpcs, entityIds, openThreads, {
       establishedFacts: (live.facts ?? []).map((f) => f.text),
+      factions: live.state.factions.map((f) => ({ id: f.id, name: f.name })),
     });
   } catch (e) {
     console.error("[analyst] open-scene run failed:", e instanceof Error ? e.message : e);
@@ -191,6 +197,7 @@ export async function repairDegradedScenes(campaignId: string, limit = 2): Promi
     try {
       res = await analyzeScene(row.rawSlice, roster, entityIds, openThreads, {
         establishedFacts: (live.facts ?? []).map((f) => f.text),
+        factions: live.state.factions.map((f) => ({ id: f.id, name: f.name })),
       });
     } catch (e) {
       console.error(`[analyst] repair of scene ${row.seq} failed:`, e instanceof Error ? e.message : e);

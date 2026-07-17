@@ -134,7 +134,24 @@ their toughness — Calvo is a T3 boss in one fight and re-spawns T1 later.
 
 ---
 
-## Task B — faction allegiance set-once for generated NPCs
+## Task B — faction allegiance set-once for generated NPCs ✅ SHIPPED 2026-07-18
+
+*Implemented as specced. `analyzeScene` gained `opts.factions` (an options-bag
+field, matching how `establishedFacts` already worked) rendering a
+`KNOWN FACTION IDS` line; the parse trusts a `factionId` only when it appears in
+that list. All THREE `analyzeScene` call sites now pass factions — the doc only
+named two (`compressClosedScene`, `runOpenSceneAnalyst`); `repairDegradedScenes`
+also calls it and got the same treatment for consistency. `setNpcFaction` copies
+`setNpcSex`'s shape; wired in `applyAnalystUpdates` gated to `known` (a
+newly-registered figure never gets a faction pinned on the SAME pass — proven by
+a dedicated test). Context feed rides after the `plays:` clause as
+` · ‹faction name›`. No migration needed (`factionId`/`faction_id` already
+existed on both the schema and the table). 4 new tests
+(`lib/analystRun.test.ts`, since no summarizer-parse test harness exists yet —
+the trust-gate is proven at the `applyAnalystUpdates` boundary per the doc's own
+fallback). 814 tests pass; golden updated (a fixture NPC already carried a
+factionId, so the new tag rendered immediately — diff inspected, confirmed
+clean before `-u`).*
 
 **Failure class:** `registerNpc` never sets `factionId` (only hand-seeded canon
 has one), so a generated fixer's allegiance is whatever this scene implies —

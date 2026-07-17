@@ -45,6 +45,7 @@ import {
   markPresent,
   setNpcSex,
   setNpcTier,
+  setNpcFaction,
   updateScene,
   refreshSituation,
   updateNpcRelation,
@@ -314,6 +315,11 @@ export class TurnRuntime {
   /** Pin an NPC's combat tier set-once (runtimeNarrative.setNpcTier). */
   setNpcTier(npcId: string, tier: "T1" | "T2" | "T3") {
     setNpcTier(this, npcId, tier);
+  }
+
+  /** Pin an NPC's faction allegiance set-once (runtimeNarrative.setNpcFaction). */
+  setNpcFaction(npcId: string, factionId: string) {
+    setNpcFaction(this, npcId, factionId);
   }
 
   /** Apply the model's scene-card proposal (runtimeNarrative.updateScene). */
