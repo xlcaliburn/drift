@@ -15,6 +15,8 @@ import {
   canOffer,
   grantJobCargo,
   consumeJobCargo,
+  materializeJobCast,
+  castHomeLocation,
   type Job,
   type Objective,
 } from "./quests";
@@ -140,7 +142,7 @@ describe("cargo as inventory (QUESTS 1b — one crate, one fate)", () => {
     id: "j-cargo", title: "Courier run", blurb: "", giver: "board", playstyle: "commerce",
     archetype: "courier", tier: "T1", cargo: "a sealed medcrate",
     objectives: [{ id: "o1", kind: "deliver", summary: "Haul it to Rook", done: false, locationId: "loc-b" }],
-    reward: { tier: "T1" }, status: "active", createdTenday: 0,
+    cast: [], reward: { tier: "T1" }, status: "active", createdTenday: 0,
   });
 
   it("generateJob stamps `cargo` on delivery archetypes", () => {
@@ -185,7 +187,7 @@ describe("inferJobAccept — the typed-accept backstop", () => {
   const offer = (id: string, title: string, archetype = "courier"): Job => ({
     id, title, blurb: "", giver: "board", playstyle: "commerce", archetype, tier: "T1",
     objectives: [{ id: "o1", kind: "deliver", summary: "x", done: false }],
-    reward: { tier: "T1" }, status: "offered", createdTenday: 0,
+    cast: [], reward: { tier: "T1" }, status: "offered", createdTenday: 0,
   });
 
   it("resolves an unmistakable typed take to the one matching offer", () => {
@@ -256,7 +258,7 @@ describe("advanceJobs — engine-owned completion detection", () => {
   const travelJob: Job = {
     id: "j1", title: "Courier run", blurb: "", giver: "board", playstyle: "commerce", archetype: "courier", tier: "T1",
     objectives: [{ id: "o1", kind: "deliver", summary: "Haul it to Rook", done: false, locationId: "loc-b" }],
-    reward: { tier: "T1" }, status: "active", createdTenday: 0,
+    cast: [], reward: { tier: "T1" }, status: "active", createdTenday: 0,
   };
   const bountyJob: Job = {
     id: "j2", title: "Bounty", blurb: "", giver: "board", playstyle: "combat", archetype: "bounty", tier: "T2",
@@ -264,7 +266,7 @@ describe("advanceJobs — engine-owned completion detection", () => {
       { id: "o1", kind: "travel", summary: "Track them to the Shear", done: false, locationId: "loc-c" },
       { id: "o2", kind: "eliminate", summary: "Take them down", done: false, enemyTier: "T2" },
     ],
-    reward: { tier: "T2", repFactionId: "f-crown", repDelta: 1 }, status: "active", createdTenday: 0,
+    cast: [], reward: { tier: "T2", repFactionId: "f-crown", repDelta: 1 }, status: "active", createdTenday: 0,
   };
 
   it("completes a travel objective on arrival and pays out a single-step job", () => {
@@ -294,7 +296,7 @@ describe("advanceJobs — engine-owned completion detection", () => {
     const heist: Job = active({
       id: "j3", title: "Heist", blurb: "", giver: "board", playstyle: "intrigue", archetype: "heist", tier: "T1",
       objectives: [{ id: "o1", kind: "sabotage", summary: "Crack the vault", done: false, requiredSkills: ["electronics", "mechanics"] }],
-      reward: { tier: "T1" }, status: "offered", createdTenday: 0,
+      cast: [], reward: { tier: "T1" }, status: "offered", createdTenday: 0,
     });
     expect(advanceJobs([heist], turnSignals(undefined, [roll("perception", "success")], false)).completed).toHaveLength(0);
     expect(advanceJobs([heist], turnSignals(undefined, [roll("electronics", "success")], false)).completed).toHaveLength(1);
@@ -328,5 +330,128 @@ describe("rollJobCredits", () => {
     const c = rollJobCredits("T2", seededRng(7));
     expect(c).toBeGreaterThanOrEqual(350);
     expect(c).toBeLessThanOrEqual(600);
+  });
+});
+
+describe("quest CAST MANIFESTS (HANDOFF_NPC_CANON Task D — no more 4-5 randos per job)", () => {
+  // Mirrors the CastSlot roles baked into each ARCHETYPE (quests.ts) — the whole
+  // point under test is that this is FIXED, not something the model influences.
+  const CAST_ROLES: Record<string, string[]> = {
+    courier: ["giver"],
+    smuggling: ["giver", "contact"],
+    bounty: ["giver", "target"],
+    protection: ["giver", "ward"],
+    heist: ["giver", "contact"],
+    recon: ["giver"],
+    broker: ["giver", "target"],
+    salvage: ["giver"],
+  };
+
+  it("every archetype generates EXACTLY its spec'd cast — same roles, every time", () => {
+    let sampled = 0;
+    for (let seed = 0; seed < 120; seed++) {
+      const j = generateJob(state({ credits: 400 }), seededRng(seed), 0);
+      if (!j) continue;
+      sampled++;
+      expect(j.cast.map((m) => m.role)).toEqual(CAST_ROLES[j.archetype]);
+    }
+    expect(sampled).toBeGreaterThan(20); // the assertion above actually ran
+  });
+
+  it("cast ids follow npc-job-<jobId>-<role>; names never collide with existing cast or the party", () => {
+    const s = {
+      ...state({ credits: 400 }),
+      npcs: [{ id: "npc-x", universeId: "u", name: "Silas Karo", oneBreath: "x" }],
+    } as unknown as CampaignState;
+    for (let seed = 0; seed < 60; seed++) {
+      const j = generateJob(s, seededRng(seed), 0);
+      if (!j) continue;
+      for (const m of j.cast) {
+        expect(m.npcId).toBe(`npc-job-${j.id}-${m.role}`);
+        expect(m.name.toLowerCase()).not.toBe("silas karo"); // pre-existing cast
+        expect(m.name.toLowerCase()).not.toBe("vess"); // the PC
+      }
+    }
+  });
+
+  it("is deterministic — the same seed yields the same cast names/roles", () => {
+    // npcId carries a monotonic idSeq (like enemy ids, engine.md-documented) for
+    // cross-job uniqueness within a session — it's expected to differ run to run;
+    // the seed-DERIVED parts (who, what they're called, what they do) must not.
+    const strip = (cast: Job["cast"]) => cast.map(({ role, name, roleLabel }) => ({ role, name, roleLabel }));
+    const j1 = generateJob(state({ credits: 400 }), seededRng(11), 0)!;
+    const j2 = generateJob(state({ credits: 400 }), seededRng(11), 0)!;
+    expect(strip(j1.cast)).toEqual(strip(j2.cast));
+  });
+
+  it("{target} in objective summaries equals the cast target/ward's NAME, not flavor text", () => {
+    let sampled = 0;
+    for (let seed = 0; seed < 300; seed++) {
+      const j = generateJob(state({ credits: 400 }), seededRng(seed), 0);
+      if (!j || !["bounty", "broker", "protection"].includes(j.archetype)) continue;
+      const person = j.cast.find((m) => m.role === "target" || m.role === "ward")!;
+      expect(person).toBeTruthy();
+      expect(j.objectives.some((o) => o.summary.includes(person.name))).toBe(true);
+      sampled++;
+    }
+    expect(sampled).toBeGreaterThan(10);
+  });
+
+  it("materializeJobCast creates real NPC records, home-located per role", () => {
+    const s = state({ currentLocationId: "loc-a", credits: 400 });
+    const j = generateJob(s, seededRng(5), 0)!;
+    const after = materializeJobCast(s, j);
+    expect(after.npcs).toHaveLength(j.cast.length);
+    for (const m of j.cast) {
+      const npc = after.npcs.find((n) => n.id === m.npcId)!;
+      expect(npc.name).toBe(m.name);
+      expect(npc.role).toBe(m.roleLabel);
+      expect(npc.locationId).toBe(castHomeLocation(j, m.role));
+      expect(npc.originCampaignId).toBe(s.campaign.id);
+      expect(npc.quirk).toBeTruthy(); // full flavor, not a bare stub
+    }
+  });
+
+  it("materializeJobCast is IDEMPOTENT — accepting/re-processing the same job never duplicates", () => {
+    const s = state({ credits: 400 });
+    const j = generateJob(s, seededRng(6), 0)!;
+    const once = materializeJobCast(s, j);
+    const twice = materializeJobCast(once, j);
+    expect(twice.npcs.length).toBe(once.npcs.length);
+  });
+
+  it("no-ops on a cast-less job (defensive — every current archetype has ≥1 member)", () => {
+    const s = state();
+    const j: Job = {
+      id: "j-x", title: "x", blurb: "", giver: "board", playstyle: "commerce", archetype: "courier", tier: "T1",
+      objectives: [], cast: [], reward: { tier: "T1" }, status: "active", createdTenday: 0,
+    };
+    expect(materializeJobCast(s, j)).toBe(s);
+  });
+
+  it("the GIVER inherits the job's faction; other cast roles start unaligned", () => {
+    const s = state({ credits: 400 });
+    let j: Job | null = null;
+    for (let seed = 0; seed < 50 && !j?.factionId; seed++) j = generateJob(s, seededRng(seed), 0);
+    expect(j!.factionId).toBeTruthy();
+    const after = materializeJobCast(s, j!);
+    const giver = j!.cast.find((m) => m.role === "giver")!;
+    expect(after.npcs.find((n) => n.id === giver.npcId)?.factionId).toBe(j!.factionId);
+    for (const m of j!.cast.filter((c) => c.role !== "giver")) {
+      expect(after.npcs.find((n) => n.id === m.npcId)?.factionId).toBeUndefined();
+    }
+  });
+
+  it("generatePersonalJob replaces the generated giver with the REAL npc — no phantom duplicate", () => {
+    const npc = { id: "npc-gen-kessa", name: "Kessa", factionId: "f-crown", backstory: "wants a ship of her own.", role: "fixer" };
+    const j = generatePersonalJob(npc, state({ credits: 400 }), seededRng(3), 0)!;
+    const giver = j.cast.find((m) => m.role === "giver")!;
+    expect(giver.npcId).toBe("npc-gen-kessa");
+    expect(giver.name).toBe("Kessa");
+    expect(giver.roleLabel).toBe("fixer");
+    // materializing is then a no-op for the giver — they already exist.
+    const withGiver = { ...state({ credits: 400 }), npcs: [{ id: "npc-gen-kessa", universeId: "u", name: "Kessa", oneBreath: "x" }] } as unknown as CampaignState;
+    const after = materializeJobCast(withGiver, j);
+    expect(after.npcs.filter((n) => n.id === "npc-gen-kessa")).toHaveLength(1);
   });
 });

@@ -4,6 +4,8 @@ import type { EngineEvent } from "@/engine/events";
 import type { RNG } from "@/engine/rng";
 import { economy } from "@/content";
 import { pack, FACTION_ALIGNMENT } from "@/content/pack";
+import { suggestName } from "@/content/examples";
+import { generateNpcFlavor } from "./npcFlavor";
 import { payoutCeiling, clampPayoutTier, type PayoutTier } from "./payoutRamp";
 
 /**
@@ -53,6 +55,26 @@ export type Objective = z.infer<typeof Objective>;
 
 export const JobStatus = z.enum(["offered", "active", "complete", "failed", "expired"]);
 
+// ── Cast manifests (HANDOFF_NPC_CANON Task D / QUESTS.md "quest cast manifests")
+// A quest's PEOPLE are constants like its objectives and payout — the engine
+// decides who's in a score at GENERATION time, the model narrates them but never
+// invents the cast. Kills the live failure where a running job accretes 4-5
+// model-invented randos (a live audit found 8-of-22 thin cast NPCs on one
+// campaign, most "Spoke with the player" shells from unnecessary jobs).
+export const JobCastRole = z.enum(["giver", "target", "contact", "ward"]);
+export type JobCastRole = z.infer<typeof JobCastRole>;
+
+export const JobCastMember = z.object({
+  role: JobCastRole,
+  /** Stable id this person will register under — see materializeJobCast. */
+  npcId: z.string(),
+  name: z.string(),
+  /** Occupational handle for their registered `role` + oneBreath (e.g. "fixer",
+   *  "Wrecker enforcer", "inside contact"). */
+  roleLabel: z.string(),
+});
+export type JobCastMember = z.infer<typeof JobCastMember>;
+
 export const Job = z.object({
   id: z.string(),
   title: z.string(),
@@ -72,6 +94,10 @@ export const Job = z.object({
    *  while the player is here. Undefined on legacy jobs (shown anywhere). */
   postedLocationId: z.string().optional(),
   objectives: z.array(Objective),
+  /** The people this job's fiction involves — decided at GENERATION time, never
+   *  by the model. Real NPC records are only created on ACCEPT (materializeJobCast)
+   *  so an untaken board posting never bloats the cast. */
+  cast: z.array(JobCastMember).default([]),
   reward: z.object({
     tier: z.enum(["T0", "T1", "T2", "T3"]),
     repFactionId: z.string().optional(),
@@ -100,6 +126,15 @@ interface Step {
  *  pack (`alignment`); this module only reads the derived record. */
 type JobAlignment = "official" | "underworld" | "neutral";
 
+/** A cast SLOT an archetype fills at generation. `roleLabel` is a static
+ *  occupational handle for `giver`/`contact`/`ward`; `target` draws its label
+ *  from the (already-authored) TARGETS flavor pool instead, since it already
+ *  reads as a short occupation/description ("a Wrecker enforcer"). */
+interface CastSlot {
+  role: JobCastRole;
+  roleLabel?: string;
+}
+
 interface Archetype {
   id: string;
   label: string;
@@ -110,37 +145,49 @@ interface Archetype {
   /** This archetype's {faction} placeholder is an OPPONENT (smuggled past, broken
    *  into) — it must never resolve to the GIVER's own faction. */
   adversarial?: boolean;
+  /** The people this archetype's fiction involves (HANDOFF Task D) — a fixed
+   *  manifest of ROLES, not a fixed number of NPCs system-wide (each archetype
+   *  picks its own). Generated once per job; never grown by the model. */
+  cast: CastSlot[];
   steps: Step[];
 }
 
 const ARCHETYPES: Archetype[] = [
   { id: "courier", label: "Courier run", playstyles: ["commerce", "piloting"], tier: ["T0", "T1"], alignment: "neutral",
+    cast: [{ role: "giver", roleLabel: "dispatcher" }],
     steps: [{ kind: "deliver", loc: "dropoff", summary: "Haul {cargo} to {dropoff}" }] },
   { id: "smuggling", label: "Smuggling job", playstyles: ["commerce", "intrigue"], tier: ["T1", "T2"], alignment: "underworld", adversarial: true,
+    cast: [{ role: "giver", roleLabel: "fixer" }, { role: "contact", roleLabel: "receiver" }],
     steps: [{ kind: "deliver", loc: "dropoff", summary: "Run {cargo} past the {faction} watch to {dropoff}" }] },
   { id: "bounty", label: "Bounty", playstyles: ["combat", "brawn"], tier: ["T1", "T2"], alignment: "official",
+    cast: [{ role: "giver", roleLabel: "dispatcher" }, { role: "target" }],
     steps: [
       { kind: "travel", loc: "site", summary: "Track {target} to {site}" },
       { kind: "eliminate", enemyTier: "T2", summary: "Take {target} down" },
     ] },
   { id: "protection", label: "Protection", playstyles: ["combat", "brawn", "diplomacy"], tier: ["T1", "T1"], alignment: "neutral",
+    cast: [{ role: "giver", roleLabel: "agent" }, { role: "ward", roleLabel: "client" }],
     steps: [{ kind: "survive", summary: "Guard {target} through the meet — walk away alive" }] },
   { id: "heist", label: "Heist", playstyles: ["intrigue", "engineering"], tier: ["T1", "T2"], alignment: "underworld", adversarial: true,
+    cast: [{ role: "giver", roleLabel: "fixer" }, { role: "contact", roleLabel: "inside contact" }],
     steps: [
       { kind: "travel", loc: "site", summary: "Get inside {faction}'s lockup at {site}" },
       { kind: "sabotage", requiredSkills: ["electronics", "mechanics"], summary: "Crack the vault" },
     ] },
   { id: "recon", label: "Recon", playstyles: ["intrigue", "survival", "piloting"], tier: ["T0", "T1"], alignment: "neutral",
+    cast: [{ role: "giver", roleLabel: "dispatcher" }],
     steps: [
       { kind: "travel", loc: "site", summary: "Scout {site}" },
       { kind: "investigate", requiredSkills: ["perception", "streetwise"], summary: "Find out what's really going on" },
     ] },
   { id: "broker", label: "Broker deal", playstyles: ["diplomacy", "commerce"], tier: ["T0", "T1"], alignment: "neutral",
+    cast: [{ role: "giver", roleLabel: "broker" }, { role: "target" }],
     steps: [
       { kind: "travel", loc: "site", summary: "Meet the contact at {site}" },
       { kind: "persuade", requiredSkills: ["negotiation", "diplomacy"], summary: "Close the deal with {target}" },
     ] },
   { id: "salvage", label: "Salvage", playstyles: ["engineering", "survival"], tier: ["T0", "T1"], alignment: "neutral",
+    cast: [{ role: "giver", roleLabel: "dispatcher" }],
     steps: [
       { kind: "travel", loc: "site", summary: "Reach the wreck at {site}" },
       { kind: "investigate", requiredSkills: ["electronics", "mechanics"], summary: "Strip {cargo} worth hauling out" },
@@ -201,6 +248,28 @@ function jobId(rng: RNG): string {
   return `job-${rng.int(100000, 999999)}-${idSeq++}`;
 }
 
+/** "a Wrecker enforcer" → "Wrecker enforcer" — TARGETS pool entries read as
+ *  full descriptive phrases; strip the leading article for a short role handle. */
+function stripArticle(s: string): string {
+  return s.replace(/^(a|an|the)\s+/i, "");
+}
+
+/** A name for a generated cast member, avoiding a collision with anyone already
+ *  in the world (cast + party) or generated earlier in THIS job (`taken` is
+ *  mutated by the caller between calls). Bounded retries; on exhaustion (never
+ *  observed in practice — the name pool is large) a suffix forces uniqueness
+ *  rather than silently colliding. */
+function generateCastName(rng: RNG, taken: Set<string>): string {
+  let last = "";
+  for (let i = 0; i < 5; i++) {
+    const seed = rng.int(0, 999999) / 1000000;
+    const candidate = suggestName(seed);
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+    last = candidate;
+  }
+  return `${last} II`;
+}
+
 /** Generate one offered job for this campaign, weighted to the PC's playstyle AND
  *  faction character (a Hollow Crown operative sees mostly sanctioned work, and
  *  their own faction's postings first). `avoidArchetypes` (ids already on the board
@@ -246,8 +315,30 @@ export function generateJob(state: CampaignState, rng: RNG, tenday = 0, avoidArc
       })()
     : undefined;
   const cargo = pick(CARGO, rng);
-  const target = pick(TARGETS, rng);
   const complication = rng.int(1, 3) === 1 ? pick(COMPLICATIONS, rng) : undefined;
+  const jid = jobId(rng);
+
+  // CAST (HANDOFF Task D / QUESTS.md): decide the job's PEOPLE now, once — the
+  // model narrates them, it never invents who else is in the score. Names avoid
+  // colliding with anyone already in the world OR generated earlier in this
+  // SAME job (taken is mutated as we go). Real NPC records are only created on
+  // accept (materializeJobCast) so an untaken offer never bloats the cast.
+  const taken = new Set([
+    ...state.npcs.map((n) => n.name.toLowerCase()),
+    ...state.characters.map((c) => c.name.toLowerCase()),
+  ]);
+  const cast: JobCastMember[] = arch.cast.map((slot) => {
+    const name = generateCastName(rng, taken);
+    taken.add(name.toLowerCase());
+    const roleLabel = slot.role === "target" ? stripArticle(pick(TARGETS, rng)) : slot.roleLabel ?? "contact";
+    return { role: slot.role, npcId: `npc-job-${jid}-${slot.role}`, name, roleLabel };
+  });
+  // {target} in a step's summary means "the person this beat centers on" — the
+  // bounty/broker mark OR the protection ward, whichever this archetype cast.
+  // Archetypes with neither (the common case — most jobs have no {target} token
+  // at all) fall back to the old flavor-text pool so the placeholder never breaks.
+  const targetPerson = cast.find((m) => m.role === "target" || m.role === "ward");
+  const target = targetPerson?.name ?? pick(TARGETS, rng);
 
   const fill = (s: string) =>
     s.replace("{cargo}", cargo).replace("{target}", target).replace("{dropoff}", dest?.name ?? "the drop")
@@ -273,7 +364,7 @@ export function generateJob(state: CampaignState, rng: RNG, tenday = 0, avoidArc
   const tier = clampPayoutTier(rolledTier, ceiling);
 
   return {
-    id: jobId(rng),
+    id: jid,
     title: fill(arch.label),
     blurb: fill(arch.steps[0].summary),
     giver: "board",
@@ -287,11 +378,62 @@ export function generateJob(state: CampaignState, rng: RNG, tenday = 0, avoidArc
     locationId: dest?.id,
     postedLocationId: state.campaign.currentLocationId,
     objectives,
+    cast,
     reward: { tier, ...(faction ? { repFactionId: faction.id, repDelta: 1 } : {}) },
     status: "offered",
     createdTenday: tenday,
     expiresTenday: tenday + 3,
   };
+}
+
+// ── Cast materialization (HANDOFF_NPC_CANON Task D) ────────────────────────────
+// Cast MEMBERSHIP is decided at generation (above); the actual NPC RECORD is only
+// created when the job is ACCEPTED, so a board full of untaken offers never
+// bloats the cast with people the player never meets.
+
+/** Where a cast member is BASED: the giver fronts the posting where the job was
+ *  offered; everyone else (target/contact/ward) is out at the job's destination. */
+export function castHomeLocation(job: Job, role: JobCastRole): string | undefined {
+  return role === "giver" ? job.postedLocationId : job.locationId;
+}
+
+function castOneBreath(job: Job, member: JobCastMember): string {
+  switch (member.role) {
+    case "giver":
+      return `The ${member.roleLabel} who posted the "${job.title}" job.`;
+    case "target":
+      return `${member.roleLabel} — the mark on "${job.title}".`;
+    case "contact":
+      return `The ${member.roleLabel} for "${job.title}".`;
+    case "ward":
+      return `The ${member.roleLabel} "${job.title}" has you protecting.`;
+  }
+}
+
+/**
+ * Turn an accepted job's cast (fixed at generation) into REAL cast NPCs.
+ * Idempotent — a cast member already registered (by id) is skipped, so calling
+ * this again on a later turn (or from more than one accept path) is safe. The
+ * giver inherits the job's faction (they fronted an official/underworld posting
+ * for it); other roles start unaligned — later play can reveal more.
+ */
+export function materializeJobCast(state: CampaignState, job: Job): CampaignState {
+  if (!job.cast.length) return state;
+  const existing = new Set(state.npcs.map((n) => n.id));
+  const fresh = job.cast.filter((m) => !existing.has(m.npcId));
+  if (!fresh.length) return state;
+  const newNpcs = fresh.map((m) => ({
+    id: m.npcId,
+    universeId: state.universe.id,
+    name: m.name,
+    oneBreath: castOneBreath(job, m),
+    role: m.roleLabel,
+    ...(castHomeLocation(job, m.role) ? { locationId: castHomeLocation(job, m.role) } : {}),
+    ...(m.role === "giver" && job.factionId ? { factionId: job.factionId } : {}),
+    originCampaignId: state.campaign.id,
+    ...generateNpcFlavor(m.npcId),
+  }));
+  return { ...state, npcs: [...state.npcs, ...newNpcs] };
 }
 
 // ── Cargo as inventory (QUESTS.md 1b) ──────────────────────────────────────────
@@ -352,7 +494,7 @@ export function consumeJobCargo(
  * narrator dresses the beats in. Returns null only if no base score could be built.
  */
 export function generatePersonalJob(
-  npc: { id: string; name: string; factionId?: string; backstory?: string },
+  npc: { id: string; name: string; factionId?: string; backstory?: string; role?: string },
   state: CampaignState,
   rng: RNG,
   tenday = 0,
@@ -360,6 +502,13 @@ export function generatePersonalJob(
   const base = generateJob(state, rng, tenday);
   if (!base) return null;
   const want = npc.backstory?.trim() || `${npc.name} needs a hand with something personal.`;
+  // The giver here is a REAL, already-known NPC (this IS their favor) — replace
+  // generateJob's freshly-generated giver cast entry with them, rather than
+  // materializing a phantom duplicate on accept. Any target/contact/ward stays
+  // as a generated person for this favor.
+  const cast = base.cast.map((m) =>
+    m.role === "giver" ? { ...m, npcId: npc.id, name: npc.name, roleLabel: npc.role ?? "your contact" } : m,
+  );
   return {
     ...base,
     id: jobId(rng),
@@ -367,6 +516,7 @@ export function generatePersonalJob(
     title: `${npc.name} — a personal favor`,
     blurb: want,
     factionId: npc.factionId,
+    cast,
     // Personal jobs pay standing with the NPC's own faction (their want furthers it).
     reward: {
       tier: base.reward.tier,

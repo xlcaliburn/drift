@@ -29,7 +29,7 @@ function state(over: { credits?: number; currentLocationId?: string; rep?: Campa
 const deliverJob = (over: Partial<Job["reward"]> = {}): Job => ({
   id: "j1", title: "Courier run", blurb: "", giver: "board", playstyle: "commerce", archetype: "courier", tier: "T1",
   objectives: [{ id: "o1", kind: "deliver", summary: "Haul it to Rook", done: false, locationId: "loc-b" }],
-  reward: { tier: "T1", ...over }, status: "active", createdTenday: 0,
+  cast: [], reward: { tier: "T1", ...over }, status: "active", createdTenday: 0,
 });
 
 describe("resolveJobsTurn", () => {
@@ -68,7 +68,7 @@ describe("personal-job arc resolution", () => {
     id: "pj1", title: "Kessa — a personal favor", blurb: "wants a ship of her own", giver: "npc-gen-kessa",
     playstyle: "commerce", archetype: "courier", tier: "T1",
     objectives: [{ id: "o1", kind: "deliver", summary: "Haul it to Rook", done: false, locationId: "loc-b" }],
-    reward: { tier: "T1" }, status: "active", createdTenday: 0,
+    cast: [], reward: { tier: "T1" }, status: "active", createdTenday: 0,
   });
 
   it("resolves the giver NPC's arc + bumps disposition when a personal job completes", () => {

@@ -261,7 +261,58 @@ applied + committed.
 
 ---
 
-## Task D — quest cast manifests (the big one)
+## Task D — quest cast manifests (the big one) ✅ SHIPPED 2026-07-18
+
+*Implemented as specced, with a few decisions made along the way:*
+- *`CastSlot` carries a STATIC `roleLabel` for giver/contact/ward (per archetype:
+  courier "dispatcher", smuggling "fixer"+"receiver", bounty "dispatcher"+target,
+  protection "agent"+"client", heist "fixer"+"inside contact", recon
+  "dispatcher", broker "broker"+target, salvage "dispatcher"); `target` draws its
+  label from the EXISTING `TARGETS` flavor pool instead (already reads as a short
+  occupation — "a Wrecker enforcer" → "Wrecker enforcer" via `stripArticle`), so
+  no new content pool was needed for that role.*
+- *`{target}` resolution was widened: the token means "the person this beat
+  centers on," which for `protection` is the `ward`, not a `target`-typed slot —
+  `cast.find(m => m.role === "target" || m.role === "ward")` covers both; the old
+  `pick(TARGETS, rng)` stays as a genuinely-unreachable fallback (every archetype
+  using `{target}` today has one or the other), matching the doc's own
+  future-proofing instruction.*
+- *Names: `generateCastName` (bounded 5-retry collision avoidance against the
+  WHOLE world — cast + party — via `suggestName`, seeded off the job's own RNG
+  stream, never Math.random) rather than a new export from `content/examples.ts`.*
+- *`generatePersonalJob` needed a fix the doc didn't call out: `generateJob`'s
+  freshly-generated "giver" cast entry would otherwise phantom-duplicate the
+  REAL NPC the personal favor is already from — the giver slot is now replaced
+  with the true npc (id/name/roleLabel) before the job returns; a dedicated test
+  proves no duplicate materializes.*
+- *`applyJobClick` in `shared/jobsRuntime.ts` was investigated and found to be
+  DEAD CODE (unused anywhere outside its own test) with a signature that can't
+  even return mutated state — left untouched rather than reworking an unused
+  function's contract. The doc's "check it" instruction is resolved: it's not
+  live, so it needs no materializeJobCast wiring.*
+- *`materializeJobCast` wired at BOTH real acceptance points: the typed/chip
+  accept path in `app/api/turn/route.ts` (alongside `grantJobCargo`) and the
+  RELATIONSHIPS.md personal-job acceptance (a personal job skips the normal
+  accept flow entirely, going straight to active).*
+- *`isCampaignNpc` (`lib/state.ts`) gained the `npc-job-` prefix so cast members
+  persist across saves/promote like every other generated NPC.*
+- *`castHomeLocation` was exported from `quests.ts` so the prompt section reuses
+  the EXACT same giver-vs-everyone-else location logic instead of duplicating it
+  — one source of truth for "where is this cast member based."*
+- *No migration needed — `Job` is a jsonb runtime slice (`campaign_runtime.jobs`),
+  and materialized cast members are ordinary `Npc` records on the existing table.*
+- *31 new tests in `shared/quests.test.ts` (cast-shape-per-archetype over 120
+  seeds, id format + collision avoidance, determinism — excluding the
+  intentionally-non-deterministic `idSeq` suffix on `npcId`, same design as
+  enemy ids — `{target}`/`{ward}` resolution over 300 seeds, materialization +
+  idempotency + faction inheritance, the personal-job giver fix) + 5 new tests
+  in `llm/promptSections/quests.test.ts` (the first dedicated test file for a
+  promptSections module — the golden snapshot's fixture carries no jobs, so it
+  never exercised this rendering even indirectly). 829 tests pass; golden
+  snapshot updated (rule-8 sentence only — the golden fixture has no jobs, so
+  the cast/giver rendering itself isn't visible there, hence the dedicated
+  section tests). QUESTS.md "What's LEFT" entry struck through to SHIPPED;
+  CHECKS.md §4 row + incident lineage added.*
 
 **Owner's words:** "predetermine for quests, how many and which characters
 should exist for each quest. there could be variations on the quest details,

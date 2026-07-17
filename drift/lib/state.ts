@@ -19,7 +19,13 @@ import type { CampaignRuntime } from "@/db/queries";
 /** Campaign-scoped NPCs (narrator-introduced or creation relations) carry these id
  *  prefixes; universe-seed NPCs do not. Used to split the two for persistence. */
 function isCampaignNpc(id: string): boolean {
-  return id.startsWith("npc-gen-") || id.startsWith("npc-rel-") || id.startsWith("npc-patron-");
+  return (
+    id.startsWith("npc-gen-") ||
+    id.startsWith("npc-rel-") ||
+    id.startsWith("npc-patron-") ||
+    // Quest cast members (HANDOFF_NPC_CANON Task D — shared/quests.ts materializeJobCast).
+    id.startsWith("npc-job-")
+  );
 }
 
 /**

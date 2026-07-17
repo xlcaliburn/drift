@@ -12,7 +12,7 @@ import { repairQuote } from "@/engine/market";
 import { patronHelp } from "@/shared/netWorth";
 import { advanceLedger } from "@/shared/ledger";
 import type { Dossier } from "@/shared/multiplayer";
-import { acceptJob, abandonJob, generatePersonalJob, inferJobAccept, grantJobCargo, consumeJobCargo } from "@/shared/quests";
+import { acceptJob, abandonJob, generatePersonalJob, inferJobAccept, grantJobCargo, consumeJobCargo, materializeJobCast } from "@/shared/quests";
 import { resolveJobsTurn } from "@/shared/jobsRuntime";
 import { personalJobAvailable, TRUST_THRESHOLD } from "@/shared/scene";
 import { liveRng } from "@/engine/rng";
@@ -601,6 +601,13 @@ export async function POST(req: NextRequest) {
           if (taken?.status === "active" && taken.cargo) {
             result.state = grantJobCargo(result.state, taken);
           }
+          // Quest CAST (HANDOFF_NPC_CANON Task D): the job's people were decided
+          // at generation — materialize them into the real cast now that the
+          // player actually took the job (idempotent; an untaken offer never
+          // bloats the cast).
+          if (taken?.status === "active") {
+            result.state = materializeJobCast(result.state, taken);
+          }
         }
         if (abandonJobId) {
           jobsBoard = abandonJob(jobsBoard, abandonJobId);
@@ -620,6 +627,9 @@ export async function POST(req: NextRequest) {
               ...session.npcRelations[acceptPersonalNpcId],
               arcStage: "active",
             };
+            // The giver is already real (this IS their favor); any target/contact/
+            // ward the favor generated still needs materializing (Task D).
+            result.state = materializeJobCast(result.state, personal);
           }
         }
         const jobsRes = resolveJobsTurn({

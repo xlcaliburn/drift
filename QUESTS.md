@@ -134,19 +134,24 @@ outcomes → low false-positive; the live `threads:[]` path stays primary.
   delivered AND still carried. Still open from the original idea: lost on death.
 - **NPC-given jobs** — `giver` = an NPC id; the board surfaces jobs a present
   contact offers, not just the panel.
-- **Quest CAST MANIFESTS** (owner-locked direction, 2026-07-16 — the NPC half of the
-  world-constants push, CANON.md). Each archetype PREDETERMINES its cast: how many
-  people the score involves and which ROLES they play (courier: {giver}; bounty:
-  {giver, target}; broker: {giver, contact}; heist: {giver, inside-contact?};
-  protection: {giver, ward}) — the engine GENERATES those specific people at job
-  creation (name pool + `npcFlavor`, detail variation from the same formula as the
-  job parts) and feeds them to the narrator as THE cast for that job ("these are
-  the people in this score — use exactly these, invent no one"). Kills the live
-  failure where a running job accretes 4-5 model-invented randos (Wren's 8-of-22
-  thin "Spoke with the player" shells): a quest's people become constants like its
-  objectives and payout, with the model free on personality and dialogue, never on
-  WHO exists. Incidental non-quest figures stay possible but should draw from a
-  reusable pregenerated pool rather than minting — same slice.
+- ~~**Quest CAST MANIFESTS**~~ — SHIPPED 2026-07-18 (HANDOFF_NPC_CANON Task D):
+  each archetype has a FIXED cast of `CastSlot`s (courier: `{giver}`; smuggling:
+  `{giver, contact}`; bounty: `{giver, target}`; protection: `{giver, ward}`;
+  heist: `{giver, contact}`; recon: `{giver}`; broker: `{giver, target}`; salvage:
+  `{giver}`) — `generateJob` decides WHO fills each slot (deterministic name via
+  `suggestName`, collision-avoided against the whole world) the moment the job is
+  generated, stored on `Job.cast`. `{target}` in objective summaries now resolves
+  to the cast target/ward's real NAME, not a flavor-text pool pick. Real NPC
+  records are only created on ACCEPT (`materializeJobCast`, idempotent) — an
+  untaken board posting never bloats the cast. `generatePersonalJob` swaps the
+  generated giver for the REAL npc (no phantom duplicate). Context feed: active
+  jobs list their cast with role/name/occupation/home-station ("use EXACTLY these
+  people, invent no one else for this job"); offers name the giver in the pitch.
+  Kills the live failure where a running job accreted 4-5 model-invented randos
+  (a live audit found 8-of-22 thin "Spoke with the player" cast shells on one
+  campaign): a quest's people are constants like its objectives and payout, with
+  the model free on personality and dialogue, never on WHO exists. Still open:
+  the reusable pregenerated pool for INCIDENTAL (non-quest) figures.
 - **Faction arcs** — standing thresholds unlock higher-tier faction lines; ties into
   MULTIPLAYER.md dossiers/ledgers and the season Fault-Line.
 - **Board top-up cadence tuning** — currently a flat board of 4, refreshed each turn
