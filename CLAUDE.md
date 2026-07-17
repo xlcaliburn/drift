@@ -124,8 +124,10 @@ Don't add prose rules for things the engine can enforce.
 - Multiplayer = shared **narrative** canon (dossiers, ledgers, `world_events`
   spillover). NOT a strategy game — no meters/scores/planet-capturing. Mechanics
   never cross campaigns; only lore does.
-- Each player = one character in a canon faction, own private async campaign in a
-  shared universe, fully AI-run, seasons with fixed end dates.
+- Each player = up to **3 living characters** (`MAX_CHARACTERS`, deceased free the
+  slot), each in a canon faction with its OWN private async campaign in the shared
+  universe, fully AI-run, seasons with fixed end dates. Switch via the play
+  header's ⇄ menu; per-user budget caps span all of a player's characters.
 - Cheapest-model-first: **DeepSeek default**, Haiku fallback, Sonnet for cinematic
   / combat turns. Equal footing at character creation.
 - Open signup → admin approval → players see only their own campaigns → hard
