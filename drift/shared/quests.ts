@@ -3,6 +3,7 @@ import type { CampaignState, Character } from "./schemas";
 import type { EngineEvent } from "@/engine/events";
 import type { RNG } from "@/engine/rng";
 import { economy } from "@/content";
+import { pack, FACTION_ALIGNMENT } from "@/content/pack";
 import { payoutCeiling, clampPayoutTier, type PayoutTier } from "./payoutRamp";
 
 /**
@@ -94,20 +95,10 @@ interface Step {
 }
 /** How a job READS: official (sanctioned, on-the-books) vs underworld (criminal,
  *  off-book). Neutral work is taken from anyone. Drives WHO can offer a job — the
- *  live incoherence this fixes: "Smuggling job … past the Hollow Crown watch",
- *  offered BY Hollow Crown, paying Crown reputation. */
+ *  live incoherence this fixes: a smuggling run offered BY the faction whose own
+ *  watch it smuggles past. Each faction's character is AUTHORED on the content
+ *  pack (`alignment`); this module only reads the derived record. */
 type JobAlignment = "official" | "underworld" | "neutral";
-
-/** The six canon factions' character. Officials never POST underworld work (openly)
- *  and underworld outfits don't run sanctioned bounty desks; neutrals deal both ways. */
-const FACTION_ALIGNMENT: Record<string, JobAlignment> = {
-  "f-crown": "official",
-  "f-undertow": "official", // grim, but sanctioned: debt, bounties, enforcement
-  "f-sable": "underworld",
-  "f-wreckers": "underworld",
-  "f-free": "neutral",
-  "f-reclaimers": "neutral",
-};
 
 interface Archetype {
   id: string;
@@ -164,9 +155,10 @@ export function canOffer(jobAlignment: JobAlignment, factionAlignment: JobAlignm
   return jobAlignment === factionAlignment;
 }
 
-const CARGO = ["a sealed medcrate", "contraband stims", "a data core", "reactor parts", "salvaged plating", "a locked strongbox", "a refrigerated pod"];
-const TARGETS = ["a Wrecker enforcer", "a jumped bail-runner", "a Chain informant", "a nervous fixer", "a rogue quartermaster", "a debt-skipping broker"];
-const COMPLICATIONS = ["a rival crew wants it too", "it's hotter than advertised", "the buyer's spooked", "someone already tipped off the wrong people", "the meet's on contested ground"];
+// Flavor pools ({cargo}/{target}/complications) are AUTHORED on the content pack.
+const CARGO = pack.jobFlavor.cargo;
+const TARGETS = pack.jobFlavor.targets;
+const COMPLICATIONS = pack.jobFlavor.complications;
 
 const TIER_ORDER: PayoutTier[] = ["T0", "T1", "T2", "T3"];
 

@@ -3,6 +3,7 @@ import type { CreationInput } from "@/shared/multiplayer";
 import type { NpcRelation } from "@/shared/scene";
 import { seededRng, type RNG } from "@/engine/rng";
 import { backgrounds, biasSkills, biasAttribute, attributeBaseline, factionStarterGear, patronFor, FACTION_HOME } from "@/content/creation";
+import { DEFAULT_HOME_LOCATION } from "@/content/pack";
 import { mapLegacyGear } from "@/shared/items";
 import { weaponSkill } from "@/shared/combat";
 
@@ -135,7 +136,7 @@ export function buildPatronNpc(opts: {
 }): BackstoryNpcSeed {
   const def = patronFor(opts.factionId);
   const id = patronNpcId(opts.campaignId);
-  const locationId = FACTION_HOME[opts.factionId ?? ""] ?? "loc-meridian";
+  const locationId = FACTION_HOME[opts.factionId ?? ""] ?? DEFAULT_HOME_LOCATION;
   const npc: Npc = {
     id,
     universeId: opts.universeId,

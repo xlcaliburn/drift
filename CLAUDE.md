@@ -14,6 +14,14 @@ Every roll returns a full auditable breakdown (`d20(14) +8 = 22 vs DC 15 → suc
 ## Where things live (app is in `drift/`)
 
 - `drift/engine/` — the rules engine + tests (256 vitest, no API key needed)
+- `drift/content/pack/` — **the CONTENT PACK: the single authored source of world
+  truth** (universe primer, factions w/ alignment+home+color, locations w/ map
+  positions+named lanes, canonical cast, job flavor, service placements).
+  Rebooting the world = author a new pack file, swap one line in `pack/index.ts`.
+  `pack.test.ts` validates referential integrity; `canonLint.test.ts` FAILS CI if
+  a canon id is hardcoded anywhere outside `content/` — never bypass it by
+  exempting a file; import from `@/content/pack` instead. (`scripts/seedData.ts`
+  is now a thin re-export.)
 - `drift/shared/schemas.ts` — Zod game state, single source of truth
 - `drift/shared/multiplayer.ts` — dossier / ledger / season schemas (not yet wired —
   shared NPCs are wired via the `npcs` table, but dossiers/ledgers/seasons aren't)

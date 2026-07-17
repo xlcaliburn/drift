@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { worldIntro, seasonOneSpine, factionBriefs } from "@/content/briefs";
+import { FACTION_COLORS, FACTION_NAMES } from "@/content/pack";
 import { backgrounds, alignments, ambitions, focuses } from "@/content/creation";
 import { openingFor } from "@/content/openings";
 import {
@@ -1000,8 +1001,9 @@ function Section({ children }: { children: React.ReactNode }) {
 function H({ children }: { children: React.ReactNode }) {
   return <h2 className="mb-4 text-2xl font-bold text-neutral-100">{children}</h2>;
 }
-/** Faction names to accent (orange, bold) wherever they appear in prose. */
-const FACTION_TERMS = ["Hollow Crown", "Sable Chain", "Undertow"];
+/** Faction names to accent (orange, bold) wherever they appear in prose —
+ *  derived from the content pack so a new world's names highlight automatically. */
+const FACTION_TERMS = FACTION_NAMES;
 
 function highlightTerms(text: string, terms: string[]): React.ReactNode[] {
   const esc = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
@@ -1032,14 +1034,7 @@ function emblemHash(s: string): number {
   return h >>> 0;
 }
 
-const FACTION_COLORS: Record<string, string> = {
-  "f-crown": "#e8a33d",
-  "f-sable": "#d9584a",
-  "f-undertow": "#8b93a6",
-  "f-reclaimers": "#7fa6c9",
-  "f-free": "#b98fd0",
-  "f-wreckers": "#d9584a",
-};
+// Faction colors are authored on the content pack (imported as FACTION_COLORS).
 
 /**
  * A deterministic pixel-flag emblem per faction (identicon-style): a horizontally

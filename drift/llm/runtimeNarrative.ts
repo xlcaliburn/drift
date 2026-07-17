@@ -2,6 +2,7 @@ import type { CampaignState, Character, WorldEvent, Thread, Attributes } from "@
 import type { EngineEvent } from "@/engine";
 import { advanceClock as advanceClockEngine, runSceneEnd } from "@/engine";
 import { economy } from "@/content";
+import { pack } from "@/content/pack";
 import { generateQuirk, generateBackstory, generateAppearance, generateNpcFlavor } from "@/shared/npcFlavor";
 import { validateAttributes } from "@/shared/respec";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
@@ -493,8 +494,9 @@ export function updateNpcRelation(
 export function bodyMod(rt: NarrativeRT, input: { appearance?: string; story?: string }): { line?: string; error?: string } {
   const pc = pcOf(rt);
   if (!pc) return { error: "no character" };
-  if (rt.state.campaign.currentLocationId !== "loc-rook") {
-    return { error: "the body artist keeps a studio on Rook Station only" };
+  if (rt.state.campaign.currentLocationId !== pack.services.bodyMod) {
+    const at = rt.state.locations.find((l) => l.id === pack.services.bodyMod)?.name ?? "one station";
+    return { error: `the body artist keeps a studio on ${at} only` };
   }
   const cost = economy.constants.bodyModCost ?? 500;
   if ((pc.credits ?? 0) < cost) return { error: `can't afford the work (¢${cost}, holding ¢${pc.credits ?? 0})` };
@@ -525,8 +527,9 @@ export function bodyMod(rt: NarrativeRT, input: { appearance?: string; story?: s
 export function respec(rt: NarrativeRT, input: { name?: string; attributes?: Attributes; appearance?: string }): { line?: string; error?: string } {
   const pc = pcOf(rt);
   if (!pc) return { error: "no character" };
-  if (rt.state.campaign.currentLocationId !== "loc-rook") {
-    return { error: "Chrome's studio is on Rook Station only" };
+  if (rt.state.campaign.currentLocationId !== pack.services.bodyMod) {
+    const at = rt.state.locations.find((l) => l.id === pack.services.bodyMod)?.name ?? "one station";
+    return { error: `the body artist's studio is on ${at} only` };
   }
   const cost = economy.constants.bodyModCost ?? 500;
   if ((pc.credits ?? 0) < cost) return { error: `can't afford the work (¢${cost}, holding ¢${pc.credits ?? 0})` };

@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { CampaignState } from "@/shared/schemas";
 import type { SceneCard } from "@/shared/scene";
 import { routeBetween, riskColor, riskLabel } from "@/shared/routes";
+import { MAP_LAYOUT } from "@/content/pack";
 
 // ── Star map ────────────────────────────────────────────────────────────────
 // A hand-authored stellar layout for the shared world's canonical locations,
@@ -15,18 +16,8 @@ import { routeBetween, riskColor, riskLabel } from "@/shared/routes";
 const MAP_W = 260;
 const MAP_H = 340;
 
-const MAP_LAYOUT: Record<string, { x: number; y: number; color: string }> = {
-  "loc-meridian": { x: 66, y: 52, color: "#e8a33d" }, // ordered core
-  "loc-rook": { x: 198, y: 74, color: "#c99a5b" }, // black-market hub
-  "loc-sable": { x: 132, y: 58, color: "#a34a6b" }, // Coldharbor — pushed onto the Meridian-Rook lane
-  "loc-freeport": { x: 150, y: 22, color: "#5fa06a" }, // Halcyon — neutral haven
-  "loc-undertow": { x: 138, y: 142, color: "#8b93a6" }, // contested space
-  "loc-cinder": { x: 40, y: 130, color: "#9a6b3d" }, // Cinderhaul — industrial frontier
-  "loc-shear": { x: 92, y: 224, color: "#d9584a" }, // the hazard field
-  "loc-wake": { x: 154, y: 202, color: "#b06a5a" }, // the Wake — the Shear's edge
-  "loc-nest": { x: 200, y: 248, color: "#d9584a" }, // hidden in the Shear
-  "loc-talos": { x: 84, y: 306, color: "#6f7b93" }, // frontier, beyond the Shear
-};
+// Node positions/colors are AUTHORED on the content pack's locations (`mapPos`);
+// the ring fallback below still covers anything a pack forgets to place.
 
 // Deterministic decorative starfield (no RNG — stable across renders).
 const MAP_STARS = [

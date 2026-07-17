@@ -1,5 +1,6 @@
 import type { Location } from "./schemas";
 import type { RNG } from "@/engine/rng";
+import { NAMED_LANES } from "@/content/pack";
 
 /**
  * Travel routes between canonical locations (the map feature). Two layers, same
@@ -17,17 +18,8 @@ export interface Route {
   risk: RouteRisk;
 }
 
-/** Undirected named lanes — the ones MapTab draws and the ones worth hand-tuning.
- *  Key is `${a}|${b}` with a < b lexicographically (see routeKey). */
-const NAMED_LANES: Record<string, Route> = {
-  "loc-meridian|loc-rook": { tendays: 3, risk: "low" }, // established trade lane between the two safe hubs
-  "loc-meridian|loc-undertow": { tendays: 2, risk: "medium" },
-  "loc-rook|loc-undertow": { tendays: 2, risk: "medium" },
-  "loc-meridian|loc-shear": { tendays: 2, risk: "high" }, // the hazard field itself
-  "loc-shear|loc-undertow": { tendays: 2, risk: "high" },
-  "loc-shear|loc-talos": { tendays: 2, risk: "high" }, // meridian→shear→talos ≈ 4, matching the primer
-  "loc-nest|loc-shear": { tendays: 1, risk: "high" }, // a short hop, but into a raider den
-};
+// Named lanes are AUTHORED on the content pack's locations (`lanes`) and derived
+// into the `${a}|${b}` (a < b) record there — this module only reads them.
 
 const TIER_NUM: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
 const HAZARD_TAGS = new Set(["hazard", "raiders", "hidden", "lawless"]);

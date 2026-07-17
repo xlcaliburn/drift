@@ -1,5 +1,6 @@
 import { playerThreatTier, patronHelp } from "@/shared/netWorth";
 import { marketStock, repPriceFactor, localRep, repairQuote } from "@/engine/market";
+import { pack } from "@/content/pack";
 import type { Section } from "./types";
 
 /**
@@ -85,10 +86,11 @@ export const patron: Section = ({ state, memory }) => {
   ];
 };
 
-/** Body-modification studio — a Rook-only service (the NPC Chrome). Lets a player
- *  re-customize their look and weave it into their story for a flat fee. */
+/** Body-modification studio — a one-station service (pack.services.bodyMod; the
+ *  NPC Chrome). Lets a player re-customize their look and weave it into their
+ *  story for a flat fee. */
 export const bodyMod: Section = ({ state }) =>
-  state.campaign.currentLocationId === "loc-rook"
+  state.campaign.currentLocationId === pack.services.bodyMod
     ? [
         `BODY-MOD STUDIO (Rook only): Chrome's back-room studio reshapes a character's face, build, and skin for a flat ¢500, and works the change into their history. If the player COMMITS and describes the new look, emit "bodyMod":{"appearance":"<the new look>","story":"<a sentence folding it into their past>"} — the ENGINE charges and rewrites their appearance + backstory. Never state the price yourself; if they're short, the artist turns them away.`,
       ]

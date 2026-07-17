@@ -444,16 +444,9 @@ const FACTION_STARTER_FLAVOR: Record<string, { gun: string; armor: string; tool:
 };
 const DEFAULT_STARTER = { gun: "Sidearm", armor: "Padded jacket", tool: "Multitool" };
 
-/** Where each faction plants a new recruit — the patron lives here too. Mirrors
- *  FACTION_HOME in newCampaign (kept here so content owns the patron placement). */
-export const FACTION_HOME: Record<string, string> = {
-  "f-crown": "loc-meridian",
-  "f-sable": "loc-sable", // Coldharbor — the Chain plants recruits at its own staging docks
-  "f-undertow": "loc-undertow",
-  "f-wreckers": "loc-nest",
-  "f-free": "loc-freeport", // Halcyon — the independents' neutral haven
-  "f-reclaimers": "loc-rook",
-};
+/** Where each faction plants a new recruit — the patron lives here too. Authored
+ *  on the content pack's factions (`homeLocationId`); re-exported for importers. */
+export { FACTION_HOME } from "@/content/pack";
 
 export interface PatronDef {
   name: string;

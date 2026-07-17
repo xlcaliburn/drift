@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Character } from "@/shared/schemas";
 import type { CreationInput } from "@/shared/multiplayer";
 import { factionBriefs } from "@/content/briefs";
+import { pack } from "@/content/pack";
 import { suggestName, exampleMoralCodes } from "@/content/examples";
 import { openingFor, type GeneratedOpening } from "@/content/openings";
 import { deepseekChat, deepseekAvailable, isDeepSeekModel, resolveModel } from "./deepseek";
@@ -69,7 +70,7 @@ export interface CreationFinalize {
   telemetry?: CreationTelemetry;
 }
 
-const SYSTEM = `You finalize a newly created player character for DRIFT, a gritty, lawless space-opera TTRPG set among three stations (Meridian Ring, Rook, Talos) and the dead lanes between them. Consequences stick; nobody is coming to save anyone.
+const SYSTEM = `You finalize a newly created player character for ${pack.universe.name}, ${pack.universe.settingLine}
 
 You are given the player's creation answers and their computed sheet. Some flavor fields may be marked (blank) — the player skipped them. Do the following:
 

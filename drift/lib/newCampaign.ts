@@ -1,5 +1,6 @@
 import type { CampaignState, Character, Clock, Ship } from "@/shared/schemas";
 import { universe, factions, locations, npcs } from "@/scripts/seedData";
+import { FACTION_HOME, DEFAULT_HOME_LOCATION } from "@/content/pack";
 import { seasonOneSpine, factionBriefs } from "@/content/briefs";
 import { openingFor, type GeneratedOpening, type LoanerDef } from "@/content/openings";
 import { shipThreadId } from "@/shared/recap";
@@ -68,15 +69,8 @@ export function buildFaultLineClock(campaignId: string): Clock {
   };
 }
 
-/** Where each faction plants a new recruit at the start. */
-const FACTION_HOME: Record<string, string> = {
-  "f-crown": "loc-meridian",
-  "f-sable": "loc-sable", // Coldharbor — the Chain's own staging docks
-  "f-undertow": "loc-undertow",
-  "f-wreckers": "loc-nest",
-  "f-free": "loc-freeport", // Halcyon — the independents' neutral haven
-  "f-reclaimers": "loc-rook",
-};
+// Faction homes are authored on the content pack (this used to be a duplicate
+// of content/creation's copy — one more canon table to drift out of sync).
 
 /**
  * Build a fresh shared-world campaign for a newly created character. Reuses the
@@ -93,7 +87,7 @@ export function buildNewCampaignState(
   const parent = character.parentFactionId;
   const brief = factionBriefs.find((b) => b.factionId === parent);
   const factionName = factions.find((f) => f.id === parent)?.name ?? "your faction";
-  const homeLoc = FACTION_HOME[parent ?? ""] ?? "loc-meridian";
+  const homeLoc = FACTION_HOME[parent ?? ""] ?? DEFAULT_HOME_LOCATION;
 
   // Thinner "minion" start: you begin as a low-level runner with little pull, not
   // a promising recruit. Standing (and the ship title) are climbed from here.

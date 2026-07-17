@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { CampaignState, Attributes } from "@/shared/schemas";
 import { ATTR_KEYS, ATTR_MIN, ATTR_MAX, pointsRemaining } from "@/shared/respec";
+import { pack } from "@/content/pack";
 import { SheetSection } from "./ui";
 
 /** Remake the character at Chrome's studio (Rook, ¢500): rename, REALLOCATE
@@ -17,7 +18,7 @@ export function RemakeEditor({
   character: CampaignState["characters"][number];
   onSaved?: () => void;
 }) {
-  const atRook = state.campaign.currentLocationId === "loc-rook";
+  const atRook = state.campaign.currentLocationId === pack.services.bodyMod;
   const [name, setName] = useState(c.name);
   const [attrs, setAttrs] = useState<Attributes>({ ...c.attributes });
   const [hint, setHint] = useState("");
