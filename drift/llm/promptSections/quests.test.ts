@@ -80,3 +80,22 @@ describe("offeredJobs — the giver is named in the pitch", () => {
     expect(lines.join("\n")).toContain("from Hollow Crown");
   });
 });
+
+describe("LEGACY jobs (no cast field — raw-jsonb load) never crash the context build", () => {
+  // Pre-manifest jobs persist WITHOUT `cast` and load unparsed, so the Zod
+  // default never fills it. The load path normalizes; these prove the sections
+  // ALSO survive a stale warm session that skipped normalization.
+  const legacy = (status: "active" | "offered") =>
+    ({ ...job({ status }), cast: undefined }) as unknown as Job;
+
+  it("activeJobs renders a cast-less legacy job without throwing", () => {
+    const lines = activeJobs(ctx({ jobs: [legacy("active")] }));
+    expect(lines.join("\n")).toContain("Bounty");
+    expect(lines.join("\n")).not.toContain("cast —");
+  });
+
+  it("offeredJobs renders a cast-less legacy offer without throwing", () => {
+    const lines = offeredJobs(ctx({ jobs: [legacy("offered")], loc: state().locations[0] }));
+    expect(lines.join("\n")).toContain("from Hollow Crown");
+  });
+});

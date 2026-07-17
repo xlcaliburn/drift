@@ -142,9 +142,12 @@ export async function saveCampaignState(db: SupabaseClient, state: CampaignState
 // on the next cold load. The admin campaign editor runs these AFTER persistSession.)
 
 /** Hard-delete generated NPC rows from the universe cast (admin removal). Guarded
- *  to `npc-gen-`/`npc-rel-` ids so seed canon can never be deleted. No-op if empty. */
+ *  to generated-id prefixes (`npc-gen-`/`npc-rel-`/`npc-job-`) so seed canon can
+ *  never be deleted. No-op if empty. */
 export async function deleteNpcsByIds(db: SupabaseClient, ids: string[]): Promise<void> {
-  const safe = ids.filter((id) => id.startsWith("npc-gen-") || id.startsWith("npc-rel-"));
+  const safe = ids.filter(
+    (id) => id.startsWith("npc-gen-") || id.startsWith("npc-rel-") || id.startsWith("npc-job-"),
+  );
   if (!safe.length) return;
   await db.from("npcs").delete().in("id", safe);
 }

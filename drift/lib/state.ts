@@ -138,7 +138,11 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               },
               recentScenes,
               lastChoices: runtime.lastChoices ?? [],
-              jobs: runtime.jobs ?? [],
+              // Legacy-shape guard: jobs load as RAW jsonb (no Zod parse), so a
+              // job persisted before the cast-manifest deploy has NO `cast` —
+              // normalize here or every `j.cast.length` read crashes the turn
+              // (at review time, 100% of live campaigns carried cast-less jobs).
+              jobs: (runtime.jobs ?? []).map((j) => ({ ...j, cast: j.cast ?? [] })),
               playerLedger: runtime.playerLedger ?? {},
               facts: runtime.facts ?? [],
               // CAS baseline (CHECKS.md §0): the version of campaign_runtime this

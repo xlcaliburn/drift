@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { CampaignState } from "./schemas";
 import { seededRng } from "@/engine/rng";
-import { resolveJobsTurn, applyJobClick } from "./jobsRuntime";
+import { resolveJobsTurn } from "./jobsRuntime";
 import type { Job } from "./quests";
 
 function state(over: { credits?: number; currentLocationId?: string; rep?: CampaignState["factionRep"] } = {}): CampaignState {
@@ -94,12 +94,3 @@ describe("personal-job arc resolution", () => {
   });
 });
 
-describe("applyJobClick", () => {
-  it("accept moves an offered job to active and keeps the board full", () => {
-    const board = applyJobClick(state(), [], {}, seededRng(4)); // seed a board
-    const offered = board.find((j) => j.status === "offered")!;
-    const after = applyJobClick(state(), board, { acceptJobId: offered.id }, seededRng(5));
-    expect(after.find((j) => j.id === offered.id)!.status).toBe("active");
-    expect(after.filter((j) => j.status === "offered")).toHaveLength(4);
-  });
-});

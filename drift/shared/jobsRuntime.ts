@@ -7,8 +7,6 @@ import {
   turnSignals,
   rollJobCredits,
   refreshBoard,
-  acceptJob,
-  abandonJob,
   consumeJobCargo,
   type Job,
 } from "./quests";
@@ -141,17 +139,8 @@ export function resolveJobsTurn(input: {
   return { jobs, state, lines, events: payEvents, npcRelations };
 }
 
-/** Apply an accept/abandon click, then top the board up so a freshly-accepted job
- *  leaves an empty slot that refills. Returns the new board. */
-export function applyJobClick(
-  state: CampaignState,
-  jobs: Job[],
-  click: { acceptJobId?: string; abandonJobId?: string },
-  rng: RNG,
-): Job[] {
-  let next = jobs;
-  if (click.acceptJobId) next = acceptJob(next, click.acceptJobId);
-  if (click.abandonJobId) next = abandonJob(next, click.abandonJobId);
-  const tenday = state.campaign.tendaysElapsed ?? 0;
-  return refreshBoard(state, next, rng, tenday, BOARD_SIZE);
-}
+// NOTE: an `applyJobClick(state, jobs, click, rng): Job[]` helper used to live
+// here — REMOVED as dead code (the turn route applies accept/abandon clicks
+// directly, because acceptance now mutates STATE too: cargo grant + cast
+// materialization — a Job[]-only contract can't express that). Don't revive it;
+// route.ts is the accept path.

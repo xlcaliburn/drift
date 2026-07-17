@@ -455,3 +455,58 @@ describe("quest CAST MANIFESTS (HANDOFF_NPC_CANON Task D — no more 4-5 randos 
     expect(after.npcs.filter((n) => n.id === "npc-gen-kessa")).toHaveLength(1);
   });
 });
+
+describe("cast manifests — review-pass hardening (legacy jobs, dupes, PC names)", () => {
+  it("LEGACY jobs (no cast field — raw-jsonb load) never throw: materialize no-ops", () => {
+    // Pre-manifest jobs persist WITHOUT `cast`; loads are unparsed jsonb, so the
+    // Zod default never runs. At review time 100% of live campaigns carried these.
+    const legacy = {
+      id: "j-old", title: "Courier run", blurb: "", giver: "board", playstyle: "commerce",
+      archetype: "courier", tier: "T1",
+      objectives: [{ id: "o1", kind: "deliver", summary: "x", done: false }],
+      reward: { tier: "T1" }, status: "active", createdTenday: 0,
+    } as unknown as Job; // deliberately NO cast
+    const s = state();
+    expect(materializeJobCast(s, legacy)).toBe(s); // no throw, no-op
+  });
+
+  it("ADOPT-BY-NAME: a giver already registered by the dialogue backstop is never duplicated", () => {
+    // The live path: the pitch names the giver, she SPEAKS, extractDialogueNpcs
+    // registers her as npc-gen- BEFORE the player accepts. Accepting must adopt
+    // that record, not append a second same-named person (the Ren-class bug).
+    const s = state({ credits: 400 });
+    const j = generateJob(s, seededRng(5), 0)!;
+    const giver = j.cast.find((m) => m.role === "giver")!;
+    const preRegistered = {
+      ...s,
+      npcs: [{ id: "npc-gen-pitch-1", universeId: "u", name: giver.name, oneBreath: "Spoke with the player." }],
+    } as unknown as CampaignState;
+    const after = materializeJobCast(preRegistered, j);
+    const sameName = after.npcs.filter((n) => n.name.toLowerCase() === giver.name.toLowerCase());
+    expect(sameName).toHaveLength(1); // adopted, not duplicated
+    expect(sameName[0].id).toBe("npc-gen-pitch-1"); // the record the story has been using
+  });
+
+  it("cast first names NEVER collide with the player's characters or crew", () => {
+    // The name pools are the same ones players draw from — a cast "Wren Karo"
+    // beside a PC "Wren Sung" is the original "another NPC called Wren" class.
+    const s = state({ credits: 400 });
+    (s.characters as { name: string }[]).push({ name: "Wren Sung" } as never);
+    const pcFirsts = new Set(["vess", "wren"]);
+    for (let seed = 0; seed < 200; seed++) {
+      const j = generateJob(s, seededRng(seed), 0);
+      if (!j) continue;
+      for (const m of j.cast) {
+        expect(pcFirsts.has(m.name.toLowerCase().split(/\s+/)[0])).toBe(false);
+      }
+    }
+  });
+
+  it("one board refresh never casts the same name twice across its offers", () => {
+    for (let seed = 0; seed < 20; seed++) {
+      const board = refreshBoard(state({ credits: 400 }), [], seededRng(seed), 0, 4);
+      const names = board.flatMap((j) => (j.cast ?? []).map((m) => m.name.toLowerCase()));
+      expect(new Set(names).size).toBe(names.length);
+    }
+  });
+});

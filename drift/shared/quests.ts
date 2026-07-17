@@ -254,18 +254,29 @@ function stripArticle(s: string): string {
   return s.replace(/^(a|an|the)\s+/i, "");
 }
 
+/** Lowercased base name — a name-collision "(role)" suffix stripped, matching
+ *  registerNpc's normalization, so "Ren (fixer)" and "Ren" compare equal. */
+function baseNameLc(n: string): string {
+  return n.toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
 /** A name for a generated cast member, avoiding a collision with anyone already
- *  in the world (cast + party) or generated earlier in THIS job (`taken` is
- *  mutated by the caller between calls). Bounded retries; on exhaustion (never
- *  observed in practice — the name pool is large) a suffix forces uniqueness
- *  rather than silently colliding. */
-function generateCastName(rng: RNG, taken: Set<string>): string {
+ *  in the world (cast + party) or generated earlier in THIS refresh (`taken` is
+ *  mutated by the caller between calls) — and never sharing a FIRST name with a
+ *  player character or crew (`forbiddenFirst`): the name pools are the SAME ones
+ *  players draw from, and a cast "Wren Karo" beside a PC "Wren Sung" is exactly
+ *  the first-name-collision class the registerNpc PC-name guard exists to stop
+ *  (materialization bypasses that guard, so the protection lives here). Bounded
+ *  retries; on exhaustion a suffix forces uniqueness rather than colliding. */
+function generateCastName(rng: RNG, taken: Set<string>, forbiddenFirst: Set<string>): string {
   let last = "";
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 8; i++) {
     const seed = rng.int(0, 999999) / 1000000;
     const candidate = suggestName(seed);
-    if (!taken.has(candidate.toLowerCase())) return candidate;
-    last = candidate;
+    const lc = candidate.toLowerCase();
+    if (taken.has(lc)) { last = candidate; continue; }
+    if (forbiddenFirst.has(lc.split(/\s+/)[0])) { last = candidate; continue; }
+    return candidate;
   }
   return `${last} II`;
 }
@@ -277,7 +288,17 @@ function generateCastName(rng: RNG, taken: Set<string>): string {
  *  the GIVER faction must be able to offer the archetype (canOffer), and an
  *  adversarial archetype's {faction} placeholder resolves to an OPPONENT — never the
  *  giver itself (the live "Crown smuggling past the Crown watch, paying Crown rep"). */
-export function generateJob(state: CampaignState, rng: RNG, tenday = 0, avoidArchetypes?: Set<string>): Job | null {
+export function generateJob(
+  state: CampaignState,
+  rng: RNG,
+  tenday = 0,
+  avoidArchetypes?: Set<string>,
+  /** Names already claimed by SIBLING offers this refresh (lowercased) — each
+   *  generateJob call only sees state.npcs, so without this two offers on one
+   *  board could both cast a "Mox". refreshBoard threads one set through; new
+   *  cast names are ADDED to it as they're taken. */
+  reservedNames?: Set<string>,
+): Job | null {
   const pc = state.characters.find((c) => c.kind === "pc");
   const bias = pc?.bias as Bias | undefined;
   const pcFactionId = pc?.ownFactionId ?? pc?.parentFactionId;
@@ -324,12 +345,17 @@ export function generateJob(state: CampaignState, rng: RNG, tenday = 0, avoidArc
   // SAME job (taken is mutated as we go). Real NPC records are only created on
   // accept (materializeJobCast) so an untaken offer never bloats the cast.
   const taken = new Set([
-    ...state.npcs.map((n) => n.name.toLowerCase()),
+    ...state.npcs.map((n) => baseNameLc(n.name)),
     ...state.characters.map((c) => c.name.toLowerCase()),
+    ...(reservedNames ?? []),
   ]);
+  // A cast member may never SHARE A FIRST NAME with the player's characters/crew
+  // (the pools overlap with player naming — see generateCastName).
+  const forbiddenFirst = new Set(state.characters.map((c) => c.name.toLowerCase().split(/\s+/)[0]));
   const cast: JobCastMember[] = arch.cast.map((slot) => {
-    const name = generateCastName(rng, taken);
+    const name = generateCastName(rng, taken, forbiddenFirst);
     taken.add(name.toLowerCase());
+    reservedNames?.add(name.toLowerCase());
     const roleLabel = slot.role === "target" ? stripArticle(pick(TARGETS, rng)) : slot.roleLabel ?? "contact";
     return { role: slot.role, npcId: `npc-job-${jid}-${slot.role}`, name, roleLabel };
   });
@@ -418,9 +444,16 @@ function castOneBreath(job: Job, member: JobCastMember): string {
  * for it); other roles start unaligned — later play can reveal more.
  */
 export function materializeJobCast(state: CampaignState, job: Job): CampaignState {
-  if (!job.cast.length) return state;
-  const existing = new Set(state.npcs.map((n) => n.id));
-  const fresh = job.cast.filter((m) => !existing.has(m.npcId));
+  if (!(job.cast ?? []).length) return state;
+  const existingIds = new Set(state.npcs.map((n) => n.id));
+  // ADOPT-BY-NAME: if someone with this name already exists in the cast, they ARE
+  // this person — the normal path being the GIVER, who was name-dropped in the
+  // diegetic pitch, SPOKE, and got registered by the dialogue backstop as an
+  // npc-gen- record before the player ever accepted. Appending a second record
+  // would recreate the exact duplicate-person class registerNpc's dedupe exists
+  // to stop (materialization bypasses registerNpc, so the guard lives here).
+  const existingNames = new Set(state.npcs.map((n) => baseNameLc(n.name)));
+  const fresh = job.cast.filter((m) => !existingIds.has(m.npcId) && !existingNames.has(baseNameLc(m.name)));
   if (!fresh.length) return state;
   const newNpcs = fresh.map((m) => ({
     id: m.npcId,
@@ -541,9 +574,13 @@ export function refreshBoard(state: CampaignState, jobs: Job[], rng: RNG, tenday
   const out = [...kept];
   // Don't repeat an archetype already on the board this refresh (variety).
   const used = new Set(out.filter((j) => j.status === "offered").map((j) => j.archetype));
+  // …or a cast NAME already claimed by any kept job (offered OR active) — each
+  // generateJob only sees state.npcs, so this set is what keeps two postings on
+  // one board from both casting a "Mox".
+  const reserved = new Set(out.flatMap((j) => (j.cast ?? []).map((m) => m.name.toLowerCase())));
   const offeredHere = out.filter((j) => j.status === "offered" && postedHere(j)).length;
   for (let i = offeredHere; i < count; i++) {
-    const j = generateJob(state, rng, tenday, used);
+    const j = generateJob(state, rng, tenday, used, reserved);
     if (!j) continue;
     out.push(j);
     used.add(j.archetype);

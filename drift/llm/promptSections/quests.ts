@@ -19,8 +19,11 @@ export const activeJobs: Section = ({ jobs, state }) => {
     // CAST (HANDOFF Task D): the fixed people this job involves — the model
     // narrates them, it never invents an ADDITIONAL gang member/middleman/
     // contact for a tracked job (rule 8 in jsonSystem.ts backs this).
-    const cast = j.cast.length
-      ? ` [cast — use EXACTLY these people, invent no one else for this job: ${j.cast
+    // `?? []`: jobs load as raw jsonb (no Zod parse), so a pre-manifest job has
+    // no `cast` — the load path normalizes, but a stale warm session wouldn't.
+    const castMembers = j.cast ?? [];
+    const cast = castMembers.length
+      ? ` [cast — use EXACTLY these people, invent no one else for this job: ${castMembers
           .map((m) => `${m.role} ${m.name} (${m.roleLabel}, at ${locName(castHomeLocation(j, m.role))})`)
           .join("; ")}]`
       : "";
@@ -51,7 +54,8 @@ export const offeredJobs: Section = ({ state, jobs, loc }) => {
   const lines = offered.map((j) => {
     // The giver is a real PERSON (HANDOFF Task D — decided at generation, though
     // not materialized into the cast until accepted): name them in the pitch.
-    const giver = j.cast.find((m) => m.role === "giver");
+    // `?? []`: legacy pre-manifest jobs carry no cast (raw-jsonb load).
+    const giver = (j.cast ?? []).find((m) => m.role === "giver");
     const from = giver ? `from ${giver.name} (${giver.roleLabel}) for ${facName(j.factionId)}` : `from ${facName(j.factionId)}`;
     return `  - [${j.id}] "${j.title}" (${j.tier}, ${from}): ${j.blurb}`;
   });

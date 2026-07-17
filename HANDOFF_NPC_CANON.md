@@ -261,7 +261,22 @@ applied + committed.
 
 ---
 
-## Task D — quest cast manifests (the big one) ✅ SHIPPED 2026-07-18
+## Task D — quest cast manifests (the big one) ✅ SHIPPED 2026-07-18 (+ review-pass fixes)
+
+*REVIEW PASS (same day, follow-up commit): a post-implementation review found and
+fixed five defects — (1) CRITICAL: jobs load as raw jsonb with no Zod parse, so
+every pre-manifest job lacked `cast` and the new `j.cast.length`/`.find` reads
+would have crashed every live campaign's turns on deploy (fixed: load-time
+normalization in `lib/state.ts` + defensive reads); (2) HIGH: the pitch names
+the giver → she speaks → the dialogue backstop registers her as `npc-gen-` →
+accept appended a same-named duplicate (fixed: `materializeJobCast` adopts an
+existing same-base-name record); (3) cast names could share a FIRST name with a
+live PC — the pools overlap with player naming (fixed: `forbiddenFirst` guard);
+(4) two offers in one refresh could cast the same name (fixed: a reserved-names
+set threaded through `refreshBoard`); (5) the admin `deleteNpcsByIds` guard
+couldn't delete `npc-job-` records (fixed). The dead `applyJobClick` was
+REMOVED with a tombstone note — its `Job[]`-only contract can't express what
+acceptance now does (state mutations), so reviving it would be a trap.*
 
 *Implemented as specced, with a few decisions made along the way:*
 - *`CastSlot` carries a STATIC `roleLabel` for giver/contact/ward (per archetype:
