@@ -110,6 +110,9 @@ export const ChoiceOption = z.object({
   swapDrop: optionalNullable(z.string()),
   /** Set on the "leave it behind" chip that declines the pending pickup. */
   swapDecline: optionalNullable(z.boolean()),
+  /** Set on a market "Buy X — ¢Y" chip: the catalog item id. The ENGINE runs the
+   *  till deterministically (jsonTurn preBuy → buyItem). ITEMS.md shop flow. */
+  buyItem: optionalNullable(z.string()),
   /** Set on a job-board chip: the job id to accept (offered → active). QUESTS.md. */
   acceptJob: optionalNullable(z.string()),
   /** Set on a job-board chip: the job id to abandon (active → failed). */

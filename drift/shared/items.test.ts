@@ -10,6 +10,8 @@ import {
   itemCount,
   outOfCombatItemChips,
   inferConsumableUse,
+  inferShoppingIntent,
+  marketChips,
   describeEffect,
 } from "./items";
 import type { Character } from "./schemas";
@@ -196,6 +198,39 @@ describe("resolveGearItemId — unmapped legacy gear still resolves (the medkit 
   it("itemCount finds the medkit even when the gear entry was never mapped", () => {
     const c = char({ gear: [{ name: "Medkit", qty: 2 }] }); // NO itemId (warm legacy session)
     expect(itemCount(c, "medkit")).toBe(2);
+  });
+});
+
+describe("shop flow — inferShoppingIntent + marketChips (the Piotr sidearm case)", () => {
+  it("reads buy/browse/market intent, but never social 'buy someone a drink'", () => {
+    expect(inferShoppingIntent("buy a sidearm")).toBe(true);
+    expect(inferShoppingIntent("Browse the market stalls")).toBe(true);
+    expect(inferShoppingIntent("I want to gear up before the meet")).toBe(true);
+    expect(inferShoppingIntent("what do you have for sale?")).toBe(true);
+    expect(inferShoppingIntent("buy her a drink and listen")).toBe(false);
+    expect(inferShoppingIntent("head back to the docks")).toBe(false);
+  });
+
+  it("marketChips: live-priced Buy chips at a market, affordable only, none elsewhere", () => {
+    const at = (tags: string[], credits: number) =>
+      ({
+        campaign: { id: "c", universeId: "u", currentLocationId: "l", tendaysElapsed: 0 },
+        universe: { id: "u" },
+        characters: [char({ credits })],
+        factions: [], factionRep: [],
+        locations: [{ id: "l", universeId: "u", name: "Dock", tags }],
+        npcs: [], clocks: [], threads: [], contracts: [],
+      }) as never;
+    const chips = marketChips(at(["blackmarket"], 500));
+    expect(chips.length).toBeGreaterThan(0);
+    expect(chips.length).toBeLessThanOrEqual(6);
+    expect(chips[0].label).toMatch(/^Buy .+ — ¢\d+$/);
+    expect(chips.every((c) => c.buyItem)).toBe(true);
+    // Broke → nothing affordable → no chips (a chip is an action, not a wish list).
+    expect(marketChips(at(["blackmarket"], 0))).toEqual([]);
+    // No market at all (hazard/hidden site) → no chips. (An ordinary station
+    // always has at least T1 basics — that's the market design, not a bug.)
+    expect(marketChips(at(["hazard"], 500))).toEqual([]);
   });
 });
 

@@ -53,6 +53,20 @@ describe("revalidateChoices — the refresh-time chip contract check", () => {
     expect(revalidateChoices(choices, ctx())).toEqual(choices);
   });
 
+  it("buyItem: kept while the market still shelves it affordably; dropped elsewhere/broke", () => {
+    const marketState = (tags: string[], credits: number) => {
+      const s = state({ characters: [pc({ credits })] });
+      (s.locations[0] as { tags: string[] }).tags = tags;
+      return s;
+    };
+    const chip: ChoiceOption[] = [{ label: "Buy Medkit — ¢75", buyItem: "medkit" }];
+    expect(revalidateChoices(chip, ctx({ state: marketState(["blackmarket"], 500) }) as never)).toHaveLength(1);
+    // Spent down → can't afford → chip drops.
+    expect(revalidateChoices(chip, ctx({ state: marketState(["blackmarket"], 5) }) as never)).toHaveLength(0);
+    // Moved to a marketless site (hazard/hidden) → chip drops.
+    expect(revalidateChoices(chip, ctx({ state: marketState(["hazard"], 500) }) as never)).toHaveLength(0);
+  });
+
   it("useItemId: kept while held, dropped once spent", () => {
     const held = ctx({ state: state({ characters: [pc({ gear: [{ name: "Stim", itemId: "stim", qty: 1 }] })] }) }) as never;
     const gone = ctx({ state: state({ characters: [pc({ gear: [] })] }) }) as never;

@@ -171,7 +171,13 @@ export function StatusTab({
                     const dry = g.rounds === 0;
                     return (
                       <div key={`w${i}`} className="flex justify-between gap-2 text-[12px]" title={g.detail}>
-                        <span className="text-neutral-200">{g.name}</span>
+                        {/* ×qty on weapons too — a second copy of the same gun stacks
+                            (same catalog id), and hiding the count made a purchased
+                            duplicate INVISIBLE (the live Piotr sidearm appeal). */}
+                        <span className="text-neutral-200">
+                          {g.name}
+                          {g.qty && g.qty > 1 ? <span className="text-neutral-500"> ×{g.qty}</span> : null}
+                        </span>
                         <span className="tabular-nums text-neutral-500">
                           {g.damage}
                           {typeof g.rounds === "number" && (

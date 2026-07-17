@@ -2,7 +2,7 @@ import type { CampaignState } from "./schemas";
 import type { ChoiceOption } from "./turnPlan";
 import type { SceneCard, NpcRelations } from "./scene";
 import type { Job } from "./quests";
-import { itemCount } from "./items";
+import { itemCount, marketChips } from "./items";
 import { repairQuote } from "@/engine/market";
 import { patronHelp } from "./netWorth";
 import { recruitOffer } from "./crew";
@@ -38,6 +38,9 @@ export function revalidateChoices(
 
   return choices.filter((c) => {
     if (c.useItemId) return !!pc && itemCount(pc, c.useItemId) > 0;
+    // A market Buy chip holds only while THIS station still shelves the item at a
+    // price the player can pay (they may have moved on or spent down since).
+    if (c.buyItem) return marketChips(ctx.state).some((m) => m.buyItem === c.buyItem);
     if (c.repairHull) return !!repairQuote(ctx.state);
     if (c.patronRest) return patronHelp(ctx.state, presentNpcIds).eligible;
     if (c.recruitNpc) {

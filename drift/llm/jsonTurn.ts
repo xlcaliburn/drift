@@ -56,6 +56,9 @@ export interface JsonTurnInput {
   preUseItem?: string;
   /** A clicked "Repair hull" dock chip — the engine repairs before narrating. */
   preRepair?: boolean;
+  /** A clicked market "Buy X — ¢Y" chip: the catalog id. The engine runs the till
+   *  BEFORE the model (deterministic purchase; the model narrates the counter). */
+  preBuy?: string;
   /** A clicked "Rest up with <patron>" chip — the engine applies the free safety
    *  net (rest/stims/stipend/repair) before narrating (STARTER.md). */
   preRest?: boolean;
@@ -559,6 +562,20 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       emit([`⚠ Can't use item: ${res.error}`]);
     }
   }
+  // A clicked market "Buy X" chip — the engine runs the till deterministically
+  // (ITEMS.md shop flow); the model then narrates the counter around the 🛒 line.
+  let preBoughtItem = false;
+  if (input.preBuy && pc) {
+    toolCalls.push("buy_item");
+    const res = runtime.buyItem(input.preBuy, 1);
+    if (res.line) {
+      engineLines.push(`ENGINE RESULT: ${res.line}`);
+      emit([res.line]);
+      preBoughtItem = true;
+    } else if (res.error) {
+      emit([`⚠ No sale: ${res.error}`]);
+    }
+  }
   // A clicked "Repair hull" dock chip — engine repairs deterministically (E-3).
   if (input.preRepair && pc) {
     toolCalls.push("repair_ship");
@@ -879,6 +896,9 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   // The engine already applied the consumable up front (chip or typed backstop);
   // drop any useItem the model echoed in its plan so it isn't spent twice.
   if (preAppliedItem && plan.useItem) plan = { ...plan, useItem: undefined };
+  // Same for a chip-bought item: the till already ran — drop an echoed purchase
+  // so the player isn't charged twice for one click.
+  if (preBoughtItem && plan.purchase) plan = { ...plan, purchase: undefined };
   const applyCtx: ApplyCtx = { runtime, preState: input.state, pc, emit, toolCalls, lastRoll, combat, reconcile: [] };
   applyPlan(plan, applyCtx);
   combat = applyCtx.combat;

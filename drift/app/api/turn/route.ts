@@ -7,7 +7,7 @@ import { isAppeal, stripAppeal } from "@/shared/appeal";
 import { isSelfHarm } from "@/shared/selfHarm";
 import { combatActions, interpretCombatText } from "@/shared/combat";
 import { downedActions } from "@/shared/death";
-import { usableConsumables, outOfCombatItemChips } from "@/shared/items";
+import { usableConsumables, outOfCombatItemChips, inferShoppingIntent, marketChips } from "@/shared/items";
 import { repairQuote } from "@/engine/market";
 import { patronHelp } from "@/shared/netWorth";
 import { advanceLedger } from "@/shared/ledger";
@@ -144,6 +144,8 @@ export async function POST(req: NextRequest) {
   const useItemId = typeof body.useItemId === "string" && body.useItemId ? body.useItemId : undefined;
   // A clicked "Repair hull" dock chip (engine repairs deterministically).
   const preRepair = Boolean(body.repairHull);
+  // A clicked market "Buy X — ¢Y" chip (ITEMS.md shop flow): the catalog id.
+  const buyItemId = typeof body.buyItem === "string" && body.buyItem ? body.buyItem : undefined;
   // A clicked "Rest up with <patron>" chip — the free early-game safety net (STARTER).
   const preRest = Boolean(body.patronRest);
   // Job chips (QUESTS.md) — from a narrator-emitted choice (diegetic offers) or the
@@ -484,6 +486,7 @@ export async function POST(req: NextRequest) {
                 preCheck,
                 preUseItem: useItemId,
                 preRepair,
+                preBuy: buyItemId,
                 preRest,
                 preRecruit: recruitNpcId,
                 preSwap,
@@ -681,6 +684,12 @@ export async function POST(req: NextRequest) {
                   // heal, damaged hull → patch, dry racks → reload) and a dock
                   // "Repair hull (¢X)" — so healing and repair are reliable clicks.
                   ...(resultPc ? outOfCombatItemChips(resultPc, result.state.ship) : []),
+                  // SHOP FLOW (ITEMS.md): when this action read as shopping intent
+                  // (typed or clicked "buy/browse/…"), surface the market's ACTUAL
+                  // stock as Buy chips — live prices, affordable only; clicking one
+                  // runs the till deterministically (buyItem → jsonTurn preBuy).
+                  // Also right after a chip purchase, so the player can keep buying.
+                  ...(inferShoppingIntent(playerText) || buyItemId ? marketChips(result.state) : []),
                   ...(() => {
                     const rq = repairQuote(result.state);
                     return rq ? [{ label: `Repair hull (¢${rq.cost})`, repairHull: true }] : [];

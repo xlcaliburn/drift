@@ -16,7 +16,10 @@ export function EquipmentDetail({ character: c }: { character: CampaignState["ch
           {weapons.map((g, i) => (
             <div key={i} className="rounded border border-edge/60 bg-ink/40 p-2">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="font-semibold text-neutral-100">{g.name}</span>
+                <span className="font-semibold text-neutral-100">
+                  {g.name}
+                  {g.qty && g.qty > 1 ? <span className="font-normal text-neutral-500"> ×{g.qty}</span> : null}
+                </span>
                 <span className="tabular-nums text-neutral-400">{g.damage} dmg</span>
               </div>
               <div className="mt-0.5 text-[12px] text-neutral-500">

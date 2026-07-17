@@ -5,8 +5,9 @@
  * (PlayClient/Sidebar) compute the same inventory view.
  */
 import itemsJson from "@/content/items.json";
-import type { Character } from "./schemas";
+import type { Character, CampaignState } from "./schemas";
 import type { DamageType, StatusKind } from "./status";
+import { marketStock, localRep, repPriceFactor } from "@/engine/market";
 
 export type ItemEffectKind =
   | "heal"
@@ -140,6 +141,42 @@ export function outOfCombatItemChips(
       chips.push(chip);
   }
   return chips;
+}
+
+/**
+ * SHOP FLOW (ITEMS.md): does this action read as intent to SHOP — browse or buy?
+ * When it does, the engine appends the market's actual stock as "Buy X — ¢Y"
+ * chips (marketChips below), so shopping is a reliable click instead of a
+ * narrator improvisation. Born from the live Piotr turn: clicked "buy a
+ * sidearm", the model improvised a counter sale — a legal purchase, but the
+ * player never saw what was FOR SALE. Excludes social "buy someone a drink".
+ */
+const SHOP_INTENT_RE =
+  /\b(shop|browse|market|resupply|restock|gear\s+up|for\s+sale|in\s+stock|what.{0,12}(?:sell|stock|carry)|buy|purchase|acquire)\b/i;
+const SHOP_SOCIAL_RE = /\b(?:buy|get|stand)\s+(?:him|her|them|you|\w+)?\s*(?:a\s+)?(?:drink|round|beer|meal|dinner)s?\b/i;
+
+export function inferShoppingIntent(text: string): boolean {
+  const t = text ?? "";
+  return SHOP_INTENT_RE.test(t) && !SHOP_SOCIAL_RE.test(t);
+}
+
+/**
+ * The local market's featured stock as CLICKABLE chips — live rep-adjusted
+ * prices, affordable items only (a chip is an action, not a wish list). The chip
+ * carries `buyItem`; the ENGINE runs the till deterministically (route →
+ * jsonTurn preBuy → runtime.buyItem), same contract as every other chip.
+ */
+export function marketChips(state: CampaignState): { label: string; buyItem: string }[] {
+  const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
+  const stock = loc ? marketStock(loc, (state.campaign.tendaysElapsed ?? 0) * 10) : [];
+  if (!stock.length) return [];
+  const rep = localRep(loc, state.factions, state.factionRep);
+  const credits = state.characters.find((c) => c.kind === "pc")?.credits ?? 0;
+  return stock
+    .map((s) => ({ item: s.item, price: Math.round(s.price * repPriceFactor(rep)) }))
+    .filter((s) => s.price <= credits)
+    .slice(0, 6)
+    .map((s) => ({ label: `Buy ${s.item.name} — ¢${s.price}`, buyItem: s.item.id }));
 }
 
 /** Verbs in a TYPED action that signal intent to use a heal consumable on
