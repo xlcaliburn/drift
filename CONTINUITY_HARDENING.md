@@ -1,5 +1,13 @@
 # CONTINUITY HARDENING — implementation handoff
 
+*Status 2026-07-17: **Tasks 1-6 SHIPPED** (all in this session — see CHECKS.md
+§0/§1/§2 for the check rows each one landed and the individual commits on
+`main` for detail). **Task 7 remains GATED** — two of its three criteria are
+met (Task 1 shipped; the continuity gym is green), but the third (~1 week of
+healthy production `summary` telemetry) requires real elapsed play time and
+cannot be satisfied by a single session. Do not start Task 7 until that week
+has passed and the telemetry is checked per its own gate section below.*
+
 *Written 2026-07-17 as a handoff for implementation. Context: a live analysis of
 a 164-turn campaign (Lyra Vale, `camp-mrnw51dj-ac2a`) traced "the narrator keeps
 forgetting things" to specific mechanical failures in the memory tiers. The
