@@ -90,6 +90,24 @@ manual re-sync (3 per run) — replacing the stub and folding in the NPC/thread
 updates the original failure dropped. Not retro-editing: same transcript in,
 same tier written. Pre-026 stub rows have no preserved slice and stay as-is.
 
+### 3b. Transcript-trim index drift — **FIXED 2026-07-17**
+
+The self-healing tier (3a) assumed a scene's raw slice was recoverable, but a
+deeper bug meant some campaigns never even got a slice to heal: `sceneCard.
+startTranscriptIdx` is a POSITIONAL index into `transcript`, and the transcript
+is capped at 400 entries by dropping old ones off the front. Trimming N entries
+shifts every later index left by N, but nothing re-based the stored index — so
+once a campaign reached the cap, `compressClosedScene` sliced from a
+progressively wrong (and eventually EMPTY) starting point, producing no scene
+row at all. Drift is zero until the cap, then grows every turn — exactly why
+the heaviest campaigns (Lyra Vale, at 400 entries) lost the most memory.
+
+Fixed: `shared/chat.appendTranscript` rebases `startTranscriptIdx` by the
+dropped count on every append (all 4 append sites in the turn route now go
+through it); `compressClosedScene` also gained a defense-in-depth fallback (the
+transcript tail + forced `degraded`) so a future regression degrades instead of
+going silent. See CHECKS.md §1 "Transcript cap + index rebase".
+
 ### 3. Bug — summarizer persists raw truncated JSON — **FIXED 2026-07-16**
 
 Some scene summaries were persisted as **raw truncated JSON** (e.g.

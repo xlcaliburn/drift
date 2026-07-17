@@ -32,7 +32,7 @@ import { CheckSpec, CombatActionSpec, DownedActionSpec, type ChoiceOption } from
 import { carryScene, isSceneMove, type SceneCard, type SceneMemory } from "@/shared/scene";
 import { analyzeScene, type NpcAnalysis, type ItemAnalysis, type ThreadAnalysis, type FactAnalysis } from "@/llm/summarizer";
 import { applyAnalystUpdates, runOpenSceneAnalyst, repairDegradedScenes, recordSummaryCall, ANALYST_INTERVAL } from "@/lib/analystRun";
-import type { ChatEntry } from "@/shared/chat";
+import { appendTranscript, type ChatEntry } from "@/shared/chat";
 import { hasSupabase } from "@/lib/state";
 
 /**
@@ -53,8 +53,19 @@ async function compressClosedScene(
   /** Facts already on the ledger — fed so the analyst doesn't re-emit them. */
   knownFacts: string[] = [],
 ): Promise<void> {
-  const slice = transcript.slice(closedCard.startTranscriptIdx);
-  if (slice.length === 0) return;
+  // Defense in depth against the trim-drift class (appendTranscript now keeps
+  // startTranscriptIdx correct going forward, but this still guards any future
+  // regression, and pre-fix sessions loaded from a corrupted stored index): an
+  // EMPTY slice for a scene that actually had turns must NEVER silently produce
+  // no row at all — that was the exact shape of the Lyra hole. Fall back to the
+  // transcript tail so the scene still gets a (degraded, self-healable) summary.
+  let slice = transcript.slice(closedCard.startTranscriptIdx);
+  let indexWasBad = false;
+  if (slice.length === 0 && closedCard.turnCount > 0) {
+    slice = transcript.slice(-30);
+    indexWasBad = true;
+  }
+  if (slice.length === 0) return; // genuinely nothing happened (0-turn scene) — fine to skip
   const text = slice
     .map((e) => `${e.role === "player" ? "PLAYER" : e.role.toUpperCase()}: ${e.text}`)
     .join("\n")
@@ -82,11 +93,13 @@ async function compressClosedScene(
   } catch {
     /* fall through to the deterministic fallback */
   }
-  // F-3 fired = the compression FAILED. The stub keeps the row from being a hole
-  // NOW, but it's junk as memory — stamp it degraded and keep the raw slice so
-  // repairDegradedScenes can re-summarize it later (self-healing, migration 026).
-  const degraded = !summary;
-  if (degraded) {
+  // F-3 fired = the compression FAILED, OR the index was corrupted and this ran
+  // over the transcript-tail FALLBACK rather than the scene's real window — even
+  // an analyst "success" there may describe the wrong content. Either way: stamp
+  // degraded and keep the raw slice so repairDegradedScenes can re-attempt later
+  // (self-healing, migration 026). A stub/fallback NEVER lives as untagged memory.
+  const degraded = !summary || indexWasBad;
+  if (!summary) {
     // F-3: never a hole — first action + last beat stand in for the summary.
     const firstPlayer = slice.find((e) => e.role === "player")?.text ?? "";
     const lastDm = [...slice].reverse().find((e) => e.role === "dm")?.text ?? "";
@@ -278,7 +291,7 @@ export async function POST(req: NextRequest) {
             ...appeal.engineLines.map((text) => ({ role: "system" as const, text })),
             { role: "dm" as const, text: appeal.ruling },
           ];
-          const appealTranscript = [...session.transcript, ...appealAdds].slice(-400);
+          const appealTranscript = appendTranscript(session.transcript, appealAdds, session.sceneCard);
           const appealSession = {
             ...session,
             state: appeal.state,
@@ -405,7 +418,7 @@ export async function POST(req: NextRequest) {
             const deadSession = {
               ...session,
               state: deadState,
-              transcript: [...session.transcript, ...deathAdds].slice(-400),
+              transcript: appendTranscript(session.transcript, deathAdds, session.sceneCard),
               lastChoices: [],
               combat: null,
             };
@@ -431,7 +444,7 @@ export async function POST(req: NextRequest) {
           ];
           const gateSession = {
             ...session,
-            transcript: [...session.transcript, ...gateAdds].slice(-400),
+            transcript: appendTranscript(session.transcript, gateAdds, session.sceneCard),
             lastChoices: gateChoices,
           };
           setSession(campaignId, gateSession);
@@ -792,7 +805,12 @@ export async function POST(req: NextRequest) {
         const persistedState = pcDied
           ? { ...result.state, campaign: { ...result.state.campaign, status: "deceased" as const } }
           : result.state;
-        const newTranscript = [...session.transcript, ...transcriptAdds].slice(-400);
+        // MUST run before closedCard is captured below: appendTranscript REBASES
+        // session.sceneCard.startTranscriptIdx in place when the cap trims old
+        // entries, so the spread just below picks up the corrected index (the
+        // trim-drift bug — an at-cap campaign silently sliced the wrong, or an
+        // EMPTY, window for the scene it just closed).
+        const newTranscript = appendTranscript(session.transcript, transcriptAdds, session.sceneCard);
         // Scene closed this turn (`moved`/`sceneClosed` computed with the time advance
         // above) → snapshot the card for the background summarizer and start a fresh
         // one at the new transcript tail (CONTINUITY lifecycle). A move closes the
