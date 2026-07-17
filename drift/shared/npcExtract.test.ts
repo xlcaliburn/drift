@@ -5,6 +5,7 @@ import {
   isPlausibleNpcName,
   isCollectiveName,
   isShareableNpcName,
+  inferNpcSex,
 } from "./npcExtract";
 
 describe("isPlausibleNpcName — the model-npcs junk filter", () => {
@@ -105,5 +106,39 @@ describe("extractDialogueNpcs — dialogue-gated registration", () => {
     // Still catches a real speaker whose line isn't ambient sound.
     expect(extractDialogueNpcs("Distant shouted the coordinates twice.", known)).toEqual([]); // 'distant' is a stopword now
     expect(extractDialogueNpcs("Vex shouts a warning.", known)).toEqual([{ handle: "Vex" }]);
+  });
+});
+
+describe("inferNpcSex — capture the narration's own pronouns, conservatively", () => {
+  it("reads clear same-sentence pronouns", () => {
+    expect(inferNpcSex("Ren leans back in her jump seat, rubbing the bruise on her jaw.", "Ren")).toBe("female");
+    expect(inferNpcSex("Calvo cracks his knuckles and grins.", "Calvo")).toBe("male");
+  });
+
+  it("follows pronouns into the NEXT sentence when nobody else is named", () => {
+    expect(
+      inferNpcSex("Sera checks the door. She waves you through and taps her ear.", "Sera"),
+    ).toBe("female");
+  });
+
+  it("returns undefined with no gendered pronouns at all (they/them prose)", () => {
+    expect(inferNpcSex("Moss watches you without a word. They tap the counter twice.", "Moss")).toBeUndefined();
+  });
+
+  it("skips sentences that name ANOTHER cast member (ambiguous subject)", () => {
+    // The "his" belongs to Calvo, not Ren — with Calvo known, the sentence is skipped.
+    const text = "Ren hands Calvo his pistol back.";
+    expect(inferNpcSex(text, "Ren", ["Calvo"])).toBeUndefined();
+    // A following sentence naming someone else doesn't leak either.
+    const text2 = "Ren nods once. Calvo pockets his winnings.";
+    expect(inferNpcSex(text2, "Ren", ["Calvo"])).toBeUndefined();
+  });
+
+  it("needs a strict majority — mixed signals stay unset", () => {
+    expect(inferNpcSex("Vex tips her hat; his coat drips rain.", "Vex")).toBeUndefined();
+  });
+
+  it("matches through a name-collision '(role)' suffix", () => {
+    expect(inferNpcSex("Ren wipes the bar and names his price.", "Ren (fixer)")).toBe("male");
   });
 });

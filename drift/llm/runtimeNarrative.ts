@@ -427,6 +427,16 @@ export function markPresent(rt: NarrativeRT, npcId: string) {
   if (!rt.sceneCard.presentNpcIds.includes(npcId)) rt.sceneCard.presentNpcIds.push(npcId);
 }
 
+/** Pin an NPC's sex, SET-ONCE — captured from the fiction (the pronouns the
+ *  narration itself used, inferNpcSex), never guessed from the name. Once set it
+ *  feeds every NPC context line so the model can't regender the same person. */
+export function setNpcSex(rt: NarrativeRT, npcId: string, sex: "male" | "female") {
+  rt.state = {
+    ...rt.state,
+    npcs: rt.state.npcs.map((n) => (n.id === npcId && !n.sex ? { ...n, sex } : n)),
+  };
+}
+
 /** Apply the model's scene-card proposal: `situation`/`place`/`dangers` overwrite,
  *  `beats` append. Engine caps everything (F-2/F-4). */
 export function updateScene(rt: NarrativeRT, situation?: string, beats?: string[], place?: string, dangers?: string[]) {

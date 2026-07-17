@@ -3,6 +3,7 @@ import { getSession, setSession, persistSession, hasSupabase, type SessionData }
 import { analyzeScene, type NpcAnalysis, type ItemAnalysis, type ThreadAnalysis, type FactAnalysis, type SummaryTelemetry } from "@/llm/summarizer";
 import { recordAiCall } from "@/lib/audit";
 import { isPlaceholderOneBreath } from "@/shared/scene";
+import { npcIsGone } from "@/llm/retrieval";
 import type { ChatEntry } from "@/shared/chat";
 
 /**
@@ -70,6 +71,21 @@ export async function applyAnalystUpdates(
       rt.updateNpcRelation(id, { note: u.note ?? undefined, relationship: u.relationship ?? undefined });
     }
     if (id && u.presence === "present") rt.markPresent(id);
+    // FATE backstop (shared/npcFate.ts): a death/permanent departure the scene
+    // showed that no fight recorded (executed in narration, spaced, shipped off).
+    // Only a KNOWN cast member (the summarizer already gates fate to trusted ids)
+    // — the same write path combat uses, so canon can't disagree with itself.
+    if (known && u.fate && !npcIsGone(known.status)) {
+      const { markNpcFate } = await import("@/shared/npcFate");
+      rt.state = markNpcFate(
+        rt.state,
+        rt.npcRelations,
+        known.id,
+        u.fate,
+        u.fate === "dead" ? (u.note ?? "Died this scene.") : (u.note ?? "Gone for good — left this scene."),
+        live.sceneCard.seq,
+      );
+    }
   }
   for (const it of itemUpdates) rt.grantSceneItem(it.name, it.note);
 

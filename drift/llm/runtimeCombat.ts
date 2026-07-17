@@ -9,6 +9,7 @@ import {
   type EngineEvent,
 } from "@/engine";
 import { enemyTiers, shipClasses, economy, isHazardSkill } from "@/content";
+import { applyCombatDeaths } from "@/shared/npcFate";
 import { awardTick } from "@/engine/progression";
 import { rollDamage, maxDice } from "@/engine/dice";
 import { generateScavengeLoot } from "@/engine/loot";
@@ -680,7 +681,31 @@ export function resolveCombatRound(
   combat: CombatState,
   action: CombatAction,
 ): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
-  return combat.scale === "ship" ? resolveShipRound(rt, combat, action) : resolvePersonalRound(rt, combat, action);
+  const res = combat.scale === "ship" ? resolveShipRound(rt, combat, action) : resolvePersonalRound(rt, combat, action);
+  // ── NPC FATE (shared/npcFate.ts, CHECKS.md §2): the moment a fight ENDS, any
+  // defeated enemy whose name matches a living cast NPC is recorded dead —
+  // status + a relation-log note. This dispatcher is the single seam every fight
+  // path flows through (combat turns, the gun-skill reroute's in-turn resolution,
+  // downed-turn hostiles), so a named casualty can never quietly stay "alive" in
+  // the cast and be re-narrated later. Personal scale only: a defeated SHIP's
+  // crew fate is the narrator's to tell (adrift ≠ dead).
+  if (combat.active && !res.combat.active && combat.scale === "personal") {
+    const dead = res.combat.enemies.filter((e) => e.hp <= 0).map((e) => e.name);
+    if (dead.length) {
+      const marked = applyCombatDeaths({
+        state: rt.state,
+        npcRelations: rt.npcRelations,
+        deadEnemyNames: dead,
+        place: rt.sceneCard.place,
+        sceneSeq: rt.sceneCard.seq,
+      });
+      rt.state = marked.state;
+      for (const name of marked.deadNames) {
+        rt.events.push({ type: "note", breakdown: `${name} is dead — recorded in the world's cast.` });
+      }
+    }
+  }
+  return res;
 }
 
 function resolvePersonalRound(

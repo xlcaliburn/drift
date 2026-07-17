@@ -256,6 +256,11 @@ export const Npc = z.object({
    *  describes FROM this and never re-invents the same person's body (the live
    *  failure: an NPC scarred in one scene, unmarked the next). */
   appearance: z.string().optional(),
+  /** Pinned sex — CAPTURED from the fiction (the pronouns the narration itself
+   *  first used, `inferNpcSex`), set once, then fed back every turn so the model
+   *  can never regender the same person scene to scene. Absent until the
+   *  narration establishes it — never guessed from the name. */
+  sex: z.enum(["male", "female"]).optional(),
   notes: z.string().optional(),
 });
 export type Npc = z.infer<typeof Npc>;

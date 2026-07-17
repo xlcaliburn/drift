@@ -43,6 +43,7 @@ import {
   registerNpc,
   setNpcOneBreath,
   markPresent,
+  setNpcSex,
   updateScene,
   refreshSituation,
   updateNpcRelation,
@@ -302,6 +303,11 @@ export class TurnRuntime {
   /** Mark an NPC present in the current scene (runtimeNarrative.markPresent). */
   markPresent(npcId: string) {
     markPresent(this, npcId);
+  }
+
+  /** Pin an NPC's sex set-once from the fiction (runtimeNarrative.setNpcSex). */
+  setNpcSex(npcId: string, sex: "male" | "female") {
+    setNpcSex(this, npcId, sex);
   }
 
   /** Apply the model's scene-card proposal (runtimeNarrative.updateScene). */

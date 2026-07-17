@@ -1,5 +1,6 @@
 import { SCENE_TURN_CAP } from "@/shared/scene";
 import { knownEntityNames, isPlausibleNpcName } from "@/shared/npcExtract";
+import { npcIsGone } from "../retrieval";
 import type { PlanHandler } from "./types";
 
 /**
@@ -26,6 +27,11 @@ export const npcs: PlanHandler = (plan, { runtime, emit, toolCalls }) => {
     if (!narrationText.includes(nm) && !narrationText.includes(bare)) continue;
     toolCalls.push("register_npc");
     const { id } = runtime.registerNpc(npc.name, npc.oneBreath ?? undefined, npc.role ?? undefined);
+    // THE DEAD STAY DEAD (shared/npcFate.ts): the explicit npcs[] path is
+    // deliberately ungated for travel beats, but it must never RESURRECT — a
+    // model listing a dead cast member as present is invention, not a story move.
+    const resolved = runtime.state.npcs.find((n) => n.id === id);
+    if (resolved && npcIsGone(resolved.status)) continue;
     runtime.markPresent(id);
     const rel = runtime.updateNpcRelation(id, {
       disposition: npc.disposition ?? undefined,

@@ -237,3 +237,57 @@ export function extractDialogueNpcs(narration: string, known: Set<string>, max =
   }
   return out;
 }
+
+// ── NPC sex inference (capture-from-fiction, CHECKS.md §2) ────────────────────
+// NPCs carry no stored sex, so the model re-decided pronouns from the NAME every
+// scene — the same class as the PC sex-pin bug ("hips swaying" one scene,
+// "stubble… a man" the next), one record over. The narration itself establishes
+// an NPC's sex the first time they're written; this captures the model's own
+// choice so it can be pinned set-once and fed back every turn after.
+
+const MALE_PRONOUN = /\b(he|him|his|himself)\b/gi;
+const FEMALE_PRONOUN = /\b(she|her|hers|herself)\b/gi;
+
+const count = (re: RegExp, s: string): number => (s.match(re) ?? []).length;
+
+/**
+ * Which sex the narration writes an NPC as, or undefined when it can't be told
+ * apart safely. Conservative by construction — a wrong pin is worse than a late
+ * one (the scan reruns every turn until it lands):
+ *  - only sentences that name THIS NPC and no OTHER known cast name count
+ *    (plus the immediately following sentence when it's equally unambiguous —
+ *    pronouns usually land one sentence after the name);
+ *  - needs at least one gendered pronoun and a strict majority.
+ */
+export function inferNpcSex(
+  narration: string,
+  npcName: string,
+  otherCastNames: string[] = [],
+): "male" | "female" | undefined {
+  const base = npcName.toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").trim();
+  if (!base) return undefined;
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const nameRe = new RegExp(`\\b${escape(base)}\\b`, "i");
+  const others = otherCastNames
+    .map((n) => n.toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").trim())
+    .filter((n) => n && n !== base)
+    .map((n) => new RegExp(`\\b${escape(n)}\\b`, "i"));
+  const sentences = narration.split(/(?<=[.!?])\s+/);
+  let male = 0;
+  let female = 0;
+  for (let i = 0; i < sentences.length; i++) {
+    if (!nameRe.test(sentences[i])) continue;
+    if (others.some((re) => re.test(sentences[i]))) continue; // ambiguous subject
+    male += count(MALE_PRONOUN, sentences[i]);
+    female += count(FEMALE_PRONOUN, sentences[i]);
+    // The following sentence, when it names nobody else (pronoun continuation).
+    const next = sentences[i + 1];
+    if (next && !others.some((re) => re.test(next)) && !nameRe.test(next)) {
+      male += count(MALE_PRONOUN, next);
+      female += count(FEMALE_PRONOUN, next);
+    }
+  }
+  if (male > female) return "male";
+  if (female > male) return "female";
+  return undefined;
+}

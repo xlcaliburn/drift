@@ -20,7 +20,8 @@ import { type SceneCard, type NpcRelations, type SceneMemory } from "@/shared/sc
 import { checkFromVerb, verbFromLabel, verbRolls, inferAttemptVerb } from "@/shared/actions";
 import { dcForRisk, difficultyToRisk, type RiskTier } from "@/shared/risk";
 import type { Character } from "@/shared/schemas";
-import { extractDialogueNpcs, knownEntityNames } from "@/shared/npcExtract";
+import { extractDialogueNpcs, knownEntityNames, inferNpcSex } from "@/shared/npcExtract";
+import { npcIsGone } from "./retrieval";
 import { inferConsumableUse } from "@/shared/items";
 import { routeBetween, rollTransitIncident, riskLabel } from "@/shared/routes";
 import type { CombatState } from "@/shared/combat";
@@ -1089,10 +1090,21 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
       // this gate, so travel-to-the-player beats aren't blocked — only inference is.
       // Recent companions are exempt (they came along; see companionIds above).
       if (n.locationId && hereLoc && n.locationId !== hereLoc && !companionIds.has(n.id)) continue;
+      // THE DEAD STAY DEAD (shared/npcFate.ts): a gone NPC can be mentioned or
+      // mourned, but a mention never re-marks them present — retrieval already
+      // filters them; this closes the presence-side resurrection path.
+      if (npcIsGone(n.status)) continue;
       const named = new RegExp(`\\b${escapeRe(nm)}\\b`).test(lower);
       const spoke = named && spokeHandles.some((h) => nm === h || nm.includes(h) || h.includes(nm));
       if (!spoke && !impliedPresent.has(n.id)) continue;
       runtime.markPresent(n.id);
+      // SEX CAPTURE (set-once): the narration that plays an NPC establishes their
+      // pronouns — pin the model's own choice the first time it's unambiguous
+      // (inferNpcSex is conservative; until it lands, the scan reruns each turn).
+      if (!n.sex) {
+        const inferred = inferNpcSex(narration, n.name, runtime.state.npcs.filter((o) => o.id !== n.id).map((o) => o.name));
+        if (inferred) runtime.setNpcSex(n.id, inferred);
+      }
       // Seed a relationship the FIRST time you actually deal with someone, so the
       // People panel isn't blank for a fixer/fence you've been talking to — the cheap
       // model rarely fills note/relationship for dialogue-introduced NPCs. Only when
