@@ -204,6 +204,7 @@ Focus: ${input.bias}
 Code lean: ${input.alignment}
 Ambition: ${input.ambition}
 Name (free text): ${input.name}
+Sex: ${input.sex} — the backstory, voice, and opening must be consistent with this (pronouns, body, how others read them); never contradict it.
 Signature "${input.uniqueSkill.name}" (free text): ${input.uniqueSkill.description} — ${sig}
 Starting skills: ${character.skills.map((s) => `${s.name} ${s.level}`).join(", ")}
 --- Optional flavor (invent any marked (blank)) ---

@@ -26,6 +26,19 @@ export const pcSheet: Section = ({ pc }) => {
     );
   }
 
+  // SEX PIN (CHECKS.md §2): sex was never fed to the narrator, so it coin-flipped
+  // gender off the NAME — a live PC got "hips swaying" one scene and "stubble…
+  // a man" at the mirror the next. Known → a hard every-turn directive covering
+  // narration, body descriptions, and how NPCs perceive/address them. Unset
+  // (legacy characters predating the field) → explicit NEUTRALITY, never a guess.
+  if (pc) {
+    lines.push(
+      pc.sex
+        ? `${pc.name} is ${pc.sex.toUpperCase()} (${pc.sex === "female" ? "she/her" : "he/him"}). Every body description, reflection, and NPC reaction must be consistent with this — never describe or address them as any other sex.`
+        : `${pc.name}'s sex has NOT been established. Keep every reference to their body and gender NEUTRAL — no gendered anatomy, facial hair, "the man"/"the woman", or gendered address (sir/ma'am) — until the player establishes it themselves.`,
+    );
+  }
+
   // Identity — the PC's past and their drive. Creation bakes these into gear and
   // backstory but they weren't re-fed at play time, so the narrator couldn't pull
   // on them. Surface background + ambition each turn as material for scenes, NPCs,
