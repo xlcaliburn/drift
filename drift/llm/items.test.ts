@@ -98,6 +98,21 @@ describe("combat item actions", () => {
     expect(itemCount(rt.state.characters[0], "smoke")).toBe(0);
   });
 
+  it("refuses a stim at full HP with nothing to treat — not spent, round still passes", () => {
+    const rt = new TurnRuntime(withInventory([], 1, 20), maxRng); // hp 20/20
+    const r = rt.resolveCombatRound(personalCombat([enemy()]), { type: "stim" });
+    expect(rt.state.characters[0].stims).toBe(1); // kept
+    expect(r.lines.some((l) => /unhurt/.test(l))).toBe(true);
+  });
+
+  it("a stim at full HP DOES fire when it can clear a bleed/burn", () => {
+    const cbt = { ...personalCombat([enemy()]), playerStatuses: [{ kind: "bleeding" as const, rounds: 3, stacks: 1 }] };
+    const rt = new TurnRuntime(withInventory([], 1, 20), maxRng);
+    const r = rt.resolveCombatRound(cbt, { type: "stim" });
+    expect(rt.state.characters[0].stims).toBe(0); // spent on the wound status
+    expect(r.lines.some((l) => /stops your/.test(l))).toBe(true);
+  });
+
   it("a shield cell restores ship shields mid-fight", () => {
     // minRng → the enemy's return volley misses, so the restored shield persists.
     const rt = new TurnRuntime(withInventory([{ name: "Shield cell", itemId: "shieldCell", qty: 1 }], 0, 6, true), minRng);
@@ -136,6 +151,13 @@ describe("out-of-combat useItem", () => {
     const rt = new TurnRuntime(withInventory([], 0, 6), maxRng);
     const res = rt.useItem("medkit") as { error?: string };
     expect(res.error).toBeTruthy();
+  });
+
+  it("refuses a heal at full HP — item NOT spent (the live Sparrow '+0 HP — 18→18' stim)", () => {
+    const rt = new TurnRuntime(withInventory([], 1, 20), maxRng); // hp 20/20
+    const res = rt.useItem("stim") as { error?: string };
+    expect(res.error).toMatch(/full health/);
+    expect(rt.state.characters[0].stims).toBe(1); // kept
   });
 
   it("heals AND consumes an UNMAPPED legacy medkit (name-only gear) — the bug", () => {

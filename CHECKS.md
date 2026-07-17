@@ -147,9 +147,10 @@ mapping it to a field.
 |---|---|---|---|
 | Deterministic chips (`pre*`) | route → `jsonTurn` (`preCheck`, `preUseItem`, `preRepair`, `preRest`, `preRecruit`, `preSwap`, job/personal-job chips) | any engine chip click | a click is a CONTRACT — the engine applies it before the model ever runs |
 | Typed-attempt inference | `jsonTurn` `impliedCheck` (`inferAttemptVerb`) | typed action that reads as an attempt | the model forgetting `roll` — pre-rolled like a click, so dice and prose can't desync |
-| **Typed consumable backstop** | `shared/items.inferConsumableUse` → `jsonTurn` | typed "use stim"/"pop a medkit" for a HELD heal | the model narrating the heal without firing `useItem` — born from six live "use stim" turns with HP frozen at 1 |
+| **Typed consumable backstop** | `shared/items.inferConsumableUse` → `jsonTurn` | typed "use stim"/"pop a medkit" for a HELD heal, only while hp < maxHp | the model narrating the heal without firing `useItem` — born from six live "use stim" turns with HP frozen at 1. Full-HP gate added after the Sparrow +0 HP stim (below) so a verb false-positive can't spend for nothing |
+| **Full-HP heal refusal** | `llm/runtimeHeal.useItem` + the combat item branch in `llm/runtimeCombat` | any heal-consumable spend at full HP (combat: and no bleed/burn to clear) | the engine burning an item for "+0 HP" — born from the live Sparrow turn: the model VOLUNTEERED `useItem: stim` on an unrelated clicked travel choice ("Step aboard the Rust-Eye") and the engine printed "🩹 Stim: +0 HP — 18→18". Refused spends surface as ⚠ + a reconcile note (never a silent drop); prompt rule 6 also forbids volunteering an item the player didn't use |
 | **Typed job-accept backstop** | `shared/quests.inferJobAccept` → route | typed "I'll take the courier run" matching exactly ONE local offer | the model narrating the hire without carrying `acceptJob` on the choice (offers are diegetic now — under-fire would leave the job forever "offered"); ambiguity or a missing accept verb → no accept |
-| Combat free-text interpreter | `shared/combat.interpretCombatText` | any input during a live fight | EVERY in-combat input runs the engine round — typing "I gun them all down" can't skip the rolls |
+| Combat free-text interpreter | `shared/combat.interpretCombatText` | any input during a live fight | EVERY in-combat input runs the engine round — typing "I gun them all down" can't skip the rolls. Item spends need an ITEM cue (named consumable or self-treatment phrasing, negation-guarded) — bare "use"/"patch"/"heal" used to burn the first held consumable and shadow the weapon-switch branch |
 | Downed free-text interpreter | `shared/death.interpretDownedText` | any input while bleeding out | "I get up and run" can't skip death saves |
 | **Self-harm gate** | `shared/selfHarm.isSelfHarm` → route intercept + `confirmDeath` chip | typed suicide intent | the model improvising skill checks around a suicide (a throat-slit resolved as an `electronics` roll, death narrated but never applied) — now an explicit engine confirmation and a REAL death |
 | Appeal system | `shared/appeal.ts` → `llm/appealTurn.ts` | `APPEAL …` | the meta escape hatch: a strong judge applies engine-legal corrections when a mechanical outcome was wrong; every appeal audited + filed as an issue |
@@ -217,6 +218,7 @@ mapping it to a field.
 | Live incident | The check it produced |
 |---|---|
 | Lazar's six "use stim" turns, HP frozen at 1 | `inferConsumableUse` typed backstop |
+| Sparrow's stim burned at 18/18 on a clicked travel choice (model volunteered `useItem`) | full-HP heal refusal (engine, both scales) + prompt rule 6 "never volunteer" |
 | Fingers "patches you up" with a medkit you don't own | denied-intent reconcile + MIRROR heal rule |
 | Throat-slit resolved as an `electronics` check; death narrated, never applied | self-harm gate + `confirmDeath` |
 | Fingers→Yarl→loot chain never tracked, lost to the window | analyst thread reconciliation |

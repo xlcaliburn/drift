@@ -30,8 +30,22 @@ describe("interpretCombatText — free text can't bypass combat", () => {
   it("maps heal intent to a held consumable (else falls through to attack)", () => {
     const stim = [{ itemId: "stim", name: "Stim", count: 1, verb: "Use" }];
     expect(interpretCombatText("jam a stim into my leg", c, stim)).toEqual({ type: "item", itemId: "stim" });
+    expect(interpretCombatText("patch myself up", c, stim)).toEqual({ type: "item", itemId: "stim" });
     // No consumable held → the heal keyword can't fire, so it's still an attack.
     expect(interpretCombatText("patch myself up", c, [])).toEqual({ type: "attack", enemyId: "a" });
+  });
+
+  it("bare use/heal/patch is NOT an item spend — needs an item cue (unintended-stim misfire)", () => {
+    const stim = [{ itemId: "stim", name: "Stim", count: 1, verb: "Use" }];
+    // "use <weapon>" is a switch, not a stim — the item branch used to shadow this.
+    expect(interpretCombatText("use the plasma carbine", c, stim, ["Plasma carbine"])).toEqual({
+      type: "switch",
+      weaponName: "Plasma carbine",
+    });
+    // "patch me through" is comms, not self-treatment → default attack.
+    expect(interpretCombatText("patch me through to the ship", c, stim)).toEqual({ type: "attack", enemyId: "a" });
+    // A decline never spends — same negation guard as the out-of-combat backstop.
+    expect(interpretCombatText("save my stim and charge him", c, stim)).toEqual({ type: "attack", enemyId: "a" });
   });
 
   it("skips a dead enemy and attacks a living one", () => {

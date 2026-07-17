@@ -185,8 +185,9 @@ export function marketChips(state: CampaignState): { label: string; buyItem: str
 const USE_VERB_RE =
   /\b(use|using|used|pop|popped|inject|injects?|injected|jab|jabbed|apply|applies|applied|slam|slammed|crack|cracks?|cracked|thumb|thumbed|dose|administer|patch\s+(?:me|myself|up)|heal|stab)\b/i;
 /** Phrasings that mean the player is DECLINING to use one — a conservative guard
- *  so the backstop never spends a consumable the player wanted to hold. */
-const USE_NEGATION_RE = /\b(don'?t|do\s+not|without|no\s+need|save|saving|keep|not\s+use|hold\s+off)\b/i;
+ *  so the backstop never spends a consumable the player wanted to hold. Shared
+ *  with the in-combat free-text parser (shared/combat.interpretCombatText). */
+export const USE_NEGATION_RE = /\b(don'?t|do\s+not|without|no\s+need|save|saving|keep|not\s+use|hold\s+off)\b/i;
 /** Match terms per heal consumable (catalog name + common freeform spellings).
  *  Multiword forms use a flexible space/hyphen so "med-kit"/"med kit" both hit. */
 const HEAL_SYNONYMS: Record<string, string[]> = {
@@ -205,6 +206,10 @@ const HEAL_SYNONYMS: Record<string, string[]> = {
  * id, or undefined when the text isn't a clear use-intent for something held.
  */
 export function inferConsumableUse(text: string, c: Character): string | undefined {
+  // Full health → nothing to heal, so NO typed mention of a stim is a use-intent.
+  // A false-positive verb match here used to burn a consumable for +0 HP (the
+  // engine now also refuses that spend — this gate just keeps the turn quiet).
+  if (c.hp >= c.maxHp) return undefined;
   const norm = (text ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   if (!norm) return undefined;
   if (USE_NEGATION_RE.test(text ?? "")) return undefined;

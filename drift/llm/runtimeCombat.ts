@@ -796,6 +796,13 @@ function resolvePersonalRound(
       }
       const eff = item.effect;
       if (eff?.kind === "heal") {
+        // Nothing to treat — full HP and no bleed/burn to clear → the item is
+        // NOT spent (mirrors the "Nothing to use." dead-end, round still passes).
+        if (pc.hp >= pc.maxHp && clearOnHeal(playerStatuses).cleared.length === 0) {
+          lines.push(`🩹 You're unhurt — the ${item.name} stays in its sleeve.`);
+          cover = 0;
+          break;
+        }
         const before = pc.hp;
         const after = applyHeal(rt, pc.id, rollDamage(eff.dice ?? "1d6+2", rt.rng));
         consumeItem(rt, pc.id, itemId);

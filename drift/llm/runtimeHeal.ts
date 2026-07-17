@@ -206,6 +206,10 @@ export function useItem(rt: HealRT, itemId: string, characterId?: string): { lin
   let line = `${item.name} used.`;
 
   if (eff?.kind === "heal") {
+    // Full health → REFUSE and don't consume. Born from the live Sparrow turn:
+    // the model volunteered `useItem: stim` on an unrelated clicked choice and
+    // the engine printed "🩹 Stim: +0 HP — 18→18", burning the stim for nothing.
+    if (c.hp >= c.maxHp) return { error: `${c.name} is already at full health — the ${item.name} isn't spent` };
     const healed = rollDamage(eff.dice ?? "1d6+2", rt.rng);
     const before = c.hp;
     const after = applyHeal(rt, c.id, healed);

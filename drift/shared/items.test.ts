@@ -95,8 +95,9 @@ describe("catalogue traits (weapons/armor, ITEMS.md status system)", () => {
 });
 
 describe("free-text consumable backstop (inferConsumableUse)", () => {
-  const withStim = char({ stims: 1 }); // legacy counter → 1 stim held
-  const withMedkit = char({ gear: [{ name: "Medkit", itemId: "medkit" }] });
+  // Wounded (hp < maxHp) — a full-HP character never triggers the backstop (below).
+  const withStim = char({ stims: 1, hp: 9 }); // legacy counter → 1 stim held
+  const withMedkit = char({ gear: [{ name: "Medkit", itemId: "medkit" }], hp: 9 });
 
   it("resolves a typed 'use stim' when a stim is held (the live bug)", () => {
     expect(inferConsumableUse("use stim", withStim)).toBe("stim");
@@ -130,6 +131,11 @@ describe("free-text consumable backstop (inferConsumableUse)", () => {
   it("respects a decline — never spends a consumable the player wants to keep", () => {
     expect(inferConsumableUse("don't use the stim yet", withStim)).toBeUndefined();
     expect(inferConsumableUse("save my stim for later", withStim)).toBeUndefined();
+  });
+
+  it("never fires at full HP — nothing to heal (the live Sparrow +0 HP stim)", () => {
+    expect(inferConsumableUse("use stim", char({ stims: 1 }))).toBeUndefined(); // char() defaults to 18/18
+    expect(inferConsumableUse("use stim", char({ stims: 1, hp: 17 }))).toBe("stim");
   });
 });
 

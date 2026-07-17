@@ -4,7 +4,7 @@
  * CampaignState. Null when there is no fight. The engine owns every number here;
  * the narrator only voices results.
  */
-import type { UsableConsumable } from "./items";
+import { USE_NEGATION_RE, type UsableConsumable } from "./items";
 import type { StatusEffect, DamageType, StatusKind } from "./status";
 
 export type CombatTier = "T1" | "T2" | "T3";
@@ -160,9 +160,17 @@ export function interpretCombatText(
 ): CombatAction {
   const t = ` ${text.toLowerCase()} `;
   if (/\b(flee|run|escape|retreat|disengage|break off|bail|burst|withdraw)\b/.test(t)) return { type: "flee" };
-  if (consumables.length && /\b(stim|heal|medkit|patch|shield cell|inject|use)\b/.test(t)) {
-    const named = consumables.find((c) => t.includes(c.name.toLowerCase()));
-    return { type: "item", itemId: (named ?? consumables[0]).itemId };
+  // Spending a consumable needs an ITEM cue, not a bare verb — "use the plasma
+  // carbine" is a weapon switch and "patch me through to Korr" is comms, but bare
+  // use/heal/patch here used to burn the FIRST held consumable (the unintended-stim
+  // misfire class). A held consumable NAMED outright is intent (chip parity);
+  // otherwise only item words / self-treatment phrasings fire, and a decline
+  // ("save my stim") never spends one.
+  if (consumables.length && !USE_NEGATION_RE.test(text)) {
+    const namedItem = consumables.find((c) => t.includes(c.name.toLowerCase()));
+    if (namedItem) return { type: "item", itemId: namedItem.itemId };
+    if (/\b(?:stims?|stimpack|med[\s-]?kit|inject)\b|\b(?:heal|patch)\s+(?:me\b(?!\s+through)|myself|up)/.test(t))
+      return { type: "item", itemId: consumables[0].itemId };
   }
   // Draw a different carried weapon ("switch to my knife", "use the plasma carbine").
   // Only when the named weapon isn't the one already drawn AND it isn't paired with a

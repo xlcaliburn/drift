@@ -131,6 +131,18 @@ describe("applyPlan — inventory", () => {
     );
     expect(reconcile).toHaveLength(0);
   });
+
+  it("drops a hallucinated heal at full HP — item kept, failure surfaced (the live Sparrow stim)", () => {
+    // The model volunteered `useItem: stim` on an unrelated clicked travel choice;
+    // the engine used to burn the stim for "+0 HP — 18→18". Now it refuses.
+    const { runtime, emitted, reconcile } = run(
+      state({ gear: [{ name: "Stim", itemId: "stim", qty: 1 }], hp: 20, maxHp: 20 }),
+      mkPlan({ useItem: { itemId: "stim" } }),
+    );
+    expect(emitted.some((l) => /full health/.test(l))).toBe(true);
+    expect(reconcile).toHaveLength(1); // prose claiming a heal gets corrected
+    expect(runtime.state.characters[0].gear.find((g) => g.itemId === "stim")?.qty).toBe(1);
+  });
 });
 
 describe("applyPlan — quests & world", () => {
