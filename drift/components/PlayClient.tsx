@@ -13,7 +13,7 @@ import type { PlayerLedger } from "@/shared/ledger";
 import { combatActions, type CombatState } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
 import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
-import { riskOdds, type RiskTier } from "@/shared/risk";
+import { type RiskTier } from "@/shared/risk";
 import { chipKind } from "./chipKinds";
 import Sidebar from "./Sidebar";
 
@@ -754,7 +754,6 @@ export default function PlayClient({
                               "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium capitalize " +
                               RISK_PILL[c.check.risk]
                             }
-                            title={`Risk: ${c.check.risk} — about ${riskOdds(c.check.risk)}% to succeed`}
                           >
                             {c.check.risk}
                           </span>

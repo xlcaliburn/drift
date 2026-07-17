@@ -42,7 +42,7 @@ export const offeredJobs: Section = ({ state, jobs, loc }) => {
     (j) => `  - [${j.id}] "${j.title}" (${j.tier}, from ${facName(j.factionId)}): ${j.blurb}`,
   );
   return [
-    `WORK ON OFFER at this station (engine-generated — do NOT invent other paying jobs). Surface these through the WORLD when it fits — a fixer's pitch, dock chatter, a notice, the giver themselves — never as a menu or list. When the player clearly moves to take one, include a choice with acceptJob:"<its id>" (and if they walk away from an ACTIVE job, a choice with abandonJob:"<its id>"). The ENGINE sets pay and terms; never quote credit amounts:\n${lines.join("\n")}`,
+    `WORK ON OFFER at this station (engine-generated — do NOT invent other paying jobs). This is BACKGROUND KNOWLEDGE, not a directive: on most turns mention NONE of it. Surface an offer ONLY when the player asks around for work, a scene naturally idles at a place work gets posted (a bar, a dock board), or the giver has organic business with them — as one light touch (a notice glimpsed, a half-heard pitch), never a sales push. NPCs have their own lives: they NEVER interrupt what the player is doing to pitch a job, never repeat an offer the player ignored, and never steer a conversation back to work the player didn't ask about. When the player clearly moves to take one, include a choice with acceptJob:"<its id>" (and if they walk away from an ACTIVE job, a choice with abandonJob:"<its id>"). The ENGINE sets pay and terms; never quote credit amounts:\n${lines.join("\n")}`,
     ``,
   ];
 };
