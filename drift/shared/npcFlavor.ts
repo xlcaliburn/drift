@@ -1,13 +1,19 @@
 /**
- * Deterministic NPC flavor — a personality quirk and a light backstory hook.
+ * Deterministic NPC flavor — a physical description, a personality quirk, and a
+ * backstory (origin + want + complication).
  *
  * NPCs are universe-shared, so their character must be STABLE and canonical: every
- * player who meets the same NPC sees the same person. Both facets are seeded off the
+ * player who meets the same NPC sees the same person. All facets are seeded off the
  * NPC's id (engine-owned, free, no LLM) and assigned once at registration.
  *
- * - `quirk`     = a demeanor + a tell the narrator plays so the NPC is recognizable.
- * - `backstory` = a want + a complication — a light hook a future quest can hang on
- *                 (kept role-agnostic so it never contradicts an NPC's job/faction).
+ * - `appearance` = build + face/hair + one distinguishing mark — the FIXED physical
+ *                  description, so the narrator can't re-invent the same person's
+ *                  body scene to scene (the live failure: an NPC's look drifting —
+ *                  scarred one scene, unmarked the next).
+ * - `quirk`      = a demeanor + a tell the narrator plays so the NPC is recognizable.
+ * - `backstory`  = an origin + a want + a complication — where they came from and
+ *                  what they're after; a hook a future quest can hang on (kept
+ *                  role-agnostic so it never contradicts an NPC's job/faction).
  */
 
 const DEMEANORS = [
@@ -100,6 +106,76 @@ const HOOKS = [
   "though the favor they'd need to call in isn't free",
 ];
 
+// ── Appearance pools (build × face/hair × one distinguishing mark) ───────────
+// Deliberately sex/age-neutral wording: an NPC's sex is the model's to establish
+// in the fiction (and many never need one) — the FIXED parts are the physique,
+// the face, and the mark, so a described person can never silently change body.
+
+const BUILDS = [
+  "wiry and quick-moving",
+  "broad-shouldered and heavyset",
+  "tall and rangy",
+  "short and solid",
+  "lean and angular",
+  "stocky, built like a cargo loader",
+  "slight, almost delicate",
+  "big-framed but slow-moving",
+  "compact and coiled, a fighter's build",
+  "soft-bodied, more desk than deck",
+  "gaunt, all tendon and bone",
+  "average build that disappears in a crowd",
+];
+
+const FACES = [
+  "a shaved head and heavy brows",
+  "grey-streaked hair pulled back tight",
+  "a weathered, sun-cracked face",
+  "close-cropped dark hair and sharp cheekbones",
+  "a round, open face that hides nothing",
+  "deep-set eyes under a mess of unkempt hair",
+  "a long face with a crooked, often-broken nose",
+  "pale eyes that don't blink enough",
+  "a jaw like a bulkhead and a flattened ear",
+  "fine features gone hard around the mouth",
+  "a lined face and steel-colored stubble of hair",
+  "dark, watchful eyes and a widow's peak",
+  "a boxer's brow and knuckle-scarred hands",
+  "hollow cheeks and lank, colorless hair",
+];
+
+const MARKS = [
+  "a burn scar climbing one side of the neck",
+  "a cheap chrome prosthetic left hand",
+  "faction ink, half lasered off, on one forearm",
+  "a milky, sightless left eye",
+  "a missing ring finger",
+  "an old blast scar across the scalp where hair won't grow",
+  "a dockworker's stoop and rope-scarred palms",
+  "a voice box implant that flattens every word",
+  "a limp favoring the right leg",
+  "vacuum-frost mottling up both wrists",
+  "a jagged scar through one eyebrow",
+  "teeth capped in mismatched alloy",
+  "a tremor in the left hand they try to hide",
+  "old shrapnel pocking one cheek",
+];
+
+/** Where they came from — the past that shaped them. Role-agnostic like DRIVES. */
+const ORIGINS = [
+  "Grew up in the gutter-decks of a Crown station and clawed out",
+  "Was born shipside and has never held still since",
+  "Served a faction for years and left with scars instead of a pension",
+  "Came up through a salvage crew that didn't all make it back",
+  "Once had money and a name, and lost both fast",
+  "Was raised by dock folk who taught them every angle",
+  "Survived a decompression accident that took people they knew",
+  "Ran cargo through the lanes until a bad manifest ended that life",
+  "Buried a partner young and never took another",
+  "Was somebody's enforcer once, and doesn't talk about it",
+  "Jumped ship at this station years ago and never left",
+  "Came out from the inner worlds chasing a debt that outran them",
+];
+
 /** FNV-1a 32-bit — a stable, fast string hash (no deps, deterministic). */
 function hash32(s: string): number {
   let h = 0x811c9dc5;
@@ -122,16 +198,28 @@ export function generateQuirk(seed: string): string {
 }
 
 /**
- * A stable light backstory — a want + a complication, i.e. a latent quest hook.
- * Role-agnostic so it never contradicts the NPC's job or faction (~170 combos).
+ * A stable physical description — build + face/hair + one distinguishing mark
+ * (~2000 combinations). The narrator DESCRIBES from this and never re-invents it:
+ * the same person is scarred in every scene, not just the one that coined it.
+ */
+export function generateAppearance(seed: string): string {
+  const key = (seed || "npc").trim().toLowerCase();
+  const build = pick(BUILDS, "build:" + key);
+  return `${build.charAt(0).toUpperCase()}${build.slice(1)}, with ${pick(FACES, "face:" + key)} and ${pick(MARKS, "mark:" + key)}.`;
+}
+
+/**
+ * A stable backstory — an origin + a want + a complication (~2000 combos): where
+ * they came from, what they're after, and the snag a quest can hang on.
+ * Role-agnostic so it never contradicts the NPC's job or faction.
  */
 export function generateBackstory(seed: string): string {
   const key = (seed || "npc").trim().toLowerCase();
   const drive = pick(DRIVES, "drive:" + key);
-  return `${drive.charAt(0).toUpperCase()}${drive.slice(1)}, ${pick(HOOKS, "hook:" + key)}.`;
+  return `${pick(ORIGINS, "origin:" + key)}. ${drive.charAt(0).toUpperCase()}${drive.slice(1)}, ${pick(HOOKS, "hook:" + key)}.`;
 }
 
-/** Both facets at once — used when an NPC is first registered. */
-export function generateNpcFlavor(seed: string): { quirk: string; backstory: string } {
-  return { quirk: generateQuirk(seed), backstory: generateBackstory(seed) };
+/** All facets at once — used when an NPC is first registered. */
+export function generateNpcFlavor(seed: string): { quirk: string; backstory: string; appearance: string } {
+  return { quirk: generateQuirk(seed), backstory: generateBackstory(seed), appearance: generateAppearance(seed) };
 }

@@ -243,9 +243,15 @@ export const Npc = z.object({
   /** Canonical personality — a demeanor + a tell the narrator plays consistently.
    *  Engine-generated (deterministic, seeded off id), set once, universe-shared. */
   quirk: z.string().optional(),
-  /** Light backstory — a want + a complication; a latent quest hook. Same as quirk:
-   *  engine-generated, set once, shared so the NPC is the same person for everyone. */
+  /** Light backstory — an origin + a want + a complication; a latent quest hook.
+   *  Same as quirk: engine-generated, set once, shared so the NPC is the same
+   *  person for everyone. */
   backstory: z.string().optional(),
+  /** FIXED physical description — build + face + one distinguishing mark. Engine-
+   *  generated (deterministic off id), set once, universe-shared: the narrator
+   *  describes FROM this and never re-invents the same person's body (the live
+   *  failure: an NPC scarred in one scene, unmarked the next). */
+  appearance: z.string().optional(),
   notes: z.string().optional(),
 });
 export type Npc = z.infer<typeof Npc>;

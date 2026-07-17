@@ -1,5 +1,5 @@
 import { relationSuffix, relationHistory } from "@/shared/scene";
-import { generateQuirk } from "@/shared/npcFlavor";
+import { generateQuirk, generateAppearance } from "@/shared/npcFlavor";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import type { Dossier } from "@/shared/multiplayer";
 import { deriveKnowledge, projectDossier, type PlayerLedger } from "@/shared/ledger";
@@ -118,16 +118,20 @@ export const npcs: Section = ({ state, npcs, memory, loc }) => {
   const locName = (id: string) => state.locations.find((l) => l.id === id)?.name ?? id;
   return [
     npcs.length
-      ? `NPCs in play (the [bracket] = WHERE they are — someone based at another station is NOT in this scene and can only be reached by comms or by traveling to them, NEVER by appearing; standing = their history; "plays:" = their canon personality — play it CONSISTENTLY; "hook:" = a backstory thread you can pull into a quest; "history:" = what has ALREADY passed between you and them — treat it as fact and NEVER act as if it didn't happen):\n${npcs
+      ? `NPCs in play (the [bracket] = WHERE they are — someone based at another station is NOT in this scene and can only be reached by comms or by traveling to them, NEVER by appearing; standing = their history; "plays:" = their canon personality — play it CONSISTENTLY; "looks:" = their FIXED physical description — describe them from this and ONLY this, never invent or change their body, scars, or hair; "hook:" = a backstory thread you can pull into a quest; "history:" = what has ALREADY passed between you and them — treat it as fact and NEVER act as if it didn't happen):\n${npcs
           .map((n) => {
             const quirk = n.quirk ?? generateQuirk(n.id);
+            // FIXED look, fed for anyone relevant this turn. Render-time fallback
+            // (deterministic off id, like quirk) so every existing NPC has one
+            // immediately — no data migration; registerNpc persists it set-once.
+            const looks = presentSet.has(n.id) || recentSet.has(n.id) ? ` [looks: ${n.appearance ?? generateAppearance(n.id)}]` : "";
             const hook = presentSet.has(n.id) && n.backstory ? ` [hook: ${n.backstory}]` : "";
             // Feed the full relationship history for any NPC relevant this turn (present
             // OR surfaced by the player's text) so an extensive prior scene with them
             // can't be forgotten — the "Agnes forgot her whole scene with Sera" bug.
             const hist = relationHistory(rels[n.id]);
             const histLine = hist ? `\n      history: ${hist}` : "";
-            return `  - ${n.name} (id: ${n.id})${proximityTag(n, presentSet, loc?.id, locName, recentSet)}: ${n.oneBreath} (plays: ${quirk})${relationSuffix(rels[n.id])}${hook}${histLine}`;
+            return `  - ${n.name} (id: ${n.id})${proximityTag(n, presentSet, loc?.id, locName, recentSet)}: ${n.oneBreath} (plays: ${quirk})${looks}${relationSuffix(rels[n.id])}${hook}${histLine}`;
           })
           .join("\n")}`
       : `NPCs in play: none flagged`,

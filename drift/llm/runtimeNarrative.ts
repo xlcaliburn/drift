@@ -2,7 +2,7 @@ import type { CampaignState, Character, WorldEvent, Thread, Attributes } from "@
 import type { EngineEvent } from "@/engine";
 import { advanceClock as advanceClockEngine, runSceneEnd } from "@/engine";
 import { economy } from "@/content";
-import { generateQuirk, generateBackstory, generateNpcFlavor } from "@/shared/npcFlavor";
+import { generateQuirk, generateBackstory, generateAppearance, generateNpcFlavor } from "@/shared/npcFlavor";
 import { validateAttributes } from "@/shared/respec";
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import { bestArmor } from "./runtimeEconomy";
@@ -309,6 +309,9 @@ export function registerNpc(rt: NarrativeRT, name: string, oneBreath?: string, r
               // Backfill canonical flavor for NPCs that predate it (set-once).
               quirk: n.quirk ?? generateQuirk(n.id),
               backstory: n.backstory ?? (n.originCampaignId ? generateBackstory(n.id) : undefined),
+              // Fixed physical description (set-once) — generated NPCs only; the
+              // hand-seeded cast may carry a richer look in oneBreath already.
+              appearance: n.appearance ?? (n.originCampaignId ? generateAppearance(n.id) : undefined),
             }
           : n,
       ),
