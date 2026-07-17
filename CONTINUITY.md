@@ -90,6 +90,31 @@ manual re-sync (3 per run) — replacing the stub and folding in the NPC/thread
 updates the original failure dropped. Not retro-editing: same transcript in,
 same tier written. Pre-026 stub rows have no preserved slice and stay as-is.
 
+### 3c. The continuity gym — **SHIPPED 2026-07-17**
+
+`llm/continuityGym.test.ts` — a model-free regression harness proving
+established context survives window turnover, not just that a single unit
+behaves correctly in isolation. Drives real production seams (`TurnRuntime` +
+`applyPlan` for turns, `carryScene`/`appendTranscript` for scene lifecycle,
+`buildContextSlice`/`retrieveEntities`/`inferPresentNpcs` for what the
+narrator would see) through scripted multi-scene sessions: a fact surviving 15+
+scene closes and correctly replacing on restatement, a name-collision NPC's
+harvested alias resolving every later mention without forking, scene summaries
+decaying past the 20-entry cap while the FACT recorded alongside them survives
+independently (the two memory tiers complement each other), the Task 1
+trim-index fix holding at the cap, home-gate + companion-presence invariants
+together, and the facts cap through the real plan path. Runs in the normal
+suite, no API key, <20ms. This is also the acceptance harness for a future
+world reboot, and the gate for the D-3 window shrink below (Task 7 of
+CONTINUITY_HARDENING.md requires it green before that change).
+
+Scope note: `lib/analystRun.applyAnalystUpdates` (the scene analyst's own fold
+path) isn't directly callable from a Vitest test — everything under `lib/`
+carries `import "server-only"`, which fails to resolve under plain Node module
+resolution. The gym instead drives the SAME underlying engine mutations the
+analyst ultimately triggers, with analyst OUTPUT modeled as hand-scripted
+summaries — the engine-owned plumbing under test is identical either way.
+
 ### 3b. Transcript-trim index drift — **FIXED 2026-07-17**
 
 The self-healing tier (3a) assumed a scene's raw slice was recoverable, but a
