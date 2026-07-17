@@ -1,16 +1,3 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/daily-audit",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/daily-audit",
-      "schedule": "20 8 * * *"
-    },
-    {
-      "path": "/api/cron/daily-audit",
-      "schedule": "40 8 * * *"
-    }
-  ]
+  "crons": []
 }

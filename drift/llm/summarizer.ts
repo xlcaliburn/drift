@@ -78,13 +78,17 @@ function defaultSummarizerModel() {
   );
 }
 
-/** Analyst model — a slower REASONING model by default (this runs in the
- *  background on scene close, so latency doesn't matter and depth is worth it).
- *  Configurable; falls back to the summarizer default, then Haiku. */
+/** Analyst model — deepseek-v4-flash by default, NOT a thinking model. The
+ *  reasoner default proved to be the fleet's single biggest memory-loss source:
+ *  its hidden thinking ate the token budget, the JSON truncated, and 30-86% of
+ *  scene summaries per campaign persisted as junk (raw fragments / F-3 stubs) —
+ *  the Lyra Ren/Renwick tangle. Same lesson as the turn path (deepseek.ts
+ *  disables V4 thinking): the analyst fills a structured template; thinking is
+ *  pure truncation risk. deepseek-reasoner is also deprecated 2026-07-24. */
 function defaultAnalystModel() {
   return (
     process.env.SCENE_ANALYST_MODEL ??
-    (deepseekAvailable() ? "deepseek-reasoner" : "claude-haiku-4-5-20251001")
+    (deepseekAvailable() ? "deepseek-v4-flash" : "claude-haiku-4-5-20251001")
   );
 }
 
@@ -167,12 +171,14 @@ export async function summarizeScene(
 }
 
 /**
- * SCENE ANALYST — a richer, slower pass than summarizeScene (CONTINUITY). Runs in
- * the background on scene close, so it uses a reasoning model by default and reads
- * the scene for lasting memory: the summary + which entities appeared PLUS per-NPC
- * continuity updates (a refreshed identity, one relationship beat, an evolved
- * label). The caller applies the NPC updates to the shared cast + the relationship
- * log. Best-effort: on any failure it degrades to a plain summary (npcs: []).
+ * SCENE ANALYST — a richer pass than summarizeScene (CONTINUITY). Runs in the
+ * background on scene close and reads the scene for lasting memory: the summary +
+ * which entities appeared PLUS per-NPC continuity updates (a refreshed identity,
+ * one relationship beat, an evolved label). The caller applies the NPC updates to
+ * the shared cast + the relationship log. Best-effort: on any failure it degrades
+ * to a plain summary (npcs: []). This is THE load-bearing memory writer — nothing
+ * older than the history window survives except what this pass persists — so
+ * reliability beats depth (see defaultAnalystModel).
  */
 export async function analyzeScene(
   transcript: string,
@@ -183,9 +189,9 @@ export async function analyzeScene(
 ): Promise<SceneAnalysis> {
   const primary = resolveModel(opts.model ?? defaultAnalystModel());
   const candidates = [primary];
-  // Robust fallback chain: reasoner → flash → Haiku, so a scene is never lost to a
+  // Robust fallback chain: primary → flash → Haiku, so a scene is never lost to a
   // model that isn't provisioned on this key.
-  if (isDeepSeekModel(primary)) candidates.push("deepseek-v4-flash");
+  if (isDeepSeekModel(primary) && primary !== "deepseek-v4-flash") candidates.push("deepseek-v4-flash");
   if (process.env.ANTHROPIC_API_KEY) candidates.push("claude-haiku-4-5-20251001");
 
   const roster = npcs.length
@@ -204,7 +210,11 @@ export async function analyzeScene(
     if (isDeepSeekModel(model)) {
       const resp = await deepseekChat({
         model,
-        maxTokens: 1400, // reasoning headroom + a richer JSON payload
+        // The richer JSON payload alone (thinking is disabled for v4 models in
+        // deepseekChat — hidden reasoning eating this budget was the truncated-
+        // summary epidemic). Legacy thinking models get the same cap; jsonRepair
+        // salvages a truncation rather than losing the scene.
+        maxTokens: 1400,
         system: [{ type: "text", text: ANALYST_SYSTEM }],
         messages: [{ role: "user", content: user }],
       });

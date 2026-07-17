@@ -20,7 +20,9 @@ day's APPEAL calls/errors — and produces what a scene-scoped pass can't.
 Model: **Sonnet across the board** (`DAILY_AUDIT_MODEL`, ~$0.05-0.09 per
 campaign day-sliced) — no Opus tier; the pattern taxonomy + live sheet in the
 prompt make this classification-with-evidence, and Opus proved overkill at
-playtest scale. Fallback chain on provider error: deepseek-reasoner → Haiku.
+playtest scale. Fallback chain on provider error: deepseek-v4-flash → Haiku.
+(The nightly CRON is currently DISABLED — vercel.json crons is empty while next
+steps are decided; the admin "Run now" path still works.)
 
 - **Inconsistencies** — cross-scene contradictions (a fact asserted then
   contradicted, an NPC playing stranger to a friend), severity-ranked.
