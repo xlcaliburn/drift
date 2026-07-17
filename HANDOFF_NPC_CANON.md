@@ -57,8 +57,11 @@ builds on patterns A–C reinforce.
   the number with `node scripts/next-migration.mjs` (from `drift/`), then
   RECONCILE against the live log (Supabase MCP `list_migrations`, project
   `mgsogqnrpvoblqxkfgge` — the "drift" project) before applying with
-  `apply_migration`. 027 is the last applied as of this writing; verify, don't
-  trust this doc.
+  `apply_migration`. Do NOT trust the numbers named in this doc (028/029) —
+  parallel windows have ALREADY collided here twice (the live log carries two
+  026s and two 027s; harmless since names differ and all applied, but don't add
+  a third pair). The NAME part is what matters; take whatever number the helper
+  + live log agree is free at the moment you apply.
 - **Multi-window git**: another Claude window may share this working tree.
   Before committing: `git fetch && git status --short` — if files you did NOT
   touch are dirty, they're the other window's WIP: commit ONLY your paths
@@ -324,7 +327,7 @@ migration needed (assert that in the commit message).
 
 ## Definition of done (whole handoff)
 
-- `npx tsc --noEmit` clean; `npx vitest run` fully green (was 773 at handoff).
+- `npx tsc --noEmit` clean; `npx vitest run` fully green (was 806 at last verification).
 - Golden diffs inspected line-by-line before every `-u`.
 - Migrations 028/029 applied live (reconciled first) AND committed.
 - CHECKS.md rows + incident lineage for A, B, D; C folded into the appearance row.
