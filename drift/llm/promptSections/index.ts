@@ -12,6 +12,7 @@ import { npcTiers } from "./npcTiers";
 import { establishedFacts } from "./facts";
 import { backstoryPressure } from "./backstoryPressure";
 import { activeChapter } from "./activeChapter";
+import { castReveals } from "./castReveals";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
 import type { Fact } from "@/shared/facts";
@@ -32,7 +33,7 @@ const SECTIONS: (Section | "")[] = [
   "",
   npcs, npcTiers,
   "",
-  cameos, threads, establishedFacts, activeJobs, offeredJobs, activeChapter,
+  cameos, threads, establishedFacts, activeJobs, offeredJobs, activeChapter, castReveals,
   "",
   worldStatus,
 ];
