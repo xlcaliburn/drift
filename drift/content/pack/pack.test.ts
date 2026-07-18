@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ContentPack, validatePack, PackStoryChapter, PackStoryObjective } from "./types";
 import { ObjectiveKind } from "@/shared/quests";
-import { pack, NAMED_LANES, FACTION_HOME, MAP_LAYOUT, DEFAULT_HOME_LOCATION } from "./index";
+import { pack, seedNpcs, NAMED_LANES, FACTION_HOME, MAP_LAYOUT, DEFAULT_HOME_LOCATION, buildAuthoredCastDepth } from "./index";
 
 describe("content pack — schema + referential integrity (the world seam)", () => {
   it("the active pack parses against the schema", () => {
@@ -265,5 +265,39 @@ describe("content pack — ship2 outfitting completeness (HANDOFF_COMBAT_V2_3.md
   it("outfitting is non-empty on both sides of the shop", () => {
     expect(Object.keys(pack.ship2.outfitting.mountItems).length).toBeGreaterThan(0);
     expect(Object.keys(pack.ship2.outfitting.systemItems).length).toBeGreaterThan(0);
+  });
+});
+
+describe("content pack — authored cast depth (HANDOFF_STORY_2.md Task A)", () => {
+  it("the live pack ships ZERO authored depth (dormant until 3b)", () => {
+    expect(pack.cast.every((n) => n.backstory === undefined && n.secret === undefined && n.arc === undefined)).toBe(true);
+    expect(buildAuthoredCastDepth(pack.cast)).toEqual({});
+  });
+
+  it("keys only cast members carrying at least one authored field", () => {
+    const cast = [
+      { id: "npc-a", name: "A", oneBreath: "x" },
+      { id: "npc-b", name: "B", oneBreath: "x", backstory: "B's authored hook" },
+      { id: "npc-c", name: "C", oneBreath: "x", secret: "C's reveal" },
+      { id: "npc-d", name: "D", oneBreath: "x", arc: ["act1 line"] },
+    ];
+    const depth = buildAuthoredCastDepth(cast);
+    expect(Object.keys(depth).sort()).toEqual(["npc-b", "npc-c", "npc-d"]);
+    expect(depth["npc-b"]).toEqual({ backstory: "B's authored hook", secret: undefined, arc: undefined });
+    expect(depth["npc-c"].secret).toBe("C's reveal");
+    expect(depth["npc-d"].arc).toEqual(["act1 line"]);
+  });
+
+  it("seedNpcs (the persisted, client-visible seed cast) never carries backstory/secret/arc — the leak surface trap 1 forbids", () => {
+    // The state-level Npc schema has no `secret`/`arc` field at all, so this
+    // is a structural guarantee, not just an accident of the mapper: even if
+    // an author's pack.cast entry carries authored depth, seedNpcs' explicit
+    // field list (id/universeId/name/oneBreath/factionId/locationId/role)
+    // can't pass it through. This test pins that the mapper stays that way.
+    for (const n of seedNpcs) {
+      expect(n).not.toHaveProperty("backstory");
+      expect(n).not.toHaveProperty("secret");
+      expect(n).not.toHaveProperty("arc");
+    }
   });
 });

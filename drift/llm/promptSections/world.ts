@@ -3,6 +3,7 @@ import { generateQuirk, generateAppearance, generateVoice } from "@/shared/npcFl
 import { shipIsOwned, shipThreadId } from "@/shared/recap";
 import type { Dossier } from "@/shared/multiplayer";
 import { deriveKnowledge, projectDossier, type PlayerLedger } from "@/shared/ledger";
+import { authoredCastDepth } from "@/content/pack";
 import type { Section } from "./types";
 
 /**
@@ -142,7 +143,11 @@ export const npcs: Section = ({ state, npcs, memory, loc }) => {
               presentSet.has(n.id) || recentSet.has(n.id)
                 ? ` [voice: ${n.voice ?? generateVoice(n.id)}]`
                 : "";
-            const hook = presentSet.has(n.id) && n.backstory ? ` [hook: ${n.backstory}]` : "";
+            // Authored cast depth (HANDOFF_STORY_2.md Task A) wins over the
+            // persisted/generated backstory — spoiler-safe by contract (the
+            // gated reveal lives in `secret`, rendered only by castReveals.ts).
+            const backstoryText = authoredCastDepth(n.id)?.backstory ?? n.backstory;
+            const hook = presentSet.has(n.id) && backstoryText ? ` [hook: ${backstoryText}]` : "";
             // Feed the full relationship history for any NPC relevant this turn (present
             // OR surfaced by the player's text) so an extensive prior scene with them
             // can't be forgotten — the "Agnes forgot her whole scene with Sera" bug.

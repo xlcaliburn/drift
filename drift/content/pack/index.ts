@@ -1,6 +1,6 @@
 import type { Universe, Faction, Location, Npc } from "@/shared/schemas";
 import { driftPack } from "./drift";
-import type { ContentPack } from "./types";
+import type { ContentPack, PackNpc } from "./types";
 
 /**
  * THE ACTIVE CONTENT PACK + its derived views. Consumers import from HERE (never
@@ -89,3 +89,39 @@ export const MAP_LAYOUT: Record<string, { x: number; y: number; color: string }>
 /** The default starting/home location when a faction has none (first T1 hub). */
 export const DEFAULT_HOME_LOCATION: string =
   pack.locations.find((l) => l.tier === "T1")?.id ?? pack.locations[0].id;
+
+// ── Authored cast depth (STORY.md, HANDOFF_STORY_2.md Task A) ────────────────
+
+export interface AuthoredCastDepth {
+  /** The spoiler-safe hook — world.ts's `[hook: ...]` line prefers this over
+   *  the generated fallback (shared/npcFlavor.generateBackstory). */
+  backstory?: string;
+  /** The gated reveal — rendered ONLY by promptSections/castReveals.ts, and
+   *  only while this NPC's storyline chapter is active and they're present. */
+  secret?: string;
+  /** How they change across the season, one line per act (index 0 = act 1). */
+  arc?: string[];
+}
+
+/** Pure builder (unit-testable without the live pack) — a cast id → depth map,
+ *  keyed for anyone carrying at least one authored field. */
+export function buildAuthoredCastDepth(cast: PackNpc[]): Record<string, AuthoredCastDepth> {
+  return Object.fromEntries(
+    cast
+      .filter((n) => n.backstory !== undefined || n.secret !== undefined || n.arc !== undefined)
+      .map((n) => [n.id, { backstory: n.backstory, secret: n.secret, arc: n.arc }]),
+  );
+}
+
+/** Authored depth keyed by pack cast id, built once. This is the ONE read
+ *  path for `backstory`/`secret`/`arc` — they are read LIVE from the pack at
+ *  prompt-render time, NEVER persisted onto the state-level `Npc` record and
+ *  NEVER sent to the client (the seed cast that DOES persist — `seedNpcs`
+ *  above — deliberately does not carry these fields; see HANDOFF_STORY_2.md
+ *  trap 1). Hot-editable: an owner edit to a cast member's depth in the pack
+ *  applies on every campaign's very next turn, same as storyline content. */
+const AUTHORED_CAST_DEPTH: Record<string, AuthoredCastDepth> = buildAuthoredCastDepth(pack.cast);
+
+export function authoredCastDepth(npcId: string): AuthoredCastDepth | undefined {
+  return AUTHORED_CAST_DEPTH[npcId];
+}

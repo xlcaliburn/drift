@@ -64,9 +64,17 @@ export const PackNpc = z.object({
   role: z.string().optional(),
   /** Authored depth for STORYLINE cast (STORY.md, HANDOFF_STORY_1.md) — the
    *  generated-pool fallbacks (shared/npcFlavor.ts) stay for everyone else;
-   *  these are GM-truth, never model-improvised. */
+   *  these are GM-truth, never model-improvised. CONTRACT (HANDOFF_STORY_2.md
+   *  Task A): `backstory` is SPOILER-SAFE and player-adjacent — it surfaces
+   *  in the narrator's "[hook: ...]" line for anyone present, same as the
+   *  generated fallback it replaces. Never put the reveal here; that's what
+   *  `secret` is for. Read LIVE from the pack (content/pack's
+   *  `authoredCastDepth`), never persisted onto the state-level Npc record. */
   backstory: z.string().optional(),
-  /** The reveal a storyline beat can spend — what the backstory is hiding. */
+  /** The GATED reveal a storyline beat can spend — what the backstory is
+   *  hiding. Rendered ONLY by promptSections/castReveals.ts, and only while
+   *  this NPC's storyline chapter is active AND they're present — never fed
+   *  alongside the always-on `backstory` hook. Same pack-only read path. */
   secret: z.string().optional(),
   /** How they change across the season, one line per act (index 0 = act 1). */
   arc: z.array(z.string()).optional(),
