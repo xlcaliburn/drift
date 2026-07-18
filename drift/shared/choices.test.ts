@@ -153,4 +153,21 @@ describe("revalidateChoices — the refresh-time chip contract check", () => {
     const kept = revalidateChoices(choices, ctx({ state: s }) as never);
     expect(kept.map((c) => c.label)).toEqual(["Ask around", "Push on"]);
   });
+
+  it("storyChoice: kept only while the chapter is ACTIVE and UNPICKED (HANDOFF_STORY_1 review)", () => {
+    const chip: ChoiceOption[] = [{ label: "The Crown", storyChoice: { chapterId: "ch-1", optionId: "crown" } }];
+    const progress = (over: Partial<{ status: "active" | "complete"; choiceOptionId: string }> = {}) => ({
+      chapters: { "ch-1": { status: "active" as const, objectivesDone: [], deliveredBeatIds: [], openedAtTenday: 0, ...over } },
+    });
+    // Live and unpicked → kept.
+    expect(revalidateChoices(chip, ctx({ storyline: progress() }) as never)).toHaveLength(1);
+    // Picked in another tab → the stale chip drops (a story choice can't be re-decided).
+    expect(revalidateChoices(chip, ctx({ storyline: progress({ choiceOptionId: "chain" }) }) as never)).toHaveLength(0);
+    // Chapter completed → drops.
+    expect(revalidateChoices(chip, ctx({ storyline: progress({ status: "complete", choiceOptionId: "chain" }) }) as never)).toHaveLength(0);
+    // Chapter unknown to the slice (content edit dropped it) → drops.
+    expect(revalidateChoices(chip, ctx({ storyline: { chapters: {} } }) as never)).toHaveLength(0);
+    // No storyline slice provided at all → fail open (engine refuses re-picks anyway).
+    expect(revalidateChoices(chip, ctx() as never)).toHaveLength(1);
+  });
 });

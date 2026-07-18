@@ -266,4 +266,16 @@ describe("recordChoice", () => {
     expect(recordChoice(stub(), s, "ch-1", "not-a-real-option").fact).toBeUndefined();
     expect(recordChoice(stub(), s, "ch-nope", "crown").fact).toBeUndefined();
   });
+
+  it("FIRST PICK WINS — a recorded choice can never be overwritten, and the losing fact is never returned", () => {
+    // The chip contract says "can't be undone"; a stale chip clicked after a
+    // refresh race (picked in another tab) must not re-decide the story or put
+    // the road-not-taken's fact on the ledger beside the real one.
+    const s: StorylineState = { chapters: { "ch-1": { status: "active", objectivesDone: ["o1", "o2"], deliveredBeatIds: [], openedAtTenday: 0 } } };
+    const first = recordChoice(stub(), s, "ch-1", "crown");
+    expect(first.fact).toBe("sided-crown");
+    const second = recordChoice(stub(), first.storyline, "ch-1", "chain");
+    expect(second.fact).toBeUndefined();
+    expect(second.storyline.chapters["ch-1"].choiceOptionId).toBe("crown");
+  });
 });

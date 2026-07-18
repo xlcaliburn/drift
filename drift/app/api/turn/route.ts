@@ -696,7 +696,15 @@ export async function POST(req: NextRequest) {
             factsWorking = applyFactUpdates(factsWorking, [{ text: choiceRes.fact }], result.state.campaign.tendaysElapsed);
           }
         }
-        const preTurnBeat = nextBeat(pack.storyline, session.storyline, session.state.npcs, session.state.campaign.tendaysElapsed ?? 0);
+        // The beat only ever reaches the narrator through the activeChapter
+        // section, which exists ONLY on the JSON path — a combat round builds no
+        // context slice, so marking a beat delivered on a combat turn would burn
+        // it silently (delivered-but-never-narrated, trap 4's class via a path
+        // gap). Objectives still ADVANCE on combat turns (eliminate/survive need
+        // the fight's outcome); only beat delivery is JSON-path-gated.
+        const preTurnBeat = wasCombatTurn
+          ? null
+          : nextBeat(pack.storyline, session.storyline, session.state.npcs, session.state.campaign.tendaysElapsed ?? 0);
         const storylineSignals = turnSignals(result.state.campaign.currentLocationId, result.events, combatResolvedAlive, session.sceneCard.presentNpcIds);
         const storylineRes = resolveStorylineTurn({
           content: pack.storyline,

@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
             sceneCard: session.sceneCard,
             npcRelations: session.npcRelations,
             jobs: session.jobs ?? [],
+            storyline: session.storyline,
           }),
     jobs: session.jobs ?? [],
     playerLedger: session.playerLedger ?? {},

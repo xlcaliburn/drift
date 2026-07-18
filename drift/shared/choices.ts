@@ -2,6 +2,7 @@ import type { CampaignState } from "./schemas";
 import type { ChoiceOption } from "./turnPlan";
 import type { SceneCard, NpcRelations } from "./scene";
 import type { Job } from "./quests";
+import type { StorylineState } from "./storyline";
 import { itemCount, marketChips } from "./items";
 import { repairQuote } from "@/engine/market";
 import { patronHelp } from "./netWorth";
@@ -31,6 +32,10 @@ export function revalidateChoices(
     sceneCard: SceneCard | null;
     npcRelations: NpcRelations;
     jobs: Job[];
+    /** The main-questline progress (HANDOFF_STORY_1.md) — gates a persisted
+     *  storyChoice chip. Optional: callers without it keep the chip (fail-open,
+     *  same as before the field existed; recordChoice is first-pick-wins anyway). */
+    storyline?: StorylineState;
   },
 ): ChoiceOption[] {
   const pc = ctx.state.characters.find((c) => c.kind === "pc");
@@ -51,6 +56,14 @@ export function revalidateChoices(
     if (c.acceptJob) return ctx.jobs.some((j) => j.id === c.acceptJob && j.status === "offered");
     if (c.abandonJob) return ctx.jobs.some((j) => j.id === c.abandonJob && j.status === "active");
     if (c.swapDrop || c.swapDecline) return !!ctx.sceneCard?.pendingPickup;
+    // A story choice holds only while its chapter is still ACTIVE and UNPICKED —
+    // a stale chip after a refresh race (picked in another tab, chapter since
+    // completed) must never re-offer a decided, can't-be-undone choice.
+    if (c.storyChoice) {
+      if (!ctx.storyline) return true; // no slice provided — fail open (engine still refuses re-picks)
+      const progress = ctx.storyline.chapters[c.storyChoice.chapterId];
+      return !!progress && progress.status === "active" && !progress.choiceOptionId;
+    }
     return true; // narrative / combat / downed / confirmDeath — untouched
   });
 }

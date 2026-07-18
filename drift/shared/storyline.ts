@@ -291,13 +291,17 @@ export interface ChoiceResult {
 }
 
 /** Record a chapter's choicePoint pick: sets `choiceOptionId` and returns the
- *  fact to append to the ledger. Idempotent — re-picking the same option is a
- *  no-op; picking a different option overwrites (last pick wins). */
+ *  fact to append to the ledger. FIRST PICK WINS — a story choice is final
+ *  (the chip's own contract says "can't be undone"), so a chapter with a
+ *  choice already recorded ignores any later pick (a stale chip clicked
+ *  after a refresh race must never re-decide the story or append the road
+ *  not taken's fact beside the real one). Unknown ids degrade to a no-op. */
 export function recordChoice(content: PackStoryline, storyline: StorylineState, chapterId: string, optionId: string): ChoiceResult {
   const chapter = content.chapters.find((c) => c.id === chapterId);
   const progress = storyline.chapters[chapterId];
   const option = chapter?.choicePoint?.options.find((o) => o.id === optionId);
   if (!chapter || !progress || !option) return { storyline };
+  if (progress.choiceOptionId) return { storyline };
   return {
     storyline: { chapters: { ...storyline.chapters, [chapterId]: { ...progress, choiceOptionId: optionId } } },
     fact: option.fact,

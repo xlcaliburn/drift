@@ -223,6 +223,36 @@ the schema promised this check; it's now a real test, not just a promise.
   (030 was the prior head, matching the repo); live check confirmed all 18
   `campaign_runtime` rows carry `storyline = '{}'` — fully dormant.
 
+**Phase-3 review (Fable, 2026-07-18) — two real defects found and fixed
+forward (both in this task's wiring, both would have been invisible until
+content shipped):**
+1. **Combat rounds burned beats.** `preTurnBeat` was computed and passed as
+   `deliveredBeat` on EVERY turn — but the `activeChapter` section only
+   exists on the JSON path (`combatTurn.ts` builds no context slice), so
+   each round of a fight with an active chapter marked one beat
+   delivered-but-never-narrated: trap 4's exact class, arriving through a
+   path gap instead of the rollback gap the trap described. Up to N beats
+   gone per N-round fight. Fixed: `preTurnBeat` is now
+   `wasCombatTurn ? null : nextBeat(...)`; objective ADVANCE still runs on
+   combat turns (eliminate/survive need the fight's outcome) — only beat
+   delivery is JSON-path-gated. CHECKS.md §0's row updated.
+2. **A story choice wasn't actually final.** The chip tooltip promises
+   "can't be undone", but `recordChoice` implemented last-pick-wins and
+   `revalidateChoices` passed a persisted `storyChoice` chip through blind —
+   a stale chip after a two-tab race (picked in tab B, refreshed tab A)
+   could re-decide the chapter and append the road-not-taken's fact BESIDE
+   the real one, leaving both `sided-crown` and `sided-chain` on the ledger
+   with later `hasFact` triggers firing on the rejected branch. Fixed at
+   both ends: `recordChoice` is first-pick-wins (a recorded choice makes any
+   later pick a no-op, no fact), and `revalidateChoices` drops a
+   `storyChoice` chip unless its chapter is still active AND unpicked (the
+   slice threaded from `/api/state`; callers without it fail open since the
+   engine side alone suffices). New CHECKS.md §0 row.
+
+Tests: +2 (first-pick-wins in `storyline.test.ts`; the four staleness cases
+in `choices.test.ts`) → 1051 total. The review found no issues in Tasks
+A/B/D; the pure engine, schema, and UI shipped clean.
+
 ## Task D — Story tab + the authoring guide + close-out — ✅ SHIPPED 2026-07-18
 
 1. `components/sidebar/StoryTab.tsx`: a "Season" block above the character
