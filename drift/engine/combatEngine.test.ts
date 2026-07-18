@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { spawnCombatEnemies, playerAttack, enemyAttack } from "./combatEngine";
+import { spawnCombatEnemies, spawnCombatShips, playerAttack, enemyAttack } from "./combatEngine";
 import { fleeDC, threatLevel } from "@/shared/combat";
 import type { RNG } from "./rng";
 import type { CombatEnemy } from "@/shared/combat";
@@ -54,6 +54,20 @@ describe("spawnCombatEnemies", () => {
     expect(new Set(es.map((e) => e.id)).size).toBe(3);
     expect(es[0].tier).toBe("T3");
     expect(es[1].tier).toBe("T2");
+  });
+});
+
+describe("spawnCombatShips — ship2 fields (HANDOFF_COMBAT_V2_2.md)", () => {
+  it("stamps ship2Class + a fixed missile-ammo count for a class that owns a rack", () => {
+    const es = spawnCombatShips([{ shipClass: "corvette", count: 1, tier: "T3" }], maxRng);
+    expect(es[0].ship2Class).toBe("corvette");
+    expect(es[0].missileAmmo).toBe(4);
+  });
+
+  it("leaves missileAmmo undefined for a class with no missile rack", () => {
+    const es = spawnCombatShips([{ shipClass: "scout", count: 1, tier: "T2" }], maxRng);
+    expect(es[0].ship2Class).toBe("scout");
+    expect(es[0].missileAmmo).toBeUndefined();
   });
 });
 

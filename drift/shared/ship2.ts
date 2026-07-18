@@ -72,7 +72,7 @@ type MountCatalogEntry = {
   ammoLimited?: boolean;
   pdHitOn?: number;
 };
-type ClassCatalogEntry = { reactor: number; engineCap: number; shieldCap: number; armor: number; mounts: string[] };
+type ClassCatalogEntry = { reactor: number; engineCap: number; shieldCap: number; armor: number; mounts: string[]; policy: string[] };
 
 function mountFromCatalog(mountId: string, nameOverride: string | undefined, ammo: number | undefined): Ship2MountInstance {
   const catalog = ship2Catalog.mounts as Record<string, MountCatalogEntry>;
@@ -94,8 +94,8 @@ function mountFromCatalog(mountId: string, nameOverride: string | undefined, amm
 /**
  * Derive the player's ship2 profile from the EXISTING `Ship` row + the class
  * table — no schema change, no migration. Frozen into `combat.ship2.player`
- * at fight start (llm/combat/ship2System.ts), so mid-fight upgrades never
- * shift the numbers under a live round.
+ * at fight start (llm/runtimeCombat.ts's beginCombat), so mid-fight upgrades
+ * never shift the numbers under a live round.
  */
 export function deriveShip2Profile(ship: Ship, standingCrew: Character[]): Ship2Profile {
   const classes = ship2Catalog.classes as Record<string, ClassCatalogEntry>;
@@ -118,6 +118,37 @@ export function deriveShip2Profile(ship: Ship, standingCrew: Character[]): Ship2
     gunnerBoost: hasGunner,
     mounts,
   };
+}
+
+/**
+ * Derive an ENEMY ship's ship2 profile fresh each round — unlike the player's
+ * (frozen once at fight start), an enemy has no crew passives or upgrades to
+ * account for, so there's nothing to freeze; re-deriving from its spawned
+ * `ship2Class`/`hasPointDefense` + live `missileAmmo` is just as cheap as
+ * reading a stored copy and can't drift out of sync with the enemy's own
+ * mutable ammo count.
+ */
+export function deriveEnemyShip2Profile(shipClass: string, hasPointDefense: boolean, missileAmmo: number | undefined): Ship2Profile {
+  const classes = ship2Catalog.classes as Record<string, ClassCatalogEntry>;
+  const cls = classes[shipClass];
+  const mounts = (cls?.mounts ?? []).map((id) => mountFromCatalog(id, undefined, id === "missileRack" ? missileAmmo ?? 0 : undefined));
+  return {
+    shipClass,
+    reactor: cls?.reactor ?? 3,
+    engineCap: cls?.engineCap ?? 1,
+    shieldCap: cls?.shieldCap ?? 0,
+    armor: cls?.armor ?? 0,
+    hasPointDefense,
+    gunnerBoost: false,
+    mounts,
+  };
+}
+
+/** This shipClass's deterministic allocation weights (engine/ship2.ts's
+ *  resolvePolicyAllocation resolves them token-by-token). */
+export function ship2ClassPolicy(shipClass: string): ("guns" | "shields" | "engines")[] {
+  const classes = ship2Catalog.classes as Record<string, ClassCatalogEntry>;
+  return (classes[shipClass]?.policy as ("guns" | "shields" | "engines")[]) ?? ["guns"];
 }
 
 /**

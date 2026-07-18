@@ -1,6 +1,7 @@
 import type { RNG } from "./rng";
 import { rollDice } from "./dice";
 import { fmtCredits } from "@/shared/lexicon";
+import type { Ship2Profile, Allocation } from "@/shared/ship2";
 
 /**
  * Pure ship2 combat resolution (COMBAT_V2.md Part B, HANDOFF_COMBAT_V2_2.md) —
@@ -116,6 +117,42 @@ export function applyPointDefense(result: MountFireResult, mount: Ship2MountProf
   }
   const hits = result.hits - downed;
   return { ...result, pdDowned: downed, hits, damage: hits * result.dmgPerHit };
+}
+
+/**
+ * An enemy ship's deterministic allocation for the round — no rng, no
+ * randomness at all: resolve the policy token-by-token ("guns" funds the
+ * next unfunded owned+loaded mount in priority order; "shields"/"engines"
+ * add one point each) until the reactor runs out or the list is exhausted.
+ * Same clamp semantics as shared/ship2.ts's validateAllocation (never
+ * exceeds caps/reactor), just policy-driven instead of player-requested.
+ */
+export function resolvePolicyAllocation(profile: Ship2Profile, policy: ("guns" | "shields" | "engines")[]): Allocation {
+  let remaining = Math.max(0, profile.reactor);
+  const mounts: string[] = [];
+  let shields = 0;
+  let engines = 0;
+  for (const token of policy) {
+    if (remaining <= 0) break;
+    if (token === "guns") {
+      const next = profile.mounts.find((m) => !mounts.includes(m.id) && (!m.ammoLimited || (m.ammo ?? 0) > 0));
+      if (next && next.power <= remaining) {
+        mounts.push(next.id);
+        remaining -= next.power;
+      }
+    } else if (token === "shields") {
+      if (shields < profile.shieldCap && remaining >= 1) {
+        shields += 1;
+        remaining -= 1;
+      }
+    } else if (token === "engines") {
+      if (engines < profile.engineCap && remaining >= 1) {
+        engines += 1;
+        remaining -= 1;
+      }
+    }
+  }
+  return { mounts, shields, engines };
 }
 
 export interface VolleyOutcome {

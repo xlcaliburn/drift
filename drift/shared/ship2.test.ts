@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveShip2Profile, validateAllocation, ship2Presets, type Ship2Profile } from "./ship2";
+import { deriveShip2Profile, deriveEnemyShip2Profile, ship2ClassPolicy, validateAllocation, ship2Presets, type Ship2Profile } from "./ship2";
 import type { Character, Ship } from "./schemas";
 
 function ship(over: Partial<Ship> = {}): Ship {
@@ -73,6 +73,34 @@ describe("deriveShip2Profile", () => {
 
   it("hasPointDefense passes through from the ship row directly", () => {
     expect(deriveShip2Profile(ship({ hasPointDefense: true }), []).hasPointDefense).toBe(true);
+  });
+});
+
+describe("deriveEnemyShip2Profile", () => {
+  it("derives from the shipClass table with no crew passives", () => {
+    const p = deriveEnemyShip2Profile("corvette", true, 4);
+    expect(p.reactor).toBe(6);
+    expect(p.shieldCap).toBe(2);
+    expect(p.armor).toBe(1);
+    expect(p.gunnerBoost).toBe(false);
+    expect(p.hasPointDefense).toBe(true);
+    expect(p.mounts.map((m) => m.id)).toEqual(["railgun", "autocannon", "missileRack"]);
+    expect(p.mounts.find((m) => m.id === "missileRack")!.ammo).toBe(4);
+  });
+
+  it("an unknown shipClass falls back to safe defaults rather than throwing", () => {
+    expect(() => deriveEnemyShip2Profile("not-a-real-class", false, undefined)).not.toThrow();
+  });
+});
+
+describe("ship2ClassPolicy", () => {
+  it("returns the class's authored policy", () => {
+    expect(ship2ClassPolicy("scout")).toEqual(["engines", "guns"]);
+    expect(ship2ClassPolicy("corvette")).toEqual(["guns", "guns", "guns", "shields"]);
+  });
+
+  it("falls back to a single guns token for an unknown class", () => {
+    expect(ship2ClassPolicy("not-a-real-class")).toEqual(["guns"]);
   });
 });
 

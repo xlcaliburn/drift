@@ -1,6 +1,6 @@
 import type { RNG } from "./rng";
 import { rollDamage, maxDice } from "./dice";
-import { enemyTiers, shipClasses } from "@/content";
+import { enemyTiers, shipClasses, ship2 } from "@/content";
 import type { CombatEnemy, CombatTier } from "@/shared/combat";
 import type { DamageType, StatusKind } from "@/shared/status";
 
@@ -115,6 +115,10 @@ export interface ShipSpawnSpec {
 /** Rough gunnery-attack bonus for an enemy ship of a class. */
 const SHIP_ATK: Record<string, number> = { scout: 4, fighter: 5, hauler: 4, gunship: 6, corvette: 7 };
 
+/** A fixed starting ammo count for an enemy's missile rack (HANDOFF_COMBAT_V2_2.md
+ *  — enemy ships don't reload mid-fight, unlike the player's rack + reload item). */
+const ENEMY_MISSILE_AMMO = 4;
+
 /** Build enemy SHIPS from the ship-class tables (hp/ac/weapon/defenses). */
 export function spawnCombatShips(specs: ShipSpawnSpec[], rng: RNG): CombatEnemy[] {
   const out: CombatEnemy[] = [];
@@ -129,6 +133,11 @@ export function spawnCombatShips(specs: ShipSpawnSpec[], rng: RNG): CombatEnemy[
       multiAttack?: boolean;
     };
     if (!cls) continue;
+    // ship2 (HANDOFF_COMBAT_V2_2.md): the enemy's power-combat profile
+    // re-derives every round from `ship2Class` + this fixed ammo count —
+    // harmless extra data for a classic ship fight, which never reads it.
+    const ship2Mounts = (ship2.classes as Record<string, { mounts: string[] }>)[spec.shipClass]?.mounts ?? [];
+    const missileAmmo = ship2Mounts.includes("missileRack") ? ENEMY_MISSILE_AMMO : undefined;
     const count = Math.max(1, Math.min(4, spec.count ?? 1));
     for (let i = 0; i < count; i++) {
       const rolledHp = rng.int(cls.hpRange[0], cls.hpRange[1]);
@@ -149,6 +158,8 @@ export function spawnCombatShips(specs: ShipSpawnSpec[], rng: RNG): CombatEnemy[
         isEvasive: cls.defenses.includes("evasion"),
         armored: cls.defenses.includes("armor"),
         multiAttack: !!cls.multiAttack,
+        ship2Class: spec.shipClass,
+        missileAmmo,
       });
     }
   }

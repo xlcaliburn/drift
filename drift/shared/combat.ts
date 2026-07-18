@@ -6,7 +6,7 @@
  */
 import { USE_NEGATION_RE, type UsableConsumable } from "./items";
 import type { StatusEffect, DamageType, StatusKind } from "./status";
-import type { Allocation } from "./ship2";
+import type { Allocation, Ship2Profile } from "./ship2";
 
 export type CombatTier = "T1" | "T2" | "T3";
 
@@ -45,6 +45,15 @@ export interface CombatEnemy {
   isEvasive?: boolean;
   hasPointDefense?: boolean;
   armored?: boolean;
+  // ── ship2 only (HANDOFF_COMBAT_V2_2.md) ──
+  /** The shipClass this enemy ship spawned as — its ship2 profile/mounts/
+   *  policy re-derive from this EVERY round (shared/ship2.ts's
+   *  deriveEnemyShip2Profile); unlike the player's, never frozen (no crew
+   *  passives to account for, so there's nothing to freeze). */
+  ship2Class?: string;
+  /** Remaining missile-rack ammo, if this enemy's class owns one. Enemy
+   *  ships don't reload. */
+  missileAmmo?: number;
 }
 
 export interface CombatState {
@@ -72,6 +81,13 @@ export interface CombatState {
   medicSpentIds?: string[];
   /** See CombatSystemId. Set by beginCombat; normalized on load for legacy rows. */
   system?: CombatSystemId;
+  /** ship2 only (HANDOFF_COMBAT_V2_2.md) — the player's FROZEN profile (derived
+   *  once at fight start; mid-fight upgrades never shift a live round's math)
+   *  and the round-1 surprise reactor modifier: +1 if the player ambushed,
+   *  −1 if the player was ambushed, applied to the player's effective reactor
+   *  that round only (the enemy gets the negated value). Absent for classic
+   *  ship fights (legacy or newly-started ground fights never set it). */
+  ship2?: { player: Ship2Profile; surpriseMod?: number };
 }
 
 export type CombatActionType = "attack" | "aim" | "cover" | "stim" | "flee" | "item" | "switch" | "allocate";

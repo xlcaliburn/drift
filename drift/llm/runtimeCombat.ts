@@ -9,6 +9,15 @@ import {
   type EngineEvent,
 } from "@/engine";
 import { enemyTiers, shipClasses, economy, isHazardSkill } from "@/content";
+import {
+  deriveShip2Profile,
+  deriveEnemyShip2Profile,
+  ship2ClassPolicy,
+  validateAllocation,
+  type Allocation,
+  type Ship2Profile,
+} from "@/shared/ship2";
+import { rollMount, applyGunnerBoost, applyPointDefense, resolveVolley, resolvePolicyAllocation, ship2SalvageLine, type MountFireResult } from "@/engine/ship2";
 import { applyCombatDeaths } from "@/shared/npcFate";
 import { awardTick } from "@/engine/progression";
 import { rollDamage, maxDice } from "@/engine/dice";
@@ -702,7 +711,11 @@ function enemyVolley(rt: CombatRT, combat: CombatState, lines: string[], skipIds
 }
 
 /** Begin a fight from pre-spawned enemies; resolve enemy surprise (ambush = a free
- *  enemy volley before the player acts; you-ambush → an opening edge). */
+ *  enemy volley before the player acts; you-ambush → an opening edge). Ship-scale
+ *  fights are ALWAYS "ship2" now (HANDOFF_COMBAT_V2_2.md) — `resolveShipRound`/
+ *  `enemyShipVolley` stay reachable only for a fight already mid-flight at deploy
+ *  (its stored `system: "classic"` wins). Ground stays "classic" (COMBAT_V2.md's
+ *  decision — dice pools are ship-only). */
 function beginCombat(
   rt: CombatRT,
   scale: "personal" | "ship",
@@ -710,27 +723,46 @@ function beginCombat(
   surprise: "player" | "enemy" | "none",
 ): { combat: CombatState; lines: string[]; outcome: CombatOutcome } {
   const pc = pcOf(rt);
+  const system: CombatSystemId = scale === "ship" ? "ship2" : "classic";
   const combat: CombatState = {
     active: true,
     round: 1,
     scale,
     enemies,
-    system: "classic", // COMBAT_V2.md/M5: ship2 spawns explicitly once slice 2 exists
+    system,
     playerCoverAc: 0,
-    // Ship-scale surprise keeps its flat aim edge; personal-scale surprise uses the
-    // D&D rule (opening strike at advantage + the foe can't answer round 1).
-    playerAimBonus: scale === "ship" && surprise === "player" ? 2 : 0,
+    // Ship-scale surprise keeps its flat aim edge (classic only — ship2's surprise
+    // is a round-1 reactor modifier instead, set below); personal-scale surprise
+    // uses the D&D rule (opening strike at advantage + the foe can't answer round 1).
+    playerAimBonus: scale === "ship" && system === "classic" && surprise === "player" ? 2 : 0,
     playerSurprise: scale === "personal" && surprise === "player",
     fleeAttempts: 0,
     // Draw the weapon this character fights best with; the player can switch.
     ...(scale === "personal" && pc ? { weaponName: defaultWeapon(pc)?.name } : {}),
+    // ship2's frozen player profile — derived once here so mid-fight upgrades
+    // (a dock purchase between rounds is impossible anyway, but future crew
+    // hires mid-fight shouldn't shift the numbers under a live round either).
+    ...(system === "ship2" && rt.state.ship
+      ? {
+          ship2: {
+            player: deriveShip2Profile(rt.state.ship, standingCrew(rt)),
+            surpriseMod: surprise === "player" ? 1 : surprise === "enemy" ? -1 : undefined,
+          },
+        }
+      : {}),
   };
   const lines = [`⚔ ${scale === "ship" ? "Ship combat" : "Combat"} — ${enemies.map((e) => e.name).join(", ")}.`];
   let outcome: CombatOutcome = "continue";
   if (surprise === "enemy") {
-    lines.push("Ambushed — they fire first.");
-    outcome = scale === "ship" ? enemyShipVolley(rt, combat, false, lines) : enemyVolley(rt, combat, lines);
-    if (outcome !== "continue") combat.active = false;
+    if (system === "ship2") {
+      // No free volley — the ambush lands as a round-1 reactor penalty instead
+      // (resolved when the first round actually allocates).
+      lines.push("Ambushed — your reactor is thrown off balance this round.");
+    } else {
+      lines.push("Ambushed — they fire first.");
+      outcome = scale === "ship" ? enemyShipVolley(rt, combat, false, lines) : enemyVolley(rt, combat, lines);
+      if (outcome !== "continue") combat.active = false;
+    }
   }
   return { combat, lines, outcome };
 }
@@ -761,12 +793,209 @@ const classicSystem: CombatSystem = {
   },
 };
 
-/** The registry every fight dispatches through — "ship2" (COMBAT_V2.md's
- *  Eclipse-style power/dice ship system) arrives in slice 2; until then it
- *  aliases "classic" so an (impossible today) stored "ship2" tag never 500s. */
+/** A safe fallback allocation for a stray/malformed PC action (an old classic
+ *  chip type, or an "allocate" with missing/bad `alloc` data) — fire
+ *  everything owned+loaded with shields maxed, so a round can never stall. */
+function defaultShip2Allocation(profile: Ship2Profile): Allocation {
+  return { mounts: profile.mounts.filter((m) => !m.ammoLimited || (m.ammo ?? 0) > 0).map((m) => m.id), shields: profile.shieldCap, engines: 0 };
+}
+
+/**
+ * THE "ship2" CombatSystem (COMBAT_V2.md Part B, HANDOFF_COMBAT_V2_2.md Task
+ * B) — the Eclipse-style power/dice ship duel. Implemented IN-PLACE here
+ * (not a separate llm/combat/ship2System.ts file), same reasoning as
+ * classicSystem above: it needs this file's private pcOf/applyShipDamage/
+ * LOOT_BAND, and a file split is churn without value.
+ */
+const ship2System: CombatSystem = {
+  resolveRound(rt, combat, orders) {
+    const pc = pcOf(rt);
+    const pcAction: CombatAction = orders.find((o) => o.memberId === pc?.id)?.action ?? { type: "cover" };
+    return resolveShip2Round(rt, combat, pcAction);
+  },
+};
+
+function resolveShip2Round(
+  rt: CombatRT,
+  combat: CombatState,
+  action: CombatAction,
+): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
+  const lines: string[] = [];
+  const s = rt.state.ship;
+  const ship2State = combat.ship2;
+  if (!s || !ship2State) {
+    return { combat: { ...combat, active: false }, lines: ["You have no ship to fight in."], outcome: "escaped", loot: 0 };
+  }
+  const profile = ship2State.player;
+  const pc = pcOf(rt)!;
+  const enemies = combat.enemies.map((e) => ({ ...e }));
+  let fleeAttempts = combat.fleeAttempts;
+  let rawAlloc: Allocation;
+
+  if (action.type === "flee") {
+    if (s.burstDriveReady) {
+      lines.push("💨 Burst drive fires — you punch clear of the engagement.");
+      rt.state = { ...rt.state, ship: { ...s, burstDriveReady: false } };
+      return { combat: { ...combat, active: false }, lines, outcome: "escaped", loot: 0 };
+    }
+    const combatLevel = Math.max(0, ...["gunnery", "piloting"].map((k) => pc.skills.find((x) => x.name === k)?.level ?? 0));
+    const dc = fleeDC(threatLevel(enemies), combatLevel, fleeAttempts);
+    const mod = computeModifier(pc, "piloting");
+    const d20 = rt.rng.int(1, 20);
+    const total = d20 + mod;
+    fleeAttempts += 1;
+    const escaped = total >= dc;
+    lines.push(`🎲 Break off: d20(${d20})+${mod} = ${total} vs DC ${dc} → ${escaped ? "clear" : "they stay on you"}`);
+    if (escaped) return { combat: { ...combat, active: false }, lines, outcome: "escaped", loot: 0 };
+    // A failed break spends the round maneuvering, not fighting — no allocation.
+    rawAlloc = { mounts: [], shields: 0, engines: 0 };
+  } else if (action.type === "allocate" && action.alloc) {
+    rawAlloc = action.alloc;
+  } else if (action.type === "item" && action.itemId) {
+    rawAlloc = { mounts: [], shields: 0, engines: 0, itemId: action.itemId };
+  } else {
+    rawAlloc = defaultShip2Allocation(profile);
+  }
+
+  // Round-1 surprise: the ambushed side's reactor is -1, the ambusher's +1 —
+  // resolved HERE (changes what the round can actually afford), not as a flat
+  // bolt-on to the outcome. Only round 1 ever reads it. Escalating heat: BOTH
+  // sides' reactors climb +1 per round past 4 (symmetric — no stalemates).
+  const surpriseMod = combat.round === 1 ? ship2State.surpriseMod ?? 0 : 0;
+  const heatBonus = Math.max(0, combat.round - 4);
+  const playerReactorMod = surpriseMod + heatBonus;
+  const roundProfile = playerReactorMod ? { ...profile, reactor: Math.max(0, profile.reactor + playerReactorMod) } : profile;
+  const alloc = validateAllocation(roundProfile, rawAlloc);
+  // The enemy's own modifier this round — heat hits both sides equally, but
+  // surprise is inverted (the ambusher's edge is the ambushed side's penalty).
+  const enemyReactorMod = -surpriseMod + heatBonus;
+
+  // A held ship item rides the allocation as a FREE action (doesn't draw
+  // power) — today only the shield cell (+1 shield-point's worth this round).
+  let bonusShield = 0;
+  if (alloc.itemId) {
+    const item = catalogItem(alloc.itemId);
+    if (item?.effect?.kind === "restoreShield" && itemCount(pc, alloc.itemId) > 0) {
+      bonusShield = 2;
+      consumeItem(rt, pc.id, alloc.itemId);
+      lines.push(`⛨ ${item.name} — shields surge for the round.`);
+    } else {
+      lines.push("Nothing to use.");
+    }
+  }
+
+  // ── The player's volley ──
+  const target = enemies.find((e) => e.id === alloc.targetId && e.hp > 0) ?? enemies.find((e) => e.hp > 0);
+  if (target && alloc.mounts.length) {
+    const enemyProfile = deriveEnemyShip2Profile(target.ship2Class ?? "fighter", target.hasPointDefense ?? false, target.missileAmmo);
+    const enemyRoundProfile = enemyReactorMod
+      ? { ...enemyProfile, reactor: Math.max(0, enemyProfile.reactor + enemyReactorMod) }
+      : enemyProfile;
+    const enemyAlloc = resolvePolicyAllocation(enemyRoundProfile, ship2ClassPolicy(target.ship2Class ?? "fighter"));
+    const targetEvasion = Math.min(2, enemyAlloc.engines);
+    // Overcharge lands on the first fired mount that supports it — same
+    // first-match rule validateAllocation used to decide `alloc.overcharge`.
+    const overchargeId = alloc.overcharge
+      ? alloc.mounts.find((id) => profile.mounts.find((m) => m.id === id)?.overchargeHitOn !== undefined)
+      : undefined;
+    let playerResults: MountFireResult[] = alloc.mounts.map((id) => {
+      const m = profile.mounts.find((x) => x.id === id)!;
+      return rollMount(m, { evasionBonus: targetEvasion, overcharged: id === overchargeId }, rt.rng);
+    });
+    if (profile.gunnerBoost) playerResults = applyGunnerBoost(playerResults);
+    playerResults = playerResults.map((r) => {
+      const m = profile.mounts.find((x) => x.id === r.mountId)!;
+      return applyPointDefense(r, m, enemyProfile.hasPointDefense, rt.rng);
+    });
+    const playerVolley = resolveVolley("You", playerResults, { armor: enemyProfile.armor, shieldPool: enemyAlloc.shields * 2 });
+    lines.push(`🎯 ${playerVolley.breakdown}`);
+    // The player's own missile ammo is the single source of truth
+    // (ship.weapons[].ammo) — decrement it so the reload consumable still works.
+    if (alloc.mounts.includes("missileRack")) {
+      rt.state = {
+        ...rt.state,
+        ship: {
+          ...rt.state.ship!,
+          weapons: rt.state.ship!.weapons.map((w) => (w.type === "missile" ? { ...w, ammo: Math.max(0, (w.ammo ?? 0) - 1) } : w)),
+        },
+      };
+    }
+    const hpAfter = Math.max(0, target.hp - playerVolley.netDamage);
+    for (const e of enemies) if (e.id === target.id) e.hp = hpAfter;
+    if (hpAfter <= 0) lines.push(`☠ ${target.name} is wrecked.`);
+  } else if (!alloc.mounts.length && !alloc.itemId) {
+    lines.push("🛡 You hold fire, routing power to defense.");
+  }
+
+  return finishShip2Round(rt, { ...combat, fleeAttempts }, enemies, alloc, bonusShield, profile, enemyReactorMod, lines);
+}
+
+/** Shared tail: victory/loot check, then every ALIVE enemy fires at the
+ *  player as ONE combined volley (a shared shield pool for the whole round,
+ *  not reset per attacker), then round++ or disabled. */
+function finishShip2Round(
+  rt: CombatRT,
+  combat: CombatState,
+  enemiesIn: CombatEnemy[],
+  alloc: Allocation,
+  bonusShield: number,
+  profile: Ship2Profile,
+  enemyReactorMod: number,
+  lines: string[],
+): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
+  const enemies = enemiesIn.filter((e) => e.hp > 0);
+  if (enemies.length === 0) {
+    const tier = combat.enemies.reduce<"T1" | "T2" | "T3">(
+      (m, e) => (LOOT_BAND[e.tier][1] > LOOT_BAND[m][1] ? e.tier : m),
+      "T1",
+    );
+    const [lo, hi] = LOOT_BAND[tier];
+    const loot = rt.rng.int(lo, hi);
+    const pc = pcOf(rt)!;
+    rt.state = {
+      ...rt.state,
+      characters: rt.state.characters.map((x) => (x.id === pc.id ? { ...x, credits: (x.credits ?? 0) + loot } : x)),
+    };
+    lines.push(ship2SalvageLine(loot));
+    return { combat: { ...combat, enemies, active: false }, lines, outcome: "victory", loot };
+  }
+
+  const playerEvasion = Math.min(2, alloc.engines);
+  let enemyResults: MountFireResult[] = [];
+  let nextEnemies = enemies;
+  for (const enemy of enemies) {
+    const baseProfile = deriveEnemyShip2Profile(enemy.ship2Class ?? "fighter", enemy.hasPointDefense ?? false, enemy.missileAmmo);
+    const enemyProfile = enemyReactorMod ? { ...baseProfile, reactor: Math.max(0, baseProfile.reactor + enemyReactorMod) } : baseProfile;
+    const enemyAlloc = resolvePolicyAllocation(enemyProfile, ship2ClassPolicy(enemy.ship2Class ?? "fighter"));
+    let fired: MountFireResult[] = enemyAlloc.mounts.map((id) => {
+      const m = enemyProfile.mounts.find((x) => x.id === id)!;
+      return rollMount(m, { evasionBonus: playerEvasion }, rt.rng);
+    });
+    fired = fired.map((r) => {
+      const m = enemyProfile.mounts.find((x) => x.id === r.mountId)!;
+      return applyPointDefense(r, m, profile.hasPointDefense, rt.rng);
+    });
+    if (enemyAlloc.mounts.includes("missileRack")) {
+      nextEnemies = nextEnemies.map((e) => (e.id === enemy.id ? { ...e, missileAmmo: Math.max(0, (e.missileAmmo ?? 0) - 1) } : e));
+    }
+    enemyResults = enemyResults.concat(fired);
+  }
+  const shieldPool = alloc.shields * 2 + bonusShield;
+  const enemyVolley = resolveVolley("Enemies", enemyResults, { armor: profile.armor, shieldPool });
+  lines.push(`💢 ${enemyVolley.breakdown}`);
+  const harm = applyShipDamage(rt, enemyVolley.netDamage);
+  if (enemyVolley.netDamage > 0) lines.push(`💥 Hull takes ${harm.taken}${harm.disabled ? " · DISABLED" : ""}`);
+
+  const next: CombatState = { ...combat, enemies: nextEnemies };
+  if (harm.disabled) return { combat: { ...next, active: false }, lines, outcome: "disabled", loot: 0 };
+  next.round += 1;
+  return { combat: next, lines, outcome: "continue", loot: 0 };
+}
+
+/** The registry every fight dispatches through. */
 const SYSTEMS: Record<CombatSystemId, CombatSystem> = {
   classic: classicSystem,
-  ship2: classicSystem,
+  ship2: ship2System,
 };
 
 /** Resolve one round — dispatch through the CombatSystem registry by

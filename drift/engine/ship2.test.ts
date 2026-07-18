@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { rollMount, applyGunnerBoost, applyPointDefense, resolveVolley, ship2SalvageLine, type Ship2MountProfile } from "./ship2";
+import { rollMount, applyGunnerBoost, applyPointDefense, resolveVolley, resolvePolicyAllocation, ship2SalvageLine, type Ship2MountProfile } from "./ship2";
 import type { RNG } from "./rng";
+import type { Ship2Profile } from "@/shared/ship2";
 
 /** Pops values off a queue in call order — lets a test dictate the EXACT dice
  *  sequence a multi-die mount rolls (unlike engine/combatEngine.test.ts's
@@ -158,6 +159,51 @@ describe("resolveVolley", () => {
     const out = resolveVolley("You", [], { armor: 0, shieldPool: 0 });
     expect(out.breakdown).toBe("You: holds fire.");
     expect(out.netDamage).toBe(0);
+  });
+});
+
+describe("resolvePolicyAllocation", () => {
+  const gunshipProfile: Ship2Profile = {
+    shipClass: "gunship", reactor: 5, engineCap: 1, shieldCap: 2, armor: 0, hasPointDefense: false, gunnerBoost: false,
+    mounts: [
+      { id: "railgun", name: "Railgun", power: 2, dice: 1, hitOn: 4, dmgPerHit: 3 },
+      { id: "beamLance", name: "Beam lance", power: 2, dice: 2, hitOn: 5, dmgPerHit: 2, overchargeHitOn: 4 },
+    ],
+  };
+
+  it("resolves tokens in order until the reactor runs out", () => {
+    // gunship policy: ["guns","guns","shields"] — 2+2+1 = 5, exactly the reactor.
+    const out = resolvePolicyAllocation(gunshipProfile, ["guns", "guns", "shields"]);
+    expect(out.mounts).toEqual(["railgun", "beamLance"]);
+    expect(out.shields).toBe(1);
+    expect(out.engines).toBe(0);
+  });
+
+  it("a guns token with no more unfunded mounts is a no-op, not a crash", () => {
+    const out = resolvePolicyAllocation(gunshipProfile, ["guns", "guns", "guns", "shields"]);
+    expect(out.mounts).toEqual(["railgun", "beamLance"]); // only 2 mounts exist
+    expect(out.shields).toBe(1); // the leftover 1 power still goes to shields
+  });
+
+  it("shields/engines tokens stop at their cap even with reactor left over", () => {
+    const out = resolvePolicyAllocation(gunshipProfile, ["shields", "shields", "shields"]);
+    expect(out.shields).toBe(2); // shieldCap
+    expect(out.mounts).toEqual([]);
+  });
+
+  it("a dry ammo-limited mount is skipped by a guns token", () => {
+    const withDryRack: Ship2Profile = {
+      ...gunshipProfile,
+      mounts: [{ id: "missileRack", name: "Missile rack", power: 2, dice: 4, hitOn: 4, dmgPerHit: 1, ammoLimited: true, pdHitOn: 5, ammo: 0 }],
+    };
+    const out = resolvePolicyAllocation(withDryRack, ["guns", "shields"]);
+    expect(out.mounts).toEqual([]);
+    expect(out.shields).toBe(1);
+  });
+
+  it("an empty policy or zero reactor allocates nothing", () => {
+    expect(resolvePolicyAllocation(gunshipProfile, [])).toEqual({ mounts: [], shields: 0, engines: 0 });
+    expect(resolvePolicyAllocation({ ...gunshipProfile, reactor: 0 }, ["guns", "shields"])).toEqual({ mounts: [], shields: 0, engines: 0 });
   });
 });
 

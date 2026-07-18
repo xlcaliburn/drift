@@ -66,3 +66,48 @@ describe("CombatSystem seam — legacy state + orders-array back-compat", () => 
     expect(asOrders.combat.enemies).toEqual(single.combat.enemies);
   });
 });
+
+/** HANDOFF_COMBAT_V2_2.md Task B — the ship2 CombatSystem takes over EVERY new
+ *  ship fight; a fight already mid-flight at deploy (stored `system:
+ *  "classic"`) must still resolve through resolveShipRound, unchanged. */
+function pilot(): CampaignState {
+  return {
+    ...fighter(),
+    ship: {
+      id: "ship-1", campaignId: "c", name: "The Wren", shipClass: "hauler", hp: 20, maxHp: 20, ac: 12,
+      evasiveAcBonus: 0, damageReduction: 0, weapons: [], hasShield: true, shieldReady: true,
+      hasPointDefense: false, burstDriveReady: false, dcModifier: 0, buyoutRemaining: 0,
+    },
+  } as unknown as CampaignState;
+}
+
+const shipEnemy = (over: Partial<CombatEnemy> = {}): CombatEnemy => ({
+  id: "e-1", name: "Cutter", tier: "T2", hp: 30, maxHp: 30, ac: 12, atk: 5, damage: "2d6",
+  weaponType: "kinetic", shieldReady: false, multiAttack: false, ...over,
+});
+
+/** A ship fight persisted BEFORE the ship2 cutover — no `ship2` slice. */
+const legacyShipCombat = (enemies: CombatEnemy[]): CombatState =>
+  ({ active: true, round: 1, scale: "ship", enemies, playerCoverAc: 0, playerAimBonus: 0, fleeAttempts: 0, system: "classic" }) as CombatState;
+
+describe("CombatSystem seam — ship2 cutover (HANDOFF_COMBAT_V2_2 Task B)", () => {
+  it("startShipCombat now stamps system: \"ship2\" and freezes the player's profile", () => {
+    const rt = new TurnRuntime(pilot(), maxRng);
+    const started = rt.startShipCombat([{ shipClass: "scout", count: 1 }], "none");
+    expect(started.combat.system).toBe("ship2");
+    expect(started.combat.ship2?.player.shipClass).toBe("hauler");
+    expect(started.combat.ship2?.player.mounts.length).toBeGreaterThan(0);
+  });
+
+  it("a stored system:\"classic\" SHIP fight still resolves via resolveShipRound, not ship2", () => {
+    const rt = new TurnRuntime(pilot(), maxRng);
+    // Proof it's the CLASSIC path, not ship2: ship2's resolveRound immediately
+    // bails with "You have no ship to fight in." (outcome "escaped") whenever
+    // `combat.ship2` is missing — this legacy CombatState has no such slice
+    // (never populated pre-cutover). A real "victory" here is only reachable
+    // through resolveShipRound's d20 weapon-slot math.
+    const r = rt.resolveCombatRound(legacyShipCombat([shipEnemy({ hp: 4 })]), { type: "attack", enemyId: "e-1" });
+    expect(r.outcome).toBe("victory");
+    expect(r.combat.system).toBe("classic");
+  });
+});
