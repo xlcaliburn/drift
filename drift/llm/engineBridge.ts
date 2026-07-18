@@ -8,6 +8,7 @@ import {
 } from "@/engine";
 import type { SpawnSpec, ShipSpawnSpec } from "@/engine/combatEngine";
 import type { CombatState, CombatAction, CombatOutcome } from "@/shared/combat";
+import type { MemberOrder } from "./combat/types";
 import { useItem, resolveDeathSave } from "./runtimeHeal";
 import { recruitCrew } from "./runtimeCrew";
 import {
@@ -366,12 +367,19 @@ export class TurnRuntime {
     return startShipCombat(this, specs, surprise);
   }
 
-  /** Resolve one round — dispatch by scale (runtimeCombat.resolveCombatRound). */
+  /** Resolve one round through the CombatSystem registry
+   *  (runtimeCombat.resolveCombatRound). BACK-COMPAT: a single CombatAction
+   *  (the pre-M5 shape, still used everywhere except squad orders) is the
+   *  PC's own action, wrapped as a one-entry orders array; a MemberOrder[]
+   *  (squad orders — HANDOFF_COMBAT_V2_1 Task C) is used as-is. */
   resolveCombatRound(
     combat: CombatState,
-    action: CombatAction,
+    actionOrOrders: CombatAction | MemberOrder[],
   ): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
-    return resolveCombatRound(this, combat, action);
+    const orders: MemberOrder[] = Array.isArray(actionOrOrders)
+      ? actionOrOrders
+      : [{ memberId: this.state.characters.find((c) => c.kind === "pc")?.id ?? "", action: actionOrOrders }];
+    return resolveCombatRound(this, combat, orders);
   }
 
   private offerChoices(input: Record<string, unknown>) {

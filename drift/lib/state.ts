@@ -123,7 +123,11 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               scenes: [],
               focusIds: runtime.focusIds,
               tickedThisScene: runtime.tickedThisScene,
-              combat: runtime.combat,
+              // system normalization (Modularity M5, HANDOFF_COMBAT_V2_1 Task B):
+              // combat loads as RAW jsonb (no Zod parse), so a fight persisted
+              // before this deploy has no `system` — spread order matters, a
+              // STORED system (once ship2 exists) must win over the default.
+              combat: runtime.combat ? { system: "classic" as const, ...runtime.combat } : null,
               // Legacy runtimes (pre-012) have no card — start one at the current
               // transcript tail so the first summarized scene isn't the whole log.
               sceneCard:

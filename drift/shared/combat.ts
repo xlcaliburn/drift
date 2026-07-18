@@ -9,6 +9,14 @@ import type { StatusEffect, DamageType, StatusKind } from "./status";
 
 export type CombatTier = "T1" | "T2" | "T3";
 
+/** Which CombatSystem resolves this fight's rounds (Modularity M5 —
+ *  COMBAT_V2.md). "classic" is today's d20 engine (both scales); "ship2"
+ *  arrives in slice 2 as the Eclipse-style power/dice ship system. Optional
+ *  on CombatState because it's a NEW field on persisted jsonb — legacy rows
+ *  have none (the house jsonb rule); every load path normalizes to
+ *  "classic" (lib/state.ts) and the dispatcher defensively falls back too. */
+export type CombatSystemId = "classic" | "ship2";
+
 export interface CombatEnemy {
   id: string;
   name: string;
@@ -61,6 +69,8 @@ export interface CombatState {
   playerStatuses?: StatusEffect[];
   /** Crew medics who have spent their once-per-fight stabilize (CREW.md §4). */
   medicSpentIds?: string[];
+  /** See CombatSystemId. Set by beginCombat; normalized on load for legacy rows. */
+  system?: CombatSystemId;
 }
 
 export type CombatActionType = "attack" | "aim" | "cover" | "stim" | "flee" | "item" | "switch";

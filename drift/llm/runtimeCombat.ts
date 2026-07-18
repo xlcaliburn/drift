@@ -23,7 +23,8 @@ import {
 } from "@/engine/combatEngine";
 import { fleeDC, threatLevel, weaponSkill } from "@/shared/combat";
 import { crewAssistBonus } from "@/shared/crew";
-import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant } from "@/shared/combat";
+import type { CombatState, CombatEnemy, CombatAction, CombatOutcome, PlayerCombatant, CombatSystemId } from "@/shared/combat";
+import type { MemberOrder, CombatSystem } from "./combat/types";
 import { catalogItem, itemCount, slotsUsed, maxSlotsFor, resolveGearItemId } from "@/shared/items";
 import {
   applyStatus,
@@ -646,6 +647,7 @@ function beginCombat(
     round: 1,
     scale,
     enemies,
+    system: "classic", // COMBAT_V2.md/M5: ship2 spawns explicitly once slice 2 exists
     playerCoverAc: 0,
     // Ship-scale surprise keeps its flat aim edge; personal-scale surprise uses the
     // D&D rule (opening strike at advantage + the foe can't answer round 1).
@@ -675,13 +677,39 @@ export function startShipCombat(rt: CombatRT, specs: ShipSpawnSpec[], surprise: 
   return beginCombat(rt, "ship", spawnCombatShips(specs, rt.rng), surprise);
 }
 
-/** Resolve one round — dispatch by scale. */
+/**
+ * THE "classic" CombatSystem (Modularity M5, HANDOFF_COMBAT_V2_1 Task B) —
+ * today's d20 engine, both scales, wrapped as one CombatSystem object. Reads
+ * ONLY the PC's order for now (crewPhase inside resolvePersonalRound still
+ * auto-acts everyone else, unchanged) — Task C is what makes crew orders
+ * real; this task is extraction only, zero behavior change.
+ */
+const classicSystem: CombatSystem = {
+  resolveRound(rt, combat, orders) {
+    const pc = pcOf(rt);
+    const pcAction: CombatAction = orders.find((o) => o.memberId === pc?.id)?.action ?? { type: "cover" };
+    return combat.scale === "ship" ? resolveShipRound(rt, combat, pcAction) : resolvePersonalRound(rt, combat, pcAction);
+  },
+};
+
+/** The registry every fight dispatches through — "ship2" (COMBAT_V2.md's
+ *  Eclipse-style power/dice ship system) arrives in slice 2; until then it
+ *  aliases "classic" so an (impossible today) stored "ship2" tag never 500s. */
+const SYSTEMS: Record<CombatSystemId, CombatSystem> = {
+  classic: classicSystem,
+  ship2: classicSystem,
+};
+
+/** Resolve one round — dispatch through the CombatSystem registry by
+ *  `combat.system` (defensive fallback to "classic" for any legacy state that
+ *  slipped past lib/state.ts's load-time normalization). */
 export function resolveCombatRound(
   rt: CombatRT,
   combat: CombatState,
-  action: CombatAction,
+  orders: MemberOrder[],
 ): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
-  const res = combat.scale === "ship" ? resolveShipRound(rt, combat, action) : resolvePersonalRound(rt, combat, action);
+  const system = SYSTEMS[combat.system ?? "classic"];
+  const res = system.resolveRound(rt, combat, orders);
   // ── NPC FATE (shared/npcFate.ts, CHECKS.md §2): the moment a fight ENDS, any
   // defeated enemy whose name matches a living cast NPC is recorded dead —
   // status + a relation-log note. This dispatcher is the single seam every fight

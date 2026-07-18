@@ -59,7 +59,23 @@ leave a `TODO(M2)` header note):
 **Done when:** module + test + WORKFLOW.md line; suite green; nothing else
 touched.
 
-## Task B — the CombatSystem seam (M5, extraction only)
+## Task B — the CombatSystem seam (M5, extraction only) ✅ SHIPPED
+
+*Implementation decision: `MemberOrder.action` uses the ENGINE-internal
+`CombatAction` (`shared/combat.ts`), not the Zod `CombatActionSpec`
+(`shared/turnPlan.ts`) the handoff's snippet named — the latter is the API-
+boundary validation shape for untrusted client input, structurally identical
+but the wrong layer for an engine-internal type; route-level parsing (Task C)
+validates with `CombatActionSpec` then hands off `CombatAction`-shaped data.
+Also: the pure `resolveCombatRound` dispatcher's signature became
+`orders: MemberOrder[]`-only (no overload) — the single-vs-array back-compat
+branch lives ONE layer up, in `engineBridge.ts`'s `TurnRuntime.
+resolveCombatRound` wrapper (the sole call site every existing test/caller
+uses), keeping the pure engine function's signature clean. `resolvePersonalRound`/
+`resolveShipRound` themselves are UNTOUCHED — the "classic" CombatSystem
+still reads only the PC's entry out of `orders`, exactly as scoped. 867 tests
+pass (864 baseline unchanged + 3 new), golden byte-identical, zero live
+campaigns mid-fight at check time (queried).*
 
 **New `llm/combat/types.ts`:**
 ```ts
