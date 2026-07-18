@@ -810,7 +810,11 @@ function defaultShip2Allocation(profile: Ship2Profile): Allocation {
 const ship2System: CombatSystem = {
   resolveRound(rt, combat, orders) {
     const pc = pcOf(rt);
-    const pcAction: CombatAction = orders.find((o) => o.memberId === pc?.id)?.action ?? { type: "cover" };
+    // Missing order → a bare "allocate" (no alloc payload), which the round
+    // resolver maps to the default guns+shields spread. NOT {type:"cover"}
+    // like classic: in ship2 "cover" is the typed-text DEFENSIVE posture
+    // (hold fire, shields+engines), the opposite of a never-stall default.
+    const pcAction: CombatAction = orders.find((o) => o.memberId === pc?.id)?.action ?? { type: "allocate" };
     return resolveShip2Round(rt, combat, pcAction);
   },
 };
@@ -853,7 +857,19 @@ function resolveShip2Round(
     rawAlloc = action.alloc;
   } else if (action.type === "item" && action.itemId) {
     rawAlloc = { mounts: [], shields: 0, engines: 0, itemId: action.itemId };
+  } else if (action.type === "attack") {
+    // Typed text routes through interpretCombatText, which speaks CLASSIC
+    // action types (review fix — Task B step 4's ship2 text mapping): an
+    // attack fires the default spread but HONORS the named target ("fire on
+    // the corvette" must not silently retarget the first-alive ship).
+    rawAlloc = { ...defaultShip2Allocation(profile), targetId: action.enemyId };
+  } else if (action.type === "cover") {
+    // "evasive maneuvers" / "shields up" / "dodge" — the defensive posture:
+    // hold fire, pour everything into shields + engines.
+    rawAlloc = { mounts: [], shields: profile.shieldCap, engines: profile.engineCap };
   } else {
+    // Any other stray classic type (aim/switch/stim without an item) — the
+    // never-stall default: guns + shields.
     rawAlloc = defaultShip2Allocation(profile);
   }
 
@@ -883,6 +899,12 @@ function resolveShip2Round(
       lines.push("Nothing to use.");
     }
   }
+
+  // SIMULTANEOUS REVEAL (the resolved COMBAT_V2.md decision): both sides'
+  // volleys are already in flight when damage lands, so the set of enemies
+  // that FIRE this round is fixed NOW, before the player's damage applies —
+  // a ship the player wrecks this round still delivers its dying volley.
+  const firingIds = new Set(enemies.filter((e) => e.hp > 0).map((e) => e.id));
 
   // ── The player's volley ──
   const target = enemies.find((e) => e.id === alloc.targetId && e.hp > 0) ?? enemies.find((e) => e.hp > 0);
@@ -927,12 +949,16 @@ function resolveShip2Round(
     lines.push("🛡 You hold fire, routing power to defense.");
   }
 
-  return finishShip2Round(rt, { ...combat, fleeAttempts }, enemies, alloc, bonusShield, profile, enemyReactorMod, lines);
+  return finishShip2Round(rt, { ...combat, fleeAttempts }, enemies, alloc, bonusShield, profile, enemyReactorMod, firingIds, lines);
 }
 
-/** Shared tail: victory/loot check, then every ALIVE enemy fires at the
- *  player as ONE combined volley (a shared shield pool for the whole round,
- *  not reset per attacker), then round++ or disabled. */
+/** Shared tail — SIMULTANEOUS REVEAL: every enemy that was alive at round
+ *  start (`firingIds`) fires at the player as ONE combined volley (a shared
+ *  shield pool for the whole round, not reset per attacker), INCLUDING a ship
+ *  the player wrecked this round — its dying volley was already in flight.
+ *  Only after both sides' damage has landed do outcomes resolve, hull-0
+ *  FIRST: mutual destruction is "disabled" (adrift among the wrecks, no
+ *  salvage — the handoff's rule), a cleared field with hull intact pays. */
 function finishShip2Round(
   rt: CombatRT,
   combat: CombatState,
@@ -941,29 +967,14 @@ function finishShip2Round(
   bonusShield: number,
   profile: Ship2Profile,
   enemyReactorMod: number,
+  firingIds: Set<string>,
   lines: string[],
 ): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
-  const enemies = enemiesIn.filter((e) => e.hp > 0);
-  if (enemies.length === 0) {
-    const tier = combat.enemies.reduce<"T1" | "T2" | "T3">(
-      (m, e) => (LOOT_BAND[e.tier][1] > LOOT_BAND[m][1] ? e.tier : m),
-      "T1",
-    );
-    const [lo, hi] = LOOT_BAND[tier];
-    const loot = rt.rng.int(lo, hi);
-    const pc = pcOf(rt)!;
-    rt.state = {
-      ...rt.state,
-      characters: rt.state.characters.map((x) => (x.id === pc.id ? { ...x, credits: (x.credits ?? 0) + loot } : x)),
-    };
-    lines.push(ship2SalvageLine(loot));
-    return { combat: { ...combat, enemies, active: false }, lines, outcome: "victory", loot };
-  }
-
   const playerEvasion = Math.min(2, alloc.engines);
   let enemyResults: MountFireResult[] = [];
-  let nextEnemies = enemies;
-  for (const enemy of enemies) {
+  let nextEnemies = enemiesIn;
+  for (const enemy of enemiesIn) {
+    if (!firingIds.has(enemy.id)) continue;
     const baseProfile = deriveEnemyShip2Profile(enemy.ship2Class ?? "fighter", enemy.hasPointDefense ?? false, enemy.missileAmmo);
     const enemyProfile = enemyReactorMod ? { ...baseProfile, reactor: Math.max(0, baseProfile.reactor + enemyReactorMod) } : baseProfile;
     const enemyAlloc = resolvePolicyAllocation(enemyProfile, ship2ClassPolicy(enemy.ship2Class ?? "fighter"));
@@ -986,8 +997,28 @@ function finishShip2Round(
   const harm = applyShipDamage(rt, enemyVolley.netDamage);
   if (enemyVolley.netDamage > 0) lines.push(`💥 Hull takes ${harm.taken}${harm.disabled ? " · DISABLED" : ""}`);
 
-  const next: CombatState = { ...combat, enemies: nextEnemies };
-  if (harm.disabled) return { combat: { ...next, active: false }, lines, outcome: "disabled", loot: 0 };
+  const survivors = nextEnemies.filter((e) => e.hp > 0);
+  // Hull 0 first — even with the field cleared, mutual destruction is
+  // "disabled", never a salvage payout (you're in no shape to collect).
+  if (harm.disabled) {
+    return { combat: { ...combat, enemies: survivors, active: false }, lines, outcome: "disabled", loot: 0 };
+  }
+  if (survivors.length === 0) {
+    const tier = combat.enemies.reduce<"T1" | "T2" | "T3">(
+      (m, e) => (LOOT_BAND[e.tier][1] > LOOT_BAND[m][1] ? e.tier : m),
+      "T1",
+    );
+    const [lo, hi] = LOOT_BAND[tier];
+    const loot = rt.rng.int(lo, hi);
+    const pc = pcOf(rt)!;
+    rt.state = {
+      ...rt.state,
+      characters: rt.state.characters.map((x) => (x.id === pc.id ? { ...x, credits: (x.credits ?? 0) + loot } : x)),
+    };
+    lines.push(ship2SalvageLine(loot));
+    return { combat: { ...combat, enemies: survivors, active: false }, lines, outcome: "victory", loot };
+  }
+  const next: CombatState = { ...combat, enemies: survivors };
   next.round += 1;
   return { combat: next, lines, outcome: "continue", loot: 0 };
 }

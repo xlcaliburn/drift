@@ -291,6 +291,40 @@ confidence from rather than manual browser sessions.*
    one; `validateAllocation` clamps an overspent/foreign-mount payload
    (the engine-side guard, trap 6).
 
+*Review (Phase 3, 2026-07-18) — two defects found, both fixed forward:
+(1) **Rounds were sequential, not simultaneous-reveal.** The player's damage
+landed first and `finishShip2Round` filtered `hp > 0` before the enemy volley
+— a wrecked ship never fired its dying volley, killing the last enemy skipped
+return fire entirely, and mutual destruction (this doc's explicit "apply
+damage to BOTH sides regardless of what dies; mutual = disabled" rule, and an
+owner-resolved COMBAT_V2.md decision) was unreachable; the promised
+mutual-kill test correspondingly didn't exist. Fixed: the firing set is
+frozen at round start (`firingIds`) before player damage applies, and
+outcomes resolve only after both volleys — hull-0 FIRST (mutual destruction =
+disabled, no salvage), then victory. (2) **Task B step 4 (typed-text mapping)
+was silently skipped** — typed "fire on the corvette" reached ship2 as a
+classic `{attack, enemyId}` whose named target the fallback DISCARDED
+(retargeting first-alive), and "evasive maneuvers" (`{cover}`) triggered the
+all-guns default, the opposite intent. Fixed at the consumption end rather
+than adding a parallel keyword branch to `interpretCombatText` (one parser,
+two consumers): `resolveShip2Round` now maps `attack` → default spread AT the
+named target and `cover` → defensive posture (hold fire, shields+engines max);
+the no-order fallback became a bare `allocate` so it still lands on
+guns+shields per this doc's never-stall rule. 4 net new tests (dying volley +
+mutual-kill→disabled-no-salvage + named-target + cover-defensive; the old
+"stray action" test now uses `aim`). 965 total, `tsc` clean, golden
+untouched. Verified clean in review: the allocation clamp is engine-side and
+re-validated per round (a crafted payload can't overspend/fire unowned/dry
+mounts — tested); guards stayed at the dispatcher/start layer (fate recording
+unreachable-to-skip, spawn clamps untouched); jsonb spread order lets a
+stored `ship2` system win on load; `combatChipsFor`'s registry bypass is the
+right call for client rebuildability. Noted, no fix: a ship with two
+same-type weapons collapses to one mount (dedupe by id — no multi-weapon
+ships exist; slice 3's slots will model this properly), and the defensive
+classic-chips fallback for a `system:"ship2"` state missing its `ship2` slice
+routes clicks into ship2's bail-out (frees the fight as "escaped" — an
+acceptable dead-man's switch for a state that can't occur).*
+
 ## Task D — docs + close-out
 
 - `COMBAT_V2.md`: Part B shipped-note; CORRECT the counter-triangle line

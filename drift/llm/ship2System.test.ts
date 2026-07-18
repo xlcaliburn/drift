@@ -136,10 +136,61 @@ describe("ship2 CombatSystem — round resolution", () => {
   it("a stray/malformed action falls back to a default allocation instead of stalling", () => {
     const rt = new TurnRuntime(state(), maxRng);
     const e = enemy({ hp: 20 });
-    // "cover" isn't a ship2 action type — must still resolve a full round.
-    const r = rt.resolveCombatRound(ship2Combat([e], rt.state.ship!), { type: "cover" });
+    // "aim" has no ship2 meaning — must still resolve a full round (guns+shields).
+    const r = rt.resolveCombatRound(ship2Combat([e], rt.state.ship!), { type: "aim" });
     expect(r.outcome).toBe("continue");
     expect(r.combat.enemies[0].hp).toBeLessThan(20); // the default alloc still fired owned mounts
+  });
+
+  it("typed defensive intent (cover) maps to shields+engines and holds fire (review fix)", () => {
+    const rt = new TurnRuntime(state(), maxRng);
+    const e = enemy({ hp: 20, ship2Class: "gunship" });
+    const r = rt.resolveCombatRound(ship2Combat([e], rt.state.ship!), { type: "cover" });
+    expect(r.combat.enemies[0].hp).toBe(20); // held fire — nothing shot
+    expect(r.lines.some((l) => l.includes("hold fire"))).toBe(true);
+  });
+
+  it("a typed attack on a NAMED enemy honors that target (review fix)", () => {
+    const rt = new TurnRuntime(state(), maxRng);
+    const e1 = enemy({ id: "e-1", name: "Lead", hp: 30, ship2Class: "scout" });
+    const e2 = enemy({ id: "e-2", name: "Trailer", hp: 30, ship2Class: "scout" });
+    // interpretCombatText output shape for "fire on the Trailer".
+    const r = rt.resolveCombatRound(ship2Combat([e1, e2], rt.state.ship!), { type: "attack", enemyId: "e-2" });
+    expect(r.combat.enemies.find((e) => e.id === "e-2")!.hp).toBeLessThan(30);
+    expect(r.combat.enemies.find((e) => e.id === "e-1")!.hp).toBe(30); // not retargeted to first-alive
+  });
+});
+
+describe("ship2 CombatSystem — simultaneous reveal (review fix)", () => {
+  it("a ship wrecked this round still delivers its dying volley", () => {
+    const rt = new TurnRuntime(state({ hp: 20 }), maxRng);
+    const e = enemy({ hp: 1, ship2Class: "gunship" }); // dies to the railgun, but its guns were already firing
+    const r = rt.resolveCombatRound(ship2Combat([e], rt.state.ship!), {
+      type: "allocate",
+      alloc: { mounts: ["railgun"], shields: 0, engines: 0 },
+    });
+    expect(r.lines.some((l) => l.includes("is wrecked"))).toBe(true);
+    expect(r.lines.some((l) => l.startsWith("💢 Enemies —"))).toBe(true); // the dying volley
+    // gunship railgun 3−1(armor)=2 + beam lance 2×(2−1)=2 → hull 20→16.
+    expect(rt.state.ship!.hp).toBeLessThan(20);
+    expect(r.outcome).toBe("victory"); // hull survived it — victory still pays
+    expect(r.loot).toBeGreaterThan(0);
+  });
+
+  it("mutual destruction resolves as DISABLED — adrift among the wrecks, no salvage", () => {
+    const rt = new TurnRuntime(state({ hp: 2 }), maxRng);
+    const e = enemy({ hp: 1, ship2Class: "gunship" });
+    const r = rt.resolveCombatRound(ship2Combat([e], rt.state.ship!), {
+      type: "allocate",
+      alloc: { mounts: ["railgun"], shields: 0, engines: 0 },
+    });
+    expect(r.lines.some((l) => l.includes("is wrecked"))).toBe(true); // they died...
+    expect(r.outcome).toBe("disabled"); // ...and so did the hull — disabled beats victory
+    expect(r.combat.active).toBe(false);
+    expect(r.loot).toBe(0);
+    expect(r.lines.some((l) => l.includes("salvage"))).toBe(false); // no payout while adrift
+    expect(rt.state.ship!.hp).toBe(0);
+    expect(rt.state.characters.find((c) => c.kind === "pc")!.credits).toBe(100); // untouched
   });
 
   it("an unowned mount id in the allocation is silently dropped, not fired", () => {
