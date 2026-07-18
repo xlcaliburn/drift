@@ -492,6 +492,15 @@ export function sellShipItem(rt: EconRT, ref: string): { line?: string; error?: 
     const weapon = materialized.weapons[mountMatch.weaponIndex];
     const paid = Math.max(1, Math.round(mountItemPriceForType(weapon.type) * SELL_RATE));
     const weapons = materialized.weapons.filter((_, i) => i !== mountMatch.weaponIndex);
+    // REVIEW GUARD (Phase 3): never strip the LAST mount. An empty weapons[]
+    // is indistinguishable from "stock loadout" — deriveShip2Profile's
+    // fallback would RE-DERIVE the class defaults next fight, resurrecting
+    // the gun the player just sold (keep the credits AND the gun), and a
+    // crafted request could loop materialize→strip→empty for infinite
+    // credits. Refusing the last strip closes both.
+    if (weapons.length === 0) {
+      return { error: `the yard won't strip your last mount — a ${s.shipClass} doesn't fly unarmed` };
+    }
     const after = (pc.credits ?? 0) + paid;
     rt.state = {
       ...rt.state,

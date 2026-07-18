@@ -484,6 +484,32 @@ export function shipyardStock(state: CampaignState): ShipyardStock {
   return { mounts, systems };
 }
 
+/**
+ * REVIEW GUARD (Phase 3, HANDOFF_COMBAT_V2_3) — the house jsonb rule strikes
+ * again: `combat.ship2.player` is a profile FROZEN into persisted jsonb at
+ * fight start, and Task A added a required `key` to its mounts. A ship2
+ * fight mid-flight across that deploy has key-less mounts — every allocation
+ * lookup (`validateAllocation`, the round resolver, the PowerPanel) keys on
+ * `m.key`, so the player would silently lose ALL fire for the rest of that
+ * fight. Called from lib/state.ts's combat load normalization (same seam as
+ * the `system` field). `weaponIndex` is left absent for such fights — their
+ * missile ammo simply stops decrementing until the fight ends, which is
+ * strictly gentler than the alternative failure. Pure + idempotent.
+ */
+export function normalizeFrozenShip2(
+  ship2: { player: Ship2Profile; surpriseMod?: number } | undefined,
+): { player: Ship2Profile; surpriseMod?: number } | undefined {
+  if (!ship2?.player?.mounts) return ship2;
+  if (ship2.player.mounts.every((m) => m.key)) return ship2;
+  return {
+    ...ship2,
+    player: {
+      ...ship2.player,
+      mounts: ship2.player.mounts.map((m) => ({ ...m, key: m.key ?? m.id })),
+    },
+  };
+}
+
 export interface ShipyardChip {
   label: string;
   buyShipItem?: string;
@@ -510,6 +536,10 @@ export function shipyardChips(state: CampaignState): ShipyardChip[] {
     const profile = deriveShip2Profile(ship, []);
     for (const m of profile.mounts) {
       if (m.weaponIndex === undefined) continue; // a virtual stock mount — nothing real to strip yet
+      // The LAST mount can't be stripped (sellShipItem refuses — an empty
+      // weapons[] would resurrect the class defaults next fight), so don't
+      // offer a chip the runtime will bounce.
+      if (profile.mounts.length <= 1) continue;
       const weaponType = MOUNT_TO_WEAPON_TYPE[m.id] ?? "kinetic";
       const refund = Math.max(1, Math.round(mountItemPriceForType(weaponType) * SELL_RATE));
       stripChips.push({ label: `Strip ${m.name} — +${fmtCredits(refund)}`, sellShipItem: m.key });

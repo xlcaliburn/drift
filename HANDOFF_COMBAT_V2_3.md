@@ -245,6 +245,39 @@ fully shipped). **1012 tests pass total, `tsc` clean, golden byte-identical
    CHECKS.md §0 row for the shipyard's engine-side re-validation; annotate
    THIS handoff per WORKFLOW.md Phase 2 as you go.
 
+*Review (Phase 3, 2026-07-18) — two defects found, both fixed forward:
+(1) **Sold-gun resurrection / infinite-credit exploit.** `sellShipItem`
+materialized stock then stripped — selling a ship's ONLY gun left
+`weapons[]` empty, which `deriveShip2Profile`'s fallback re-derives as the
+class defaults next fight: the player kept the refund AND the gun, and a
+crafted request could loop materialize→strip→empty for unbounded credits.
+The shipped test even pinned this as intended ("selling a NEVER-BOUGHT stock
+gun materializes it first, then sells it"). Fixed: the yard refuses to strip
+the LAST mount (runtime guard + the chip is never offered), which closes
+both the resurrection and the loop — an empty `weapons[]` now only ever
+means "stock loadout". (2) **The frozen-jsonb trap, one layer deeper than
+trap 1 saw.** Trap 1 correctly said the Ship ROW needs no normalization —
+but Task A changed the shape of `combat.ship2.player`, which is a profile
+FROZEN into persisted campaign_runtime jsonb at fight start. A ship2 fight
+mid-flight across this deploy would have key-less mounts: every allocation
+lookup keys on `m.key`, so the player would silently lose ALL fire for the
+rest of that fight (and the PowerPanel toggles would die). Fixed:
+`normalizeFrozenShip2` (pure, tested) backfills `key = id` at the lib/state
+load seam, alongside the existing `system` normalization. `weaponIndex`
+stays absent for such fights — their missile ammo just stops decrementing
+until the fight ends, strictly gentler than the failure it replaces. Zero
+campaigns were mid-fight live (queried), so both were latent, not harming
+anyone. 3 net new tests (last-mount refusal incl. the 2→1-then-wall path,
+no-chip-for-last-mount, normalizeFrozenShip2 backfill + idempotence);
+1015 total, `tsc` clean, golden untouched. Verified clean in review:
+buy-side re-validation genuinely engine-side (stale/crafted chips bounce),
+materialize-only-for-mounts correct, slot accounting consistent across
+virtual/real mounts, scout-at-capacity is Task B's rule working as designed,
+protocol fields round-trip lastChoices, chip registry entry correct, no
+migration anywhere in the diff (trap 1's check). Noted, no fix: a SYSTEM
+sell on a bare ship also materializes the stock guns as a side effect
+(profile-equivalent, just made explicit — harmless).*
+
 ## Explicitly OUT of scope
 
 Charge banking + called shots (slice 4); swap-combo chips; ship SALES/hull

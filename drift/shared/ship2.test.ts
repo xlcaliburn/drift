@@ -10,6 +10,7 @@ import {
   materializeStockWeapons,
   shipyardStock,
   shipyardChips,
+  normalizeFrozenShip2,
   type Ship2Profile,
 } from "./ship2";
 import type { Character, Ship, CampaignState } from "./schemas";
@@ -445,10 +446,24 @@ describe("shipyardChips (HANDOFF_COMBAT_V2_3.md Task C)", () => {
     const bare = shipyardChips(state()); // hauler, empty weapons[] — virtual stock only
     expect(bare.some((c) => c.sellShipItem)).toBe(false);
 
-    const fitted = ship({ weapons: [{ name: "Cannon", type: "kinetic", damage: "2d6" }], hasShield: true });
+    const fitted = ship({
+      weapons: [
+        { name: "Cannon", type: "kinetic", damage: "2d6" },
+        { name: "Beam", type: "energy", damage: "2d6" },
+      ],
+      hasShield: true,
+    });
     const chips = shipyardChips(state({ ship: fitted, credits: 0 })); // broke, so buy chips are all filtered out
     expect(chips.some((c) => c.label.startsWith("Strip Cannon") && c.sellShipItem === "railgun")).toBe(true);
+    expect(chips.some((c) => c.label.startsWith("Strip Beam") && c.sellShipItem === "beamLance")).toBe(true);
     expect(chips.some((c) => c.label.startsWith("Strip Shield emitter") && c.sellShipItem === "shieldEmitter")).toBe(true);
+  });
+
+  it("the LAST real mount gets no strip chip (the runtime refuses it — review guard)", () => {
+    const oneGun = ship({ weapons: [{ name: "Cannon", type: "kinetic", damage: "2d6" }], hasShield: true });
+    const chips = shipyardChips(state({ ship: oneGun, credits: 0 }));
+    expect(chips.some((c) => c.label.startsWith("Strip Cannon"))).toBe(false); // no bounce-bait chip
+    expect(chips.some((c) => c.label.startsWith("Strip Shield emitter"))).toBe(true); // systems unaffected
   });
 
   it("caps at 6 total chips", () => {
@@ -469,5 +484,31 @@ describe("shipyardChips (HANDOFF_COMBAT_V2_3.md Task C)", () => {
 
   it("empty when there's no market at this location", () => {
     expect(shipyardChips(state({ tags: ["hazard"] }))).toEqual([]);
+  });
+});
+
+describe("normalizeFrozenShip2 (review guard — the frozen-jsonb key backfill)", () => {
+  const legacyMount = { id: "railgun", name: "Railgun", power: 2, dice: 1, hitOn: 4, dmgPerHit: 3 };
+
+  it("backfills key = id on a pre-Task-A frozen profile so the fight stays fireable", () => {
+    const legacy = {
+      player: { shipClass: "hauler", reactor: 3, engineCap: 1, shieldCap: 1, armor: 1, hasPointDefense: false, gunnerBoost: false,
+        mounts: [legacyMount] } as unknown as Ship2Profile,
+    };
+    const out = normalizeFrozenShip2(legacy)!;
+    expect(out.player.mounts[0].key).toBe("railgun");
+    // The whole point: a legacy preset chip's id-shaped allocation still fires.
+    const validated = validateAllocation(out.player, { mounts: ["railgun"], shields: 0, engines: 0 });
+    expect(validated.mounts).toEqual(["railgun"]);
+  });
+
+  it("is a no-op (same reference) for an already-keyed profile, and passes undefined through", () => {
+    const keyed = {
+      player: { shipClass: "hauler", reactor: 3, engineCap: 1, shieldCap: 1, armor: 1, hasPointDefense: false, gunnerBoost: false,
+        mounts: [{ ...legacyMount, key: "railgun" }] } as Ship2Profile,
+      surpriseMod: -1,
+    };
+    expect(normalizeFrozenShip2(keyed)).toBe(keyed);
+    expect(normalizeFrozenShip2(undefined)).toBeUndefined();
   });
 });

@@ -138,12 +138,22 @@ describe("sellShipItem — strip at the flat 40% (HANDOFF_COMBAT_V2_3.md Task C)
     expect(res.line).toContain("+¢160"); // 400 × 0.4
   });
 
-  it("selling a NEVER-BOUGHT stock gun materializes it first, then sells it", () => {
-    const rt = new TurnRuntime(atDock(["blackmarket"]), maxRng); // hauler — empty weapons[], virtual railgun
+  it("REFUSES to strip the last mount (review guard — the resurrection/credit exploit)", () => {
+    // An empty weapons[] is indistinguishable from "stock loadout": stripping
+    // the hauler's only gun would resurrect it via deriveShip2Profile's
+    // fallback next fight (keep the credits AND the gun), and a crafted
+    // request could loop materialize→strip→empty for infinite credits.
+    const rt = new TurnRuntime(atDock(["blackmarket"]), maxRng); // hauler — 1 (virtual) mount
     const res = rt.sellShipItem("railgun");
-    expect(res.error).toBeUndefined();
-    expect(rt.state.ship!.weapons).toHaveLength(0); // materialized then immediately stripped
-    expect(rt.state.characters[0].credits).toBe(2000 + 100); // kineticCannon 250 × 0.4 = 100
+    expect(res.error).toMatch(/last mount/);
+    expect(rt.state.characters[0].credits).toBe(2000); // no payout
+    // Repeat calls stay refused — no materialize→strip loop.
+    expect(rt.sellShipItem("railgun").error).toMatch(/last mount/);
+    // Stripping down TO one is fine; the LAST one is the wall.
+    const two = new TurnRuntime(atDock(["blackmarket"]), maxRng);
+    two.buyShipItem("ionBattery"); // stock railgun materialized + ion → 2 mounts
+    expect(two.sellShipItem("Ion battery").error).toBeUndefined(); // 2 → 1 ok
+    expect(two.sellShipItem("railgun").error).toMatch(/last mount/); // 1 → 0 refused
   });
 
   it("can't sell an unfitted system or a mount you don't have", () => {

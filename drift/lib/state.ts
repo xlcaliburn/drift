@@ -8,6 +8,7 @@ import { freshSceneCard, type SceneCard, type NpcRelations, type SceneMemory } f
 import { mergeNpcs } from "@/shared/npcMerge";
 import { isShareableNpcName, isPlausibleNpcName } from "@/shared/npcExtract";
 import { mapLegacyGear } from "@/shared/items";
+import { normalizeFrozenShip2 } from "@/shared/ship2";
 import { ensureStartingGun, ensurePatronSeed } from "@/engine/creation";
 import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Job } from "@/shared/quests";
@@ -127,7 +128,15 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               // combat loads as RAW jsonb (no Zod parse), so a fight persisted
               // before this deploy has no `system` — spread order matters, a
               // STORED system (once ship2 exists) must win over the default.
-              combat: runtime.combat ? { system: "classic" as const, ...runtime.combat } : null,
+              // The frozen ship2 profile gets the same treatment (mount `key`s
+              // arrived in HANDOFF_COMBAT_V2_3 Task A — normalizeFrozenShip2).
+              combat: runtime.combat
+                ? {
+                    system: "classic" as const,
+                    ...runtime.combat,
+                    ...(runtime.combat.ship2 ? { ship2: normalizeFrozenShip2(runtime.combat.ship2) } : {}),
+                  }
+                : null,
               // Legacy runtimes (pre-012) have no card — start one at the current
               // transcript tail so the first summarized scene isn't the whole log.
               sceneCard:
