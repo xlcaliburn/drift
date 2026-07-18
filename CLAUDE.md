@@ -81,7 +81,9 @@ engine, character creation + signature skills, **structured JSON turns**
 (`llm/jsonTurn.ts` — validated `TurnPlan`, DeepSeek json mode, validate→retry→
 repair, canonical history; the freeform tool loop is RETIRED, all turns run the JSON
 path, cinematic = Sonnet), Supabase persistence + durable sessions, Google auth,
-admin panel, per-user budgets, retrieval tuning, **multi-turn combat both scales**,
+admin panel, per-user budgets, retrieval tuning, **multi-turn combat both scales**
+(ship-scale now the Eclipse-style **ship2 power/dice CombatSystem** — COMBAT_V2.md
+Part B) + **squad orders** (order every standing crew/ally member — Part A),
 bounded-accuracy leveling (compressed `skillProficiency` = `ceil(level/2)`, never
 raw level in `computeModifier`), verb-driven actions, items (consumables + engine-
 generated loot), **scene-memory continuity v1** + NPC registration backstops,
@@ -227,17 +229,21 @@ Don't add prose rules for things the engine can enforce.
   3-act main questline as pack data (engine-owned triggers/beats/choice-facts),
   authored sidequests, rich cast backstories with authored reveals, and the
   tutorial rebuilt as an authored prologue. Build order inside; nothing built.
-- `COMBAT_V2.md` — **DESIGN (owner priority, decisions RESOLVED)**: squad
-  control (order every party member, temporary allies — Part A **SHIPPED**,
-  2026-07-18) + Eclipse-style ship combat (power allocation, dice profiles,
-  counterplay, customization slots — Part B still design). `HANDOFF_COMBAT_V2_1.md`
-  is **FULLY SHIPPED**: the lexicon seed, the M5 CombatSystem seam (extraction,
-  not speculation), and squad orders (attack a chosen target / self-heal per
-  crew member; un-ordered members auto-act). `HANDOFF_COMBAT_V2_2.md` —
-  **READY TO IMPLEMENT**: the ship2 CombatSystem core (power allocation +
-  dice-profile mounts, simultaneous reveal, pack-catalog statlines, the
-  allocation panel + preset chips; no Ship schema change — the profile is
-  derived at fight start).
+- `COMBAT_V2.md` — **DESIGN (owner priority, decisions RESOLVED), Parts A+B
+  core both SHIPPED (2026-07-18)**: squad control (order every party member,
+  temporary allies — Part A) + Eclipse-style ship combat (power allocation,
+  dice-profile mounts, shields/evasion/armor counterplay, escalating heat —
+  Part B's core). Customization slots + charge banking/called shots (Part B's
+  remaining slices) are still design-only. `HANDOFF_COMBAT_V2_1.md` and
+  `HANDOFF_COMBAT_V2_2.md` are both **FULLY SHIPPED**: the lexicon seed, the
+  M5 CombatSystem seam (extraction, not speculation — now proven by a REAL
+  second system), squad orders (attack a chosen target / self-heal per crew
+  member; un-ordered members auto-act), and ship2 (power allocation + all
+  four dice-profile mounts, simultaneous-reveal rounds, pack-catalog
+  statlines, an allocation panel + preset chips; no Ship schema change — the
+  profile derives from the existing row at fight start). `startShipCombat`
+  now always produces a ship2 fight; the old d20 ship engine survives only
+  for a fight already mid-flight at deploy.
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
 - `STATUS.md` — **THE single backlog** (what's left, in order, updated at every

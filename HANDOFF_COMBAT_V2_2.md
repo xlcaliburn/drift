@@ -148,7 +148,30 @@ row + the class table, and FREEZE it into `combat.ship2.player`:
 - Hull stays `ship.hp/maxHp` — damage flows through the existing
   `applyShipDamage` (disabled-at-0 behavior and its event line unchanged).
 
-## Task A — pack catalog + pure math (`engine/ship2.ts`, `shared/ship2.ts`)
+## Task A — pack catalog + pure math (`engine/ship2.ts`, `shared/ship2.ts`) ✅ SHIPPED
+
+*Implementation decisions: the catalog is `content/pack/drift/ship2.ts` — a
+TYPED `.ts` module, not raw JSON (the handoff's literal `ship2.json`) —
+because `policy` needs its real `"guns"|"shields"|"engines"` literal union to
+validate meaningfully; a raw JSON import only infers `string[]`. Matches the
+precedent of creation/briefs/openings/npcFlavor, which are `.ts` for the same
+reason. `PackShip2` is a dedicated top-level `ContentPack` field (not folded
+into the loose `catalogs` record), with `validatePack` checks that every
+class's mounts resolve and every shipClass in the OLD `catalogs.shipClasses`
+also has a ship2 statline. Two extra pure helpers beyond the handoff's list,
+both needed by Task B and kept in Task A's files for cohesion:
+`deriveEnemyShip2Profile`/`ship2ClassPolicy` (shared/ship2.ts) and
+`resolvePolicyAllocation` (engine/ship2.ts) — an enemy's allocation is
+re-derived fresh every round (no crew passives to freeze, unlike the
+player's), resolved deterministically from its class + policy tokens, no rng.
+`rollMount`'s signature ended up `(mount, {evasionBonus, overcharged}, rng)`
+returning a richer `MountFireResult` (mountId/name/power/dmgPerHit carried
+through) rather than the sketched "per-die results + hits", so `resolveVolley`
+never needs the mount-profile map again downstream. 47 tests landed with this
+task (20 engine, 25 shared, 2 pack completeness);
+`resolvePolicyAllocation`/`deriveEnemyShip2Profile`/`ship2ClassPolicy` picked
+up their own tests alongside Task B, once its round resolution actually
+exercised them — see that task's note for the full count.*
 
 1. `content/pack/drift/ship2.json` — the tables above (+ zod `PackShip2` in
    `content/pack/types.ts`, wired through `pack/drift.ts` and validated by
@@ -175,7 +198,26 @@ row + the class table, and FREEZE it into `combat.ship2.player`:
    natural-6 rule, evasion cap, armor-zeroing spray, pool exhaustion order,
    PD, overcharge threshold shift, heat formula.
 
-## Task B — the ship2 `CombatSystem` (`llm/combat/ship2System.ts`)
+## Task B — the ship2 `CombatSystem` (`llm/combat/ship2System.ts`) ✅ SHIPPED
+
+*Implementation decisions: implemented IN-PLACE in `llm/runtimeCombat.ts`
+(`resolveShip2Round`/`finishShip2Round`, registered as `ship2System` in
+`SYSTEMS`) rather than a separate `llm/combat/ship2System.ts` file —
+matching `classicSystem`'s own precedent in HANDOFF_COMBAT_V2_1 ("prefer
+wrapping in place... churn is risk, not value"): it needs this file's
+private `pcOf`/`applyShipDamage`/`LOOT_BAND`/`fleeDC` helpers, and a file
+split would just re-export them. `surpriseMod` ended up a plain `number`
+(not the sketched `1 | -1`) since escalating heat ADDS to the same reactor
+modifier the surprise sets, and the combined value needs to be a general
+integer. **Heat was missing from the handoff's own numbered steps** (only
+mentioned in COMBAT_V2.md's design prose) — added per that doc: both sides'
+reactors get `+max(0, round − 4)`, computed alongside the surprise mod as one
+`enemyReactorMod`/`playerReactorMod` pair. `ship2ClassPolicy`'s resolution
+and the enemy's per-round profile re-derivation (not frozen, unlike the
+player's) live in Task A's files, not here — see that task's note. 37 new
+tests across `llm/ship2System.test.ts` (16), `combatSystemSeam.test.ts` (+2),
+`combatEngine.test.ts` (+2 for `spawnCombatShips`' new `ship2Class`/
+`missileAmmo` fields), plus the Task-A-adjacent additions mentioned there.*
 
 1. `shared/combat.ts`: `CombatState` gains `ship2?: { player: Ship2Profile;
    surpriseMod?: 1 | -1 }`; `CombatEnemy` gains optional `ship2Class?:
@@ -203,7 +245,26 @@ row + the class table, and FREEZE it into `combat.ship2.player`:
    fight resolves via the real system while a stored `"classic"` SHIP fight
    still resolves via `resolveShipRound` (extend `combatSystemSeam.test.ts`).
 
-## Task C — protocol + chips + the allocation panel
+## Task C — protocol + chips + the allocation panel ✅ SHIPPED
+
+*Implementation decisions: `CombatSystem` did NOT gain a `chips()` interface
+method as sketched — `combatChipsFor()` dispatches on `combat.system` directly
+in `shared/combat.ts` instead, deliberately bypassing the `llm/` registry
+(trap 4: this module has zero `llm/` import, since `PlayClient.tsx` rebuilds
+chips client-side on reload — an interface method on the `llm/`-side
+`CombatSystem` would need a parallel shared-side dispatcher anyway, so the
+extra interface surface would be dead weight). The route needed no new body
+field, confirmed by inspection rather than a dedicated round-trip test (the
+existing `combatAction` parse path is generic over `CombatActionSpec`, which
+already carries `alloc`). 8 new tests (4 turnPlan `"allocate"` accept/reject/
+cap/range, 4 `combat.test.ts` dispatcher-by-system + a defensive classic
+fallback when `combat.ship2` is unexpectedly absent). Verified: dev server
+boots clean, homepage loads with zero console errors — a full ship2-fight
+click-through wasn't run (reaching one needs a live campaign + a ship
+encounter, out of proportion to script safely here); the round-resolution
+math itself is covered exhaustively by Tasks A/B's 102 unit/integration
+tests, which is where this project's combat work has consistently drawn its
+confidence from rather than manual browser sessions.*
 
 1. `shared/turnPlan.ts`: `CombatActionSpec.type` gains `"allocate"`, plus
    optional `alloc` (zod mirror of `Allocation`, all fields bounded:

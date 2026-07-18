@@ -10,7 +10,9 @@ engine, character creation (+ signature skills, story prompt), structured JSON
 narrator turns, Supabase persistence + durable sessions + optimistic concurrency,
 Google auth, admin panel + **admin campaign editor**, per-user budgets, multi-turn
 combat both scales + net-worth scaling + **squad orders** (order every standing
-crew/ally member) + the **M5 CombatSystem seam**, bounded-accuracy leveling, verb actions,
+crew/ally member) + the **M5 CombatSystem seam** + the **ship2 power/dice
+combat core** (Eclipse-style allocation, dice-profile mounts, escalating heat),
+bounded-accuracy leveling, verb actions,
 items COMPLETE (catalog/slots/shops/cargo/dock repair+debt), scene-memory
 continuity v1 + the scene analyst + the **facts ledger** (grounding/pinning/
 correction loop), travel (routes/risk/arrival richness + engine-owned location
@@ -28,7 +30,7 @@ npm install
 cp .env.example .env.local     # DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY; + Supabase vars for auth
 npm run dev                    # http://localhost:3000
 npx tsc --noEmit               # fast typecheck (never touches .next)
-npx vitest run                 # ~877 model-free tests, no keys needed
+npx vitest run                 # ~961 model-free tests, no keys needed
 ```
 
 - **Keyless mode** (no Supabase vars): no login, stub dev admin, nothing persists.
@@ -40,18 +42,16 @@ npx vitest run                 # ~877 model-free tests, no keys needed
 ## What's left to build (rough order)
 
 0. **Space-campaign depth** (owner priority 2026-07-18, from playtest
-   feedback): **HANDOFF_COMBAT_V2_1.md fully SHIPPED** (2026-07-18) — the M2
-   lexicon seed (`shared/lexicon.ts`), the M5 CombatSystem seam (extraction,
-   not speculation — `llm/combat/types.ts`, `resolveCombatRound` dispatches
-   through a `SYSTEMS` registry), and squad orders (order every standing
-   crew/ally member to attack a chosen target or self-heal; an un-ordered
-   member keeps auto-acting — COMBAT_V2.md Part A). LEFT:
-   - **COMBAT_V2.md Part B** — Eclipse-style ship combat as the "ship2"
-     `CombatSystem`. **Specced: `HANDOFF_COMBAT_V2_2.md` (READY TO
-     IMPLEMENT)** — power allocation + dice-profile mounts + simultaneous
-     reveal + heat, pack-catalog statlines, allocation panel + preset chips,
-     no Ship schema change. Customization slots (slice 3) and charge banking /
-     called shots (slice 4) stay behind it.
+   feedback): **HANDOFF_COMBAT_V2_1.md** (lexicon seed, the M5 CombatSystem
+   seam, squad orders) **and HANDOFF_COMBAT_V2_2.md** (the ship2 power/dice
+   core) are both fully SHIPPED (2026-07-18) — see COMBAT_V2.md Parts A+B for
+   the shipped-notes. `startShipCombat` now always produces a ship2 fight
+   (power allocation, all four dice-profile mounts, shields/evasion/armor
+   counterplay, simultaneous-reveal rounds, point defense, escalating heat,
+   an allocation panel + 4 preset chips); the old d20 ship engine survives
+   only for a fight already mid-flight at deploy. LEFT:
+   - **COMBAT_V2.md Part B slices 3-4** — customization (slots + market +
+     dock install), charge banking, called shots. Not yet specced as a handoff.
    - **STORY.md** — the authored campaign layer: a 3-act main questline as
      pack data (engine-owned triggers/objectives/beats/choice-facts), authored
      sidequests placed beside the procedural board, rich pack-cast backstories
@@ -59,15 +59,18 @@ npx vitest run                 # ~877 model-free tests, no keys needed
      chapter showcasing both combat systems with a temporary ally.
    - Squad orders' own follow-up: aim/cover/switch + role specials
      (engineer overcharge etc.) for crew, deferred this slice (COMBAT_V2.md's
-     shipped-note).
+     shipped-note). Ship2's crew passives are similarly all-always-on, not
+     yet clickable station assignments.
 1. **Modularity roadmap** (core engine, swappable worlds): **M1 content
    boundary** and **M5 combat-system interface** SHIPPED (M1: 2026-07-18,
    `HANDOFF_MODULARITY_M1.md` — catalogs/names/flavor pools/creation data/
    openings all moved into the pack, `content/` is now a pure facade,
    canonLint + pack.test.ts extended to enforce it. M5: 2026-07-18,
-   `HANDOFF_COMBAT_V2_1.md` Task B — see item 0). LEFT: M2 lexicon (tenday/¢
-   words → pack; a seed facade exists, old call sites unmigrated), M3 prompt
-   voice split, M4 runtime pack selection (`WorldContent` threading +
+   `HANDOFF_COMBAT_V2_1.md` Task B extracted the seam; `HANDOFF_COMBAT_V2_2.md`
+   proved it by shipping ship2 as a REAL second `CombatSystem` — see item 0).
+   LEFT: M2 lexicon (tenday/¢ words → pack; a seed facade exists, old call
+   sites unmigrated — ship2's new lines already use it), M3 prompt voice
+   split, M4 runtime pack selection (`WorldContent` threading +
    `universes.pack_id`), and the second test-pack in CI as the modularity
    proof.
 2. **Shared-world runtime** (`MULTIPLAYER.md`): dossiers (§1), cross-campaign

@@ -86,9 +86,14 @@ counterplay differ:
 | Missile rack | 4d6, hits 4+, 1 dmg, ammo-limited | burst; point-defense rolls to shoot them down |
 
 Defense: **shields** absorb per power allocated (recharge = allocation);
-**evasion** raises every incoming hit threshold by +1 per engine power (cap).
-Armor (hull plating) reduces damage per hit. Rock-paper-scissors: spray beats
-shields, punch beats armor, evasion beats spray.
+**evasion** raises every incoming hit threshold by +1 per engine power (cap
++2) — but a **natural 6 always hits**, so nothing is ever immune, just harder
+to land. Armor (hull plating) reduces damage per hit. Rock-paper-scissors
+(corrected at implementation — see the shipped-note below): **armor beats
+spray** (autocannon's 1 dmg/hit zeroes out against even 1 armor), **shields
+beat punch** (a shield point's flat absorption eats a single railgun slug
+whole), **evasion beats precision** (a raised threshold hurts a narrow
+hit-window like the beam lance far more than a spray that only needs 6s).
 
 ### Digital-native extensions (v1 scope: first three)
 
@@ -102,6 +107,22 @@ shields, punch beats armor, evasion beats spray.
   end; no stalemates).
 - *(Later: boarding actions bridging to ground squad combat; environmental
   hazards from the location tier; enemy ship personalities per faction.)*
+
+**✅ SHIPPED (2026-07-18, HANDOFF_COMBAT_V2_2.md — the ship2 core):** power
+allocation, all four dice-profile mounts, shields/evasion/armor counterplay
+(corrected triangle above), simultaneous-reveal rounds, point defense vs
+missiles, and escalating heat. `startShipCombat` now ALWAYS produces a ship2
+fight; the old d20 `resolveShipRound` survives only for a fight already
+mid-flight at deploy (its stored `system: "classic"` routes it there). Crew
+passives are wired as PASSIVE boosts (engineer +1 reactor, gunner +1 die/round,
+pilot +1 engine cap) — clickable station assignment (ordering WHICH system a
+crew member boosts, per this section's own "station assignments" idea) is not
+built; today every standing crew member always contributes every passive at
+once. **Not shipped, still slice 3/4:** customization (slots + market + dock
+install), charge banking, called shots. The ship's derived ship2 profile is
+NOT persisted on the `Ship` row itself — no migration — it's computed at fight
+start from the existing fields (shipClass/weapons/hasShield/damageReduction/
+evasiveAcBonus) and frozen into `combat.ship2` for that fight's duration.
 
 ### Customization (the Eclipse joy)
 
@@ -133,11 +154,10 @@ built so either strategy can win, and the ally comments on the choice).
 
 ## Build order (each slice = one handoff)
 
-1. **Squad orders (ground)** — extends the existing loop; UI chips per member;
-   auto-act fallback keeps it shippable mid-way.
-2. **CombatSystem seam + ship v2 core** (power, profiles, shields/evasion/
-   armor, heat) behind the ship scale — the big slice; pack-catalog numbers.
-3. **Customization** (slots + market + dock install).
+1. ✅ **Squad orders (ground)** — SHIPPED (HANDOFF_COMBAT_V2_1.md).
+2. ✅ **CombatSystem seam + ship v2 core** (power, profiles, shields/evasion/
+   armor, heat) behind the ship scale — SHIPPED (HANDOFF_COMBAT_V2_2.md).
+3. **Customization** (slots + market + dock install). Next up.
 4. **Charge banking + called shots** (small, after the core proves fun).
 5. **Prologue integration** (with STORY.md).
 
