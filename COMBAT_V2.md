@@ -117,12 +117,16 @@ built so either strategy can win, and the ally comments on the choice).
 4. **Charge banking + called shots** (small, after the core proves fun).
 5. **Prologue integration** (with STORY.md).
 
-## Open decisions (owner)
+## Decisions (RESOLVED 2026-07-18 — owner approved recommendations)
 
-- Lethality of ship loss: today hull 0 = adrift, not death. Keep (recommended)?
-- Simultaneous vs alternating rounds (recommended: simultaneous reveal —
-  both sides' allocations resolve together; reads better in prose and makes
-  prediction the skill).
-- Whether GROUND combat also moves to dice pools eventually (recommended: no —
-  d20 + verbs is working and legible; the two scales FEELING different is a
-  feature).
+- **Ship loss stays non-lethal**: hull 0 = adrift, not death.
+- **Simultaneous reveal**: both sides' allocations resolve together each
+  round — prediction is the skill; reads better in prose.
+- **Ground combat stays d20 + verbs**: the two scales FEELING different is a
+  feature. Dice pools are ship-only.
+- **Sequencing** (owner q: "architecture first, esp M5?"): M5 is NOT separate
+  prior work — it's the OPENING SLICE of this effort, scoped as an extraction
+  shaped by its two now-designed consumers (ground-with-squad + ship-power),
+  never a speculative abstraction. See HANDOFF_COMBAT_V2_1.md. The one true
+  pre-step: seed the M2 lexicon facade so new combat code doesn't deepen the
+  wording debt. M3/M4 are NOT blockers and stay deferred.

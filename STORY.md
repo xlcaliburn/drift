@@ -94,12 +94,11 @@ chapter that showcases both combat systems (COMBAT_V2.md):
    writing session: 9 chapters, ~12 sidequests, cast depth). Content, not code.
 4. **Prologue** — after COMBAT_V2 lands (it demos those systems).
 
-## Open decisions (owner)
+## Decisions (RESOLVED 2026-07-18 — owner approved recommendations)
 
-- Act/chapter count (default: 3 acts × 3 chapters) and whether the questline
-  is faction-specific in Act 1 (recommended: shared spine, faction-flavored
-  openings converge at Act 1's end) vs fully shared.
-- How hard choice points diverge (recommended: flavor + allegiance + one
-  branched finale, not parallel chapter trees).
-- Whether main-quest deaths of storyline cast are allowed mid-season
-  (recommended: yes — the fate system records it; beats carry a fallback).
+- **3 acts × 3 chapters; shared spine** — faction-flavored openings converge
+  at Act 1's end.
+- **Branching = flavor + allegiance + one branched finale**, recorded as
+  facts; never parallel chapter trees.
+- **Storyline cast CAN die mid-season** — the fate system records it; every
+  beat referencing a mortal NPC carries an authored fallback variant.
