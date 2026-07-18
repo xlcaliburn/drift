@@ -93,6 +93,27 @@ export const PackExamples = z.object({
 });
 export type PackExamples = z.infer<typeof PackExamples>;
 
+/** ⚠ ORDER-SENSITIVE (Modularity M1 Task C — see HANDOFF_MODULARITY_M1.md's
+ *  named trap): `shared/npcFlavor.ts` hashes an NPC's id into each pool by
+ *  INDEX for a stable, engine-owned personality/voice/body/backstory — many
+ *  call sites are RENDER-TIME FALLBACKS (world.ts recomputes for any seed NPC
+ *  without a persisted value, every turn), so reordering or resizing a pool
+ *  here silently changes what every live campaign displays for that NPC.
+ *  A world reboot may swap these pools' CONTENT freely; never their arity. */
+export const PackNpcFlavor = z.object({
+  demeanors: z.array(z.string().min(1)).min(6),
+  tells: z.array(z.string().min(1)).min(6),
+  drives: z.array(z.string().min(1)).min(6),
+  hooks: z.array(z.string().min(1)).min(6),
+  builds: z.array(z.string().min(1)).min(6),
+  faces: z.array(z.string().min(1)).min(6),
+  marks: z.array(z.string().min(1)).min(6),
+  ages: z.array(z.string().min(1)).min(6),
+  voices: z.array(z.string().min(1)).min(6),
+  origins: z.array(z.string().min(1)).min(6),
+});
+export type PackNpcFlavor = z.infer<typeof PackNpcFlavor>;
+
 /** Mechanical tuning catalogs (Modularity M1) — weapon/item/enemy-tier/ship-
  *  class/crew/economy tables. The pack owns the DATA (values), engine/ owns the
  *  MATH over it (a world reboot can retune numbers/flavor, never the shape the
@@ -127,6 +148,7 @@ export const ContentPack = z.object({
   cast: z.array(PackNpc),
   names: PackNames,
   examples: PackExamples,
+  npcFlavor: PackNpcFlavor,
   /** Job-generation flavor pools (QUESTS.md `fill()` placeholders). */
   jobFlavor: z.object({
     cargo: z.array(z.string()).min(3),

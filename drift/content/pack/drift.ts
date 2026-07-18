@@ -12,6 +12,9 @@ import itemsJson from "./drift/items.json";
 // is now a pure facade re-exporting these + its mechanics (suggestName/sample).
 import { driftNames } from "./drift/names";
 import { driftExamples } from "./drift/examples";
+// NPC flavor pools (Modularity M1 Task C) — shared/npcFlavor.ts's generate*
+// functions now read from here; ⚠ order-sensitive, see that file's pools.
+import { driftNpcFlavor } from "./drift/npcFlavor";
 
 /**
  * THE DRIFT — content pack v0. This is the CURRENT live world, ported verbatim
@@ -237,6 +240,7 @@ export const driftPack: ContentPack = {
 
   names: driftNames,
   examples: driftExamples,
+  npcFlavor: driftNpcFlavor,
 
   catalogs: {
     economy: economyJson,
