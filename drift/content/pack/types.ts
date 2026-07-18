@@ -269,7 +269,11 @@ export type PackShip2Mount = z.infer<typeof PackShip2Mount>;
  *  (shared/ship2.ts's `deriveShip2Profile`) and enemy spawns. `mounts` is
  *  priority-ordered (the enemy's "guns" policy token funds the first unfunded
  *  one); `policy` is the enemy's deterministic allocation weights, resolved
- *  token-by-token until the reactor is spent or the list is exhausted. */
+ *  token-by-token until the reactor is spent or the list is exhausted.
+ *  `mountSlots`/`systemSlots` (HANDOFF_COMBAT_V2_3.md) are the customization
+ *  caps — deliberately allowed to exceed what the reactor can fire in one
+ *  round (slots are the collection you choose from; power is the per-round
+ *  constraint). */
 export const PackShip2Class = z.object({
   reactor: z.number().int().min(1),
   engineCap: z.number().int().min(0),
@@ -277,12 +281,49 @@ export const PackShip2Class = z.object({
   armor: z.number().int().min(0),
   mounts: z.array(z.string().min(1)).min(1),
   policy: z.array(z.enum(["guns", "shields", "engines"])).min(1),
+  mountSlots: z.number().int().min(1),
+  systemSlots: z.number().int().min(1),
 });
 export type PackShip2Class = z.infer<typeof PackShip2Class>;
+
+/** A shipyard mount item (HANDOFF_COMBAT_V2_3.md Task B) — buying it appends
+ *  a `weapons[]` entry with this type/damage; `shared/ship2.ts`'s
+ *  WEAPON_TYPE_TO_MOUNT then derives the ship2 mount from `type` alone, same
+ *  as any hand-authored weapon. */
+export const PackShip2MountItem = z.object({
+  name: z.string().min(1),
+  type: z.enum(["kinetic", "energy", "ion", "missile"]),
+  damage: z.string().min(1),
+  /** Starting ammo for an ammo-limited type (missile). */
+  ammo: z.number().int().min(1).optional(),
+  price: z.number().int().min(1),
+  tier: z.enum(["T1", "T2", "T3"]),
+});
+export type PackShip2MountItem = z.infer<typeof PackShip2MountItem>;
+
+/** A shipyard system item — buying it SETS the named existing `Ship` field
+ *  (no schema change: these are all columns the row already has).
+ *  `numericValue` only matters for the two numeric fields; the three
+ *  boolean fields always set to `true` on purchase. */
+export const PackShip2SystemItem = z.object({
+  name: z.string().min(1),
+  field: z.enum(["damageReduction", "evasiveAcBonus", "hasShield", "hasPointDefense", "burstDriveReady"]),
+  numericValue: z.number().int().min(1).optional(),
+  price: z.number().int().min(1),
+  tier: z.enum(["T1", "T2", "T3"]),
+});
+export type PackShip2SystemItem = z.infer<typeof PackShip2SystemItem>;
+
+export const PackShip2Outfitting = z.object({
+  mountItems: z.record(z.string(), PackShip2MountItem),
+  systemItems: z.record(z.string(), PackShip2SystemItem),
+});
+export type PackShip2Outfitting = z.infer<typeof PackShip2Outfitting>;
 
 export const PackShip2 = z.object({
   mounts: z.record(z.string(), PackShip2Mount),
   classes: z.record(z.string(), PackShip2Class),
+  outfitting: PackShip2Outfitting,
 });
 export type PackShip2 = z.infer<typeof PackShip2>;
 
@@ -371,10 +412,27 @@ export function validatePack(pack: ContentPack): string[] {
     for (const mountId of cls.mounts) {
       if (!pack.ship2.mounts[mountId]) problems.push(`ship2.classes.${classId}: unknown mount ${mountId}`);
     }
+    // HANDOFF_COMBAT_V2_3.md: a class's own default mounts must fit its slots
+    // — the shipyard would otherwise "materialize" more mounts than the ship
+    // has room for the moment it writes them into weapons[].
+    if (cls.mountSlots < cls.mounts.length) {
+      problems.push(`ship2.classes.${classId}: mountSlots (${cls.mountSlots}) below its default mounts (${cls.mounts.length})`);
+    }
   }
   const knownShipClasses = (pack.catalogs.shipClasses as { classes?: Record<string, unknown> }).classes ?? {};
   for (const classId of Object.keys(knownShipClasses)) {
     if (!pack.ship2.classes[classId]) problems.push(`ship2.classes: missing a ship2 statline for shipClass ${classId}`);
+  }
+  // HANDOFF_COMBAT_V2_3.md: every shipyard mount item's weapon TYPE must
+  // resolve to a real mount profile (mirrors shared/ship2.ts's
+  // WEAPON_TYPE_TO_MOUNT — kept as a small local map here since the pack
+  // schema itself doesn't encode that correspondence).
+  const TYPE_TO_MOUNT: Record<string, string> = { kinetic: "railgun", energy: "beamLance", ion: "autocannon", missile: "missileRack" };
+  for (const [itemId, item] of Object.entries(pack.ship2.outfitting.mountItems)) {
+    const mountId = TYPE_TO_MOUNT[item.type];
+    if (!mountId || !pack.ship2.mounts[mountId]) {
+      problems.push(`ship2.outfitting.mountItems.${itemId}: type ${item.type} has no matching mount profile`);
+    }
   }
   for (const fid of Object.keys(pack.creation.patrons)) {
     if (!facIds.has(fid)) problems.push(`creation.patrons: unknown faction ${fid}`);

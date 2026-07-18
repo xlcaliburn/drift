@@ -1,6 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { deriveShip2Profile, deriveEnemyShip2Profile, ship2ClassPolicy, validateAllocation, ship2Presets, type Ship2Profile } from "./ship2";
-import type { Character, Ship } from "./schemas";
+import {
+  deriveShip2Profile,
+  deriveEnemyShip2Profile,
+  ship2ClassPolicy,
+  validateAllocation,
+  ship2Presets,
+  shipMountSlots,
+  shipSystemSlots,
+  materializeStockWeapons,
+  shipyardStock,
+  type Ship2Profile,
+} from "./ship2";
+import type { Character, Ship, CampaignState } from "./schemas";
 
 function ship(over: Partial<Ship> = {}): Ship {
   return {
@@ -270,5 +281,135 @@ describe("ship2Presets", () => {
     expect(chips.some((c) => c.label.startsWith("Alpha strike"))).toBe(false);
     expect(chips.some((c) => c.label.startsWith("Run silent"))).toBe(true);
     expect(chips.at(-1)!.label).toMatch(/run|away/i);
+  });
+});
+
+describe("shipMountSlots (HANDOFF_COMBAT_V2_3.md Task B)", () => {
+  it("used = the class default count when weapons[] is still empty", () => {
+    expect(shipMountSlots(ship())).toEqual({ used: 1, cap: 2 }); // hauler: 1 default mount, mountSlots 2
+  });
+
+  it("used = the real weapons[] count once materialized", () => {
+    const s = ship({
+      weapons: [
+        { name: "A", type: "kinetic", damage: "2d6" },
+        { name: "B", type: "ion", damage: "1d6" },
+      ],
+    });
+    expect(shipMountSlots(s)).toEqual({ used: 2, cap: 2 });
+  });
+
+  it("cap scales with shipClass", () => {
+    expect(shipMountSlots(ship({ shipClass: "scout" })).cap).toBe(1);
+    expect(shipMountSlots(ship({ shipClass: "corvette" })).cap).toBe(4);
+  });
+});
+
+describe("shipSystemSlots (HANDOFF_COMBAT_V2_3.md Task B)", () => {
+  it("counts each fitted field once", () => {
+    const s = ship({ damageReduction: 1, hasShield: true });
+    expect(shipSystemSlots(s)).toEqual({ used: 2, cap: 3 }); // hauler systemSlots 3
+  });
+
+  it("a SPENT burst drive (ready: false) does NOT count as fitted — the one-shot frees its slot", () => {
+    const armed = ship({ burstDriveReady: true });
+    const spent = ship({ burstDriveReady: false });
+    expect(shipSystemSlots(armed).used).toBe(1);
+    expect(shipSystemSlots(spent).used).toBe(0);
+  });
+
+  it("a bare ship (no systems fitted) uses 0", () => {
+    expect(shipSystemSlots(ship()).used).toBe(0);
+  });
+});
+
+describe("materializeStockWeapons (HANDOFF_COMBAT_V2_3.md Task B)", () => {
+  it("is a no-op (idempotent) when weapons[] already has entries", () => {
+    const s = ship({ weapons: [{ name: "Old Betsy", type: "kinetic", damage: "1d8" }] });
+    expect(materializeStockWeapons(s)).toBe(s); // same reference — true no-op
+  });
+
+  it("writes the class's default mounts as real weapons[] entries", () => {
+    const s = ship({ shipClass: "corvette" }); // default mounts: railgun, autocannon, missileRack
+    const out = materializeStockWeapons(s);
+    expect(out.weapons).toHaveLength(3);
+    expect(out.weapons.map((w) => w.type)).toEqual(["kinetic", "ion", "missile"]);
+    expect(out.weapons[2].ammo).toBeGreaterThan(0); // the missile rack gets starting ammo
+  });
+
+  it("materializing then deriving the ship2 profile is unchanged from the virtual default", () => {
+    const s = ship({ shipClass: "hauler" });
+    const before = deriveShip2Profile(s, []);
+    const after = deriveShip2Profile(materializeStockWeapons(s), []);
+    expect(after.mounts.map((m) => m.id)).toEqual(before.mounts.map((m) => m.id));
+  });
+});
+
+describe("shipyardStock (HANDOFF_COMBAT_V2_3.md Task B)", () => {
+  function state(over: { ship?: Ship; tags?: string[]; rep?: number } = {}): CampaignState {
+    return {
+      campaign: { id: "c", universeId: "u", currentLocationId: "loc-dock", tendaysElapsed: 0 },
+      universe: { id: "u", name: "U" },
+      characters: [],
+      ship: over.ship ?? ship(),
+      factions: [{ id: "f-dock", name: "Dockers", defaultRep: 0, alignment: "neutral", homeLocationId: "loc-dock", color: "#fff" }],
+      factionRep: [{ factionId: "f-dock", rep: over.rep ?? 0, standing: "neutral" }],
+      // Always keep the "dock" tag alongside any market-tier tag so localRep
+      // still matches the f-dock faction (tag/id substring match) — a
+      // caller-supplied tags list otherwise loses the rep hookup entirely.
+      locations: [{ id: "loc-dock", universeId: "u", name: "Dock", tags: [...(over.tags ?? []), "dock"] }],
+      clocks: [],
+      threads: [],
+      contracts: [],
+      npcs: [],
+    } as unknown as CampaignState;
+  }
+
+  it("empty when there's no ship", () => {
+    expect(shipyardStock({ ...state(), ship: undefined } as unknown as CampaignState)).toEqual({ mounts: [], systems: [] });
+  });
+
+  it("empty when the current location has no market (hazard/hidden)", () => {
+    expect(shipyardStock(state({ tags: ["hazard"] }))).toEqual({ mounts: [], systems: [] });
+  });
+
+  it("T3 items are unbuyable at a T1 (backwater) market", () => {
+    const stock = shipyardStock(state({ tags: [] })); // no commerce/blackmarket tag → T1
+    const missileRack = stock.mounts.find((m) => m.id === "missileRack")!; // T3 item
+    expect(missileRack.canBuy).toBe(false);
+    expect(missileRack.reason).toMatch(/above/);
+    const kineticCannon = stock.mounts.find((m) => m.id === "kineticCannon")!; // T1 item
+    expect(kineticCannon.canBuy).toBe(true);
+  });
+
+  it("a full mount slot blocks a buy with a clear reason", () => {
+    const full = ship({
+      shipClass: "scout", // mountSlots 1
+      weapons: [{ name: "Gun", type: "ion", damage: "1d6" }],
+    });
+    const stock = shipyardStock(state({ ship: full, tags: ["blackmarket"] })); // T3 market, tier is not the blocker
+    expect(stock.mounts.every((m) => !m.canBuy && m.reason === "no free mount slot")).toBe(true);
+  });
+
+  it("an already-fitted system can't be bought again", () => {
+    const s = ship({ hasShield: true });
+    const stock = shipyardStock(state({ ship: s, tags: ["blackmarket"] }));
+    const shieldEmitter = stock.systems.find((sys) => sys.id === "shieldEmitter")!;
+    expect(shieldEmitter.canBuy).toBe(false);
+    expect(shieldEmitter.reason).toBe("already fitted");
+  });
+
+  it("a full system slot blocks a not-yet-fitted system", () => {
+    const full = ship({ shipClass: "scout", damageReduction: 1, hasShield: true }); // systemSlots 2, both used
+    const stock = shipyardStock(state({ ship: full, tags: ["blackmarket"] }));
+    const pointDefense = stock.systems.find((sys) => sys.id === "pointDefense")!;
+    expect(pointDefense.canBuy).toBe(false);
+    expect(pointDefense.reason).toBe("no free system slot");
+  });
+
+  it("positive rep lowers the quoted price", () => {
+    const cheap = shipyardStock(state({ tags: ["blackmarket"], rep: 5 }));
+    const flat = shipyardStock(state({ tags: ["blackmarket"], rep: 0 }));
+    expect(cheap.mounts[0].price).toBeLessThan(flat.mounts[0].price);
   });
 });

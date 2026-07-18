@@ -14,7 +14,15 @@ import type { PackShip2 } from "../types";
  * derived profile AND enemy spawns; `policy` is the enemy's deterministic
  * allocation weights, resolved token-by-token in order ("guns" = fund the
  * next unfunded owned mount; "shields"/"engines" = +1 to that pool) until
- * the reactor is spent or every token is exhausted.
+ * the reactor is spent or every token is exhausted. `mountSlots`/
+ * `systemSlots` (HANDOFF_COMBAT_V2_3.md) are the customization caps —
+ * deliberately allowed to exceed one round's reactor output.
+ *
+ * `outfitting` (HANDOFF_COMBAT_V2_3.md Task B) is the shipyard catalog:
+ * `mountItems` install as a new `weapons[]` entry (its `type` derives the
+ * ship2 mount the same way any hand-authored weapon does — no separate
+ * mapping to keep in sync); `systemItems` SET an existing `Ship` column
+ * (no schema change — the field it writes is a real column already).
  *
  * A TYPED `.ts` module (not raw JSON, unlike weapons/shipClasses/etc.) so
  * `policy` narrows to the real literal union instead of `string[]` — this
@@ -29,13 +37,41 @@ export const driftShip2: PackShip2 = {
     missileRack: { name: "Missile rack", dice: 4, hitOn: 4, dmgPerHit: 1, power: 2, ammoLimited: true, pdHitOn: 5 },
   },
   classes: {
-    scout: { reactor: 3, engineCap: 3, shieldCap: 0, armor: 0, mounts: ["autocannon"], policy: ["engines", "guns"] },
-    fighter: { reactor: 4, engineCap: 2, shieldCap: 0, armor: 0, mounts: ["railgun", "autocannon"], policy: ["guns", "guns", "engines"] },
-    hauler: { reactor: 3, engineCap: 1, shieldCap: 1, armor: 1, mounts: ["railgun"], policy: ["guns", "shields"] },
-    gunship: { reactor: 5, engineCap: 1, shieldCap: 2, armor: 0, mounts: ["railgun", "beamLance"], policy: ["guns", "guns", "shields"] },
+    scout: {
+      reactor: 3, engineCap: 3, shieldCap: 0, armor: 0, mounts: ["autocannon"], policy: ["engines", "guns"],
+      mountSlots: 1, systemSlots: 2,
+    },
+    fighter: {
+      reactor: 4, engineCap: 2, shieldCap: 0, armor: 0, mounts: ["railgun", "autocannon"], policy: ["guns", "guns", "engines"],
+      mountSlots: 2, systemSlots: 2,
+    },
+    hauler: {
+      reactor: 3, engineCap: 1, shieldCap: 1, armor: 1, mounts: ["railgun"], policy: ["guns", "shields"],
+      mountSlots: 2, systemSlots: 3,
+    },
+    gunship: {
+      reactor: 5, engineCap: 1, shieldCap: 2, armor: 0, mounts: ["railgun", "beamLance"], policy: ["guns", "guns", "shields"],
+      mountSlots: 3, systemSlots: 3,
+    },
     corvette: {
       reactor: 6, engineCap: 1, shieldCap: 2, armor: 1,
       mounts: ["railgun", "autocannon", "missileRack"], policy: ["guns", "guns", "guns", "shields"],
+      mountSlots: 4, systemSlots: 4,
+    },
+  },
+  outfitting: {
+    mountItems: {
+      kineticCannon: { name: "Kinetic cannon", type: "kinetic", damage: "2d6", price: 250, tier: "T1" },
+      ionBattery: { name: "Ion battery", type: "ion", damage: "1d6", price: 400, tier: "T2" },
+      beamLance: { name: "Beam lance", type: "energy", damage: "2d6", price: 450, tier: "T2" },
+      missileRack: { name: "Missile rack", type: "missile", damage: "3d8", ammo: 4, price: 550, tier: "T3" },
+    },
+    systemItems: {
+      hullPlating: { name: "Hull plating", field: "damageReduction", numericValue: 1, price: 350, tier: "T1" },
+      vectorThrusters: { name: "Vector thrusters", field: "evasiveAcBonus", numericValue: 2, price: 300, tier: "T2" },
+      shieldEmitter: { name: "Shield emitter", field: "hasShield", price: 400, tier: "T2" },
+      pointDefense: { name: "Point-defense grid", field: "hasPointDefense", price: 450, tier: "T2" },
+      burstDrive: { name: "Burst drive", field: "burstDriveReady", price: 500, tier: "T3" },
     },
   },
 };

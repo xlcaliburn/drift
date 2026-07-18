@@ -1,7 +1,8 @@
-import type { Character, Ship } from "./schemas";
+import type { Character, Ship, CampaignState } from "./schemas";
 import type { UsableConsumable } from "./items";
 import type { CombatAction } from "./combat";
 import { ship2 as ship2Catalog } from "@/content";
+import { marketTierFor, repPriceFactor, localRep } from "@/engine/market";
 
 /**
  * Client-safe ship2 types + pure helpers (COMBAT_V2.md Part B, HANDOFF_COMBAT_V2_2.md
@@ -292,4 +293,144 @@ export function ship2Presets(
   }
   chips.push({ label: burstReady ? "Burst-drive away" : "Break off and run", combatAction: { type: "flee" } });
   return chips;
+}
+
+// ── Customization (HANDOFF_COMBAT_V2_3.md Task B) — slot accounting, stock
+// materialization, and the shipyard's shared truth (tier/slot/already-fitted).
+// No Ship schema change anywhere below: every helper reads/writes columns
+// the row already has (weapons[] jsonb + the system booleans/ints).
+
+type MountItemEntry = { name: string; type: string; damage: string; ammo?: number; price: number; tier: string };
+type SystemItemEntry = { name: string; field: string; numericValue?: number; price: number; tier: string };
+type OutfittingCatalog = { mountItems: Record<string, MountItemEntry>; systemItems: Record<string, SystemItemEntry> };
+
+/** The reverse of WEAPON_TYPE_TO_MOUNT — a mount's catalog id back to the
+ *  `ShipWeapon.type` that derives it, for materializing a virtual
+ *  class-default mount into a real `weapons[]` entry. */
+const MOUNT_TO_WEAPON_TYPE: Record<string, string> = {
+  railgun: "kinetic",
+  beamLance: "energy",
+  autocannon: "ion",
+  missileRack: "missile",
+};
+
+/** `{ used, cap }` for this ship's mount slots — used = the real weapons[]
+ *  count, or the class's default mount count when weapons[] is still empty
+ *  (a fresh ship hasn't materialized its stock loadout yet, but it's still
+ *  "using" those slots). */
+export function shipMountSlots(ship: Ship): { used: number; cap: number } {
+  const classes = ship2Catalog.classes as Record<string, ClassCatalogEntry & { mountSlots: number }>;
+  const cls = classes[ship.shipClass];
+  const used = ship.weapons.length > 0 ? ship.weapons.length : (cls?.mounts.length ?? 0);
+  return { used, cap: cls?.mountSlots ?? 1 };
+}
+
+/** Which of the five system fields is currently fitted. */
+function isSystemFitted(ship: Ship, field: string): boolean {
+  switch (field) {
+    case "damageReduction":
+      return ship.damageReduction > 0;
+    case "evasiveAcBonus":
+      return ship.evasiveAcBonus > 0;
+    case "hasShield":
+      return ship.hasShield;
+    case "hasPointDefense":
+      return ship.hasPointDefense;
+    case "burstDriveReady":
+      return ship.burstDriveReady;
+    default:
+      return false;
+  }
+}
+
+/** `{ used, cap }` for this ship's system slots. A SPENT burst drive
+ *  (`burstDriveReady: false`) does NOT count as fitted — using the one-shot
+ *  frees the slot; re-buying re-arms it (HANDOFF_COMBAT_V2_3.md's rule). */
+export function shipSystemSlots(ship: Ship): { used: number; cap: number } {
+  const classes = ship2Catalog.classes as Record<string, ClassCatalogEntry & { systemSlots: number }>;
+  const cls = classes[ship.shipClass];
+  const fields = ["damageReduction", "evasiveAcBonus", "hasShield", "hasPointDefense", "burstDriveReady"];
+  const used = fields.filter((f) => isSystemFitted(ship, f)).length;
+  return { used, cap: cls?.systemSlots ?? 1 };
+}
+
+/**
+ * A ship with an EMPTY `weapons[]` derives its class-default mounts today
+ * (deriveShip2Profile's fallback branch) — but nothing has actually been
+ * WRITTEN. The first shipyard install on such a ship must materialize those
+ * defaults into real `weapons[]` entries first, so buying a new mount can
+ * never silently delete the stock guns the player has been firing. Idempotent
+ * (a ship with any weapons already is returned unchanged) and pure.
+ */
+export function materializeStockWeapons(ship: Ship): Ship {
+  if (ship.weapons.length > 0) return ship;
+  const classes = ship2Catalog.classes as Record<string, ClassCatalogEntry>;
+  const cls = classes[ship.shipClass];
+  if (!cls) return ship;
+  const outfitting = ship2Catalog.outfitting as OutfittingCatalog;
+  const itemByType = new Map(Object.values(outfitting.mountItems).map((item) => [item.type, item]));
+  const weapons = cls.mounts.map((mountId) => {
+    const type = MOUNT_TO_WEAPON_TYPE[mountId] ?? "kinetic";
+    const item = itemByType.get(type);
+    return {
+      name: item?.name ?? mountId,
+      type: type as "kinetic" | "energy" | "ion" | "missile",
+      damage: item?.damage ?? "2d6",
+      ammo: mountId === "missileRack" ? (item?.ammo ?? 4) : undefined,
+    };
+  });
+  return { ...ship, weapons };
+}
+
+export interface ShipyardEntry {
+  id: string;
+  name: string;
+  price: number;
+  canBuy: boolean;
+  reason?: string;
+}
+
+export interface ShipyardStock {
+  mounts: ShipyardEntry[];
+  systems: ShipyardEntry[];
+}
+
+const MARKET_TIER_ORDER: Record<string, number> = { T1: 1, T2: 2, T3: 3 };
+
+/**
+ * The shipyard's full truth table — tier/slot/already-fitted logic lives
+ * HERE so the chip layer (shared/combat.ts, PlayClient) and the buy/sell
+ * runtime (llm/runtimeEconomy.ts) never disagree about what's purchasable.
+ * Affordability (credits) is NOT applied here — that's the chip layer's job,
+ * same division `marketChips` already uses for consumables/gear. Empty when
+ * there's no ship or no market at the current location.
+ */
+export function shipyardStock(state: CampaignState): ShipyardStock {
+  const ship = state.ship;
+  const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
+  const tier = marketTierFor(loc);
+  if (!ship || !tier) return { mounts: [], systems: [] };
+
+  const rep = localRep(loc, state.factions, state.factionRep);
+  const priceFor = (base: number) => Math.round(base * repPriceFactor(rep));
+  const outfitting = ship2Catalog.outfitting as OutfittingCatalog;
+
+  const { used: mountsUsed, cap: mountCap } = shipMountSlots(ship);
+  const mounts: ShipyardEntry[] = Object.entries(outfitting.mountItems).map(([id, item]) => {
+    let reason: string | undefined;
+    if (MARKET_TIER_ORDER[item.tier] > MARKET_TIER_ORDER[tier]) reason = "above what this market carries";
+    else if (mountsUsed >= mountCap) reason = "no free mount slot";
+    return { id, name: item.name, price: priceFor(item.price), canBuy: !reason, reason };
+  });
+
+  const { used: systemsUsed, cap: systemCap } = shipSystemSlots(ship);
+  const systems: ShipyardEntry[] = Object.entries(outfitting.systemItems).map(([id, item]) => {
+    let reason: string | undefined;
+    if (MARKET_TIER_ORDER[item.tier] > MARKET_TIER_ORDER[tier]) reason = "above what this market carries";
+    else if (isSystemFitted(ship, item.field)) reason = "already fitted";
+    else if (systemsUsed >= systemCap) reason = "no free system slot";
+    return { id, name: item.name, price: priceFor(item.price), canBuy: !reason, reason };
+  });
+
+  return { mounts, systems };
 }

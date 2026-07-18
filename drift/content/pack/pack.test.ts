@@ -107,3 +107,35 @@ describe("content pack — ship2 CombatSystem completeness (HANDOFF_COMBAT_V2_2.
     }
   });
 });
+
+describe("content pack — ship2 outfitting completeness (HANDOFF_COMBAT_V2_3.md)", () => {
+  it("every class's mount/system slot caps fit its own default loadout", () => {
+    for (const [classId, cls] of Object.entries(pack.ship2.classes)) {
+      expect(cls.mountSlots, `${classId} mountSlots`).toBeGreaterThanOrEqual(cls.mounts.length);
+      expect(cls.systemSlots, `${classId} systemSlots`).toBeGreaterThan(0);
+    }
+  });
+
+  it("every mount item's weapon type resolves to a real ship2 mount profile", () => {
+    const TYPE_TO_MOUNT: Record<string, string> = { kinetic: "railgun", energy: "beamLance", ion: "autocannon", missile: "missileRack" };
+    for (const [itemId, item] of Object.entries(pack.ship2.outfitting.mountItems)) {
+      const mountId = TYPE_TO_MOUNT[item.type];
+      expect(mountId, `${itemId} type ${item.type}`).toBeTruthy();
+      expect(pack.ship2.mounts[mountId!], `${itemId} → mount ${mountId}`).toBeTruthy();
+      expect(item.price, `${itemId} price`).toBeGreaterThan(0);
+    }
+  });
+
+  it("every system item writes one of the five known Ship fields, with a positive price", () => {
+    const KNOWN_FIELDS = ["damageReduction", "evasiveAcBonus", "hasShield", "hasPointDefense", "burstDriveReady"];
+    for (const [itemId, item] of Object.entries(pack.ship2.outfitting.systemItems)) {
+      expect(KNOWN_FIELDS, `${itemId} field ${item.field}`).toContain(item.field);
+      expect(item.price, `${itemId} price`).toBeGreaterThan(0);
+    }
+  });
+
+  it("outfitting is non-empty on both sides of the shop", () => {
+    expect(Object.keys(pack.ship2.outfitting.mountItems).length).toBeGreaterThan(0);
+    expect(Object.keys(pack.ship2.outfitting.systemItems).length).toBeGreaterThan(0);
+  });
+});
