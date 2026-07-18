@@ -133,6 +133,63 @@ export const PackCreation = z.object({
 });
 export type PackCreation = z.infer<typeof PackCreation>;
 
+/** A faction's player-facing onboarding blurb (creation screen). */
+export const PackFactionBrief = z.object({
+  factionId: z.string().min(1),
+  name: z.string().min(1),
+  tagline: z.string().min(1),
+  brief: z.string().min(1),
+  playstyle: z.string().min(1),
+});
+export type PackFactionBrief = z.infer<typeof PackFactionBrief>;
+
+/** Player-facing onboarding prose (Modularity M1 Task E) — the world primer,
+ *  the current season spine, and per-faction briefs shown during creation. */
+export const PackBriefs = z.object({
+  worldIntro: z.string().min(1),
+  seasonOneSpine: z.string().min(1),
+  factions: z.array(PackFactionBrief).min(1),
+});
+export type PackBriefs = z.infer<typeof PackBriefs>;
+
+/** A faction's starting loaner hull — flown, not owned, until earned in play. */
+export const PackLoaner = z.object({
+  name: z.string().min(1),
+  shipClass: z.enum(["scout", "fighter", "hauler", "gunship", "corvette"]),
+  weaponName: z.string().min(1),
+  notes: z.string().min(1),
+});
+export type PackLoaner = z.infer<typeof PackLoaner>;
+
+/** Raw material for the creation-time opening-generation LLM pass — grounds it
+ *  in real canon instead of freestyling. */
+export const PackOpeningSeed = z.object({
+  startLocation: z.string().min(1),
+  recruitGoal: z.string().min(1),
+  anchors: z.string().min(1),
+  tension: z.string().min(1),
+  leads: z.array(z.string().min(1)).min(1),
+});
+export type PackOpeningSeed = z.infer<typeof PackOpeningSeed>;
+
+/** A faction's opening scenario + starting point — the static fallback (no API
+ *  key / generation failure) AND the generation seed, in one record. */
+export const PackFactionOpening = z.object({
+  factionId: z.string().min(1),
+  hook: z.string().min(1),
+  threadTitle: z.string().min(1),
+  threadBody: z.string().min(1),
+  firstMoves: z.array(z.string().min(1)).min(1),
+  loaner: PackLoaner.optional(),
+  seed: PackOpeningSeed,
+});
+export type PackFactionOpening = z.infer<typeof PackFactionOpening>;
+
+export const PackOpenings = z.object({
+  factions: z.array(PackFactionOpening).min(1),
+});
+export type PackOpenings = z.infer<typeof PackOpenings>;
+
 /** Free-text name pools a NEW character or NPC can draw from (Modularity M1
  *  Task B) — `suggestName()` combines given+surname, or picks a mononym; the
  *  SAME pool backs quest cast-manifest generation (`shared/quests.ts`), so a
@@ -218,6 +275,8 @@ export const ContentPack = z.object({
   examples: PackExamples,
   npcFlavor: PackNpcFlavor,
   creation: PackCreation,
+  briefs: PackBriefs,
+  openings: PackOpenings,
   /** Job-generation flavor pools (QUESTS.md `fill()` placeholders). */
   jobFlavor: z.object({
     cargo: z.array(z.string()).min(3),
@@ -267,6 +326,12 @@ export function validatePack(pack: ContentPack): string[] {
   }
   for (const fid of Object.keys(pack.creation.starterGearFlavor)) {
     if (!facIds.has(fid)) problems.push(`creation.starterGearFlavor: unknown faction ${fid}`);
+  }
+  for (const b of pack.briefs.factions) {
+    if (!facIds.has(b.factionId)) problems.push(`briefs: unknown faction ${b.factionId}`);
+  }
+  for (const o of pack.openings.factions) {
+    if (!facIds.has(o.factionId)) problems.push(`openings: unknown faction ${o.factionId}`);
   }
   return problems;
 }

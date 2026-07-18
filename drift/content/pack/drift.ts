@@ -18,6 +18,10 @@ import { driftNpcFlavor } from "./drift/npcFlavor";
 // World-flavored creation content (Modularity M1 Task D) — content/creation.ts
 // is a facade for these + the equal-footing attribute ruleset it keeps.
 import { driftCreation } from "./drift/creation";
+// Player-facing onboarding prose (Modularity M1 Task E) — content/briefs.ts and
+// content/openings.ts are pure facades for these.
+import { driftBriefs } from "./drift/briefs";
+import { driftOpenings } from "./drift/openings";
 
 /**
  * THE DRIFT — content pack v0. This is the CURRENT live world, ported verbatim
@@ -245,6 +249,8 @@ export const driftPack: ContentPack = {
   examples: driftExamples,
   npcFlavor: driftNpcFlavor,
   creation: driftCreation,
+  briefs: driftBriefs,
+  openings: driftOpenings,
 
   catalogs: {
     economy: economyJson,

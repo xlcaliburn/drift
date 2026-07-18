@@ -1,0 +1,194 @@
+import type { PackOpenings } from "../types";
+
+/**
+ * Per-faction opening scenarios + starting points — the static fallback (no
+ * API key / generation failure) AND the creation-time generation seed. Moved
+ * verbatim from content/openings.ts (Modularity M1 Task E);
+ * content/openings.test.ts pins it. `firstMoves` stay grounded in real canon
+ * (Ilyana, Kesh, the Meridian broker, the home location) — see the pack's cast.
+ */
+export const driftOpenings: PackOpenings = {
+  factions: [
+    {
+      factionId: "f-crown",
+      hook: "Ilyana, a Crown debt handler on Meridian, has a stack of jobs no one senior wants — the lanes are turning dangerous and the Crown is short-handed. This is your chance to prove you're worth a real contract.",
+      threadTitle: "Prove yourself to the Hollow Crown",
+      threadBody:
+        "Ilyana runs Crown debt and contracts out of Meridian Ring. Take a job, close it clean, and she starts trusting you with the work that matters — and decide, before long, whether the Crown's cause is yours or you're building toward your own.",
+      firstMoves: [
+        "Ask Ilyana for a starter contract",
+        "Collect on a debtor who's gone quiet",
+        "Ask around the docks what the Sable Chain is doing",
+      ],
+      loaner: {
+        name: "The Wren",
+        shipClass: "scout",
+        weaponName: "Nose kinetic",
+        notes:
+          "Hollow Crown loaner — a Wren-class courier. You fly it on the Crown's leave, not your own; the title stays theirs until you've earned it. Cross them and it's gone.",
+      },
+      seed: {
+        startLocation: "Meridian Ring — Crown territory, clean docks, the closest thing to order in the lanes",
+        recruitGoal:
+          "Prove reliable enough to be trusted with real Crown contracts as the syndicate's grip on the lanes slips.",
+        anchors:
+          "Ilyana (Crown debt handler on Meridian Ring); the Crown's contractor tiers — courier, escort, intel work.",
+        tension:
+          "The Crown is short-handed and nervous — Sable Chain scouts are probing the Meridian–Rook lanes and debtors are quietly going dark.",
+        leads: [
+          "A debtor a few levels down has stopped paying and stopped answering",
+          "A courier run no senior contractor will touch since the lane got dangerous",
+          "Word that a Crown client is quietly talking to the Sable Chain",
+        ],
+      },
+    },
+    {
+      factionId: "f-sable",
+      hook: "The Sable Chain is pushing openly into Crown lanes and needs bodies who'll take risks. Your handler on Coldharbor's staging docks wants to see nerve before they'll trust you with anything real.",
+      threadTitle: "Make your name in the Sable Chain",
+      threadBody:
+        "The Chain is the rising knife — hungry, aggressive, and watched by everyone. Pull off something that hurts the Crown or fattens the Chain and you rise fast; flinch, and you're expendable. Decide how far you'll ride with them before it's your own name on the door.",
+      firstMoves: [
+        "Find your Sable handler on the staging docks for orders",
+        "Poach a shipment off a Crown lane",
+        "Shake down a broker paying Crown protection",
+      ],
+      loaner: {
+        name: "The Cutlass",
+        shipClass: "fighter",
+        weaponName: "Fixed autocannon",
+        notes:
+          "Sable Chain loaner — keys handed over, not signed over. Prove your worth and it becomes yours; flinch or cross the Chain and they take it back with interest.",
+      },
+      seed: {
+        startLocation: "Coldharbor — the Sable Chain's fortified staging station, cranes and gun-nests over cold docks",
+        recruitGoal:
+          "Show enough nerve and results to earn a real place in the rising Chain instead of being spent as expendable muscle.",
+        anchors:
+          "Your Sable Chain handler on Coldharbor's staging docks; the contested Meridian–Rook bulk lanes the Chain is muscling into.",
+        tension:
+          "The Chain is pushing openly into Crown territory and everyone is suddenly watching — momentum is everything and hesitation gets you cut loose.",
+        leads: [
+          "A Crown shipment crossing a lane the Chain wants to own",
+          "A Meridian broker still paying Crown protection who could be flipped",
+          "A rival inside the Chain who resents an unproven newcomer",
+        ],
+      },
+    },
+    {
+      factionId: "f-undertow",
+      hook: "The Undertow's bounty desk has a board full of debts owed in credits or blood. Bring one in clean and they'll start feeding you the work — and the leverage — that matters.",
+      threadTitle: "Earn the Undertow's respect",
+      threadBody:
+        "The Undertow pays for results and respects a clean operator. Close a bounty or a collection without making a mess and the real jobs — and the information behind them — start flowing your way. Where you draw your lines is your business.",
+      firstMoves: [
+        "Take a bounty off the desk",
+        "Track a debtor who skipped the outpost",
+        "Lean on a mark for what they owe",
+      ],
+      loaner: {
+        name: "The Collector",
+        shipClass: "scout",
+        weaponName: "Nose kinetic",
+        notes:
+          "Undertow repo hull — pulled off someone who couldn't pay. It's yours to run once the desk trusts you to keep it, and its work, clean.",
+      },
+      seed: {
+        startLocation: "the Undertow outpost — a debt-collector base out in contested space",
+        recruitGoal:
+          "Close a bounty or collection cleanly enough that the Undertow starts trusting you with leverage and information.",
+        anchors:
+          "The Undertow bounty desk and outpost; the contact at Rook who respects a clean operator and pays for results.",
+        tension:
+          "The chaos in the lanes has the board overflowing — debts owed in credits or blood — and the Undertow smells opportunity in it.",
+        leads: [
+          "A debtor who skipped the outpost owing a dangerous amount",
+          "A bounty on someone tangled up in the Crown–Sable feud",
+          "A collection where the mark has protection that has to be peeled away first",
+        ],
+      },
+    },
+    {
+      factionId: "f-wreckers",
+      hook: "In the Nest you eat what you take, and the crew won't feed a mouth that hasn't earned it. Go find something worth plundering before they decide you're dead weight.",
+      threadTitle: "Take your share in the Nest",
+      threadBody:
+        "No patron, no ledger, no safety net — what you have, you took, and you keep it only as long as you can hold it. Land a haul or prove your teeth on a raid and the crew stops eyeing you sideways. Every other faction wants you dead; there's no other way to stand here.",
+      firstMoves: [
+        "Scout the lanes for a soft target",
+        "Join a raid crew heading out",
+        "Win over a Wrecker who'll vouch for you",
+      ],
+      seed: {
+        startLocation: "the Nest — a lashed-together raider anchorage hidden deep in the Shear",
+        recruitGoal: "Land a haul or prove your teeth on a raid so the Nest stops treating you as dead weight.",
+        anchors: "The Nest (raider anchorage hidden in the Shear); the raid crews and whoever runs them.",
+        tension:
+          "You eat what you take, every other faction wants the Wreckers dead, and an unproven mouth doesn't get fed for long.",
+        leads: [
+          "A soft target spotted on the bulk lanes",
+          "A raid crew short a hand and willing to risk taking you along",
+          "A senior Wrecker who could vouch for you — for a price",
+        ],
+      },
+    },
+    {
+      factionId: "f-free",
+      hook: "Free Drift lives on the jobs no one else will touch and a contact on every side. A fixer at Halcyon freeport has work that needs someone with no flag to fly.",
+      threadTitle: "Make yourself useful across the lanes",
+      threadBody:
+        "You answer to no syndicate — that's the point. Take the jobs that need a neutral hand, keep your word to every side, and become the crew everyone calls and no one owns. The moment you pick a side for good, you stop being useful to the rest.",
+      firstMoves: [
+        "Take a no-questions courier job",
+        "Work the harbormaster for leads",
+        "Broker between two sides who won't meet",
+      ],
+      seed: {
+        startLocation: "Halcyon — the independents' neutral freeport, where every side's business quietly passes through",
+        recruitGoal:
+          "Prove you can take the jobs no one else will and keep your word to every side without being owned by any.",
+        anchors:
+          "Harbormaster Quist at Halcyon (trades berths for favors); the Ledger, Rook's courier-fixer; contacts scattered across every faction.",
+        tension:
+          "With the lanes splitting into sides, everyone wants a neutral courier — and everyone wants to own one.",
+        leads: [
+          "A no-questions delivery between two sides that won't be seen dealing directly",
+          "A job the Crown and Sable both refuse to touch",
+          "A contact calling in an old favor at the worst time",
+        ],
+      },
+    },
+    {
+      factionId: "f-reclaimers",
+      hook: "The Reclaimers are convinced the Shear's wrecks aren't all accidents — and Kesh may be holding proof. Bring back salvage, or a buried truth, and you're one of them.",
+      threadTitle: "Prove your worth to the Reclaimers",
+      threadBody:
+        "Salvagers who pull hardware — and secrets — out of dead ships. Haul back something valuable, or dig up something the powers would rather stay sunk, and you earn a place among them. Whatever you surface makes an enemy of whoever buried it.",
+      firstMoves: [
+        "Find a salvage crew to ride out with",
+        "Ask Kesh what they're really looking for",
+        "Fence a piece of salvage on Rook",
+      ],
+      loaner: {
+        name: "The Magpie",
+        shipClass: "scout",
+        weaponName: "Cutting laser",
+        notes:
+          "Reclaimer salvage skiff — patched together from three dead ships. The crew lets you fly it until you've proven you'll bring the good finds back to them, not sell them out the side.",
+      },
+      seed: {
+        startLocation: "Rook Station — the black-market hub where salvage crews berth, fence finds, and take on hands",
+        recruitGoal: "Bring back valuable salvage — or a buried truth — to earn a place among the Reclaimers.",
+        anchors:
+          "Kesh (holds proof a colony ship's 'accident' was decades-old sabotage, undecided what to do with it); salvage crews working out of Rook; the wrecks in the Shear.",
+        tension:
+          "The Reclaimers suspect the Shear's wrecks aren't accidents, and whatever gets surfaced makes an enemy of whoever buried it.",
+        leads: [
+          "A salvage crew heading to a fresh wreck and short a hand",
+          "Kesh's proof, and the dangerous question of what to do with it",
+          "A piece of strange salvage that needs fencing or identifying",
+        ],
+      },
+    },
+  ],
+};
