@@ -228,11 +228,13 @@ Don't add prose rules for things the engine can enforce.
   authored sidequests, rich cast backstories with authored reveals, and the
   tutorial rebuilt as an authored prologue. Build order inside; nothing built.
 - `COMBAT_V2.md` — **DESIGN (owner priority, decisions RESOLVED)**: squad
-  control (order every party member, temporary allies) + Eclipse-style ship
-  combat (power allocation, dice profiles, counterplay, customization slots)
-  built as the M5 CombatSystem seam. `HANDOFF_COMBAT_V2_1.md` — **READY TO
-  IMPLEMENT**: lexicon seed + the CombatSystem seam (M5 as extraction, not
-  speculation) + squad orders. Ship core is slice 2.
+  control (order every party member, temporary allies — Part A **SHIPPED**,
+  2026-07-18) + Eclipse-style ship combat (power allocation, dice profiles,
+  counterplay, customization slots — Part B still design). `HANDOFF_COMBAT_V2_1.md`
+  is **FULLY SHIPPED**: the lexicon seed, the M5 CombatSystem seam (extraction,
+  not speculation), and squad orders (attack a chosen target / self-heal per
+  crew member; un-ordered members auto-act). Ship core (Part B) is slice 2, not
+  yet specced as its own handoff.
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
 - `STATUS.md` — **THE single backlog** (what's left, in order, updated at every
