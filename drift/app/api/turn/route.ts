@@ -9,6 +9,7 @@ import { isSelfHarm } from "@/shared/selfHarm";
 import { combatChipsFor, interpretCombatText } from "@/shared/combat";
 import { downedActions } from "@/shared/death";
 import { usableConsumables, outOfCombatItemChips, inferShoppingIntent, marketChips } from "@/shared/items";
+import { shipyardChips } from "@/shared/ship2";
 import { repairQuote } from "@/engine/market";
 import { patronHelp } from "@/shared/netWorth";
 import { advanceLedger } from "@/shared/ledger";
@@ -193,6 +194,9 @@ export async function POST(req: NextRequest) {
   const preRepair = Boolean(body.repairHull);
   // A clicked market "Buy X — ¢Y" chip (ITEMS.md shop flow): the catalog id.
   const buyItemId = typeof body.buyItem === "string" && body.buyItem ? body.buyItem : undefined;
+  // A clicked shipyard "Install X — ¢Y" / "Strip X — +¢Y" chip (HANDOFF_COMBAT_V2_3.md).
+  const buyShipItemId = typeof body.buyShipItem === "string" && body.buyShipItem ? body.buyShipItem : undefined;
+  const sellShipItemRef = typeof body.sellShipItem === "string" && body.sellShipItem ? body.sellShipItem : undefined;
   // A clicked "Rest up with <patron>" chip — the free early-game safety net (STARTER).
   const preRest = Boolean(body.patronRest);
   // Job chips (QUESTS.md) — from a narrator-emitted choice (diegetic offers) or the
@@ -534,6 +538,8 @@ export async function POST(req: NextRequest) {
                 preUseItem: useItemId,
                 preRepair,
                 preBuy: buyItemId,
+                preBuyShip: buyShipItemId,
+                preSellShip: sellShipItemRef,
                 preRest,
                 preRecruit: recruitNpcId,
                 preSwap,
@@ -747,6 +753,11 @@ export async function POST(req: NextRequest) {
                   // runs the till deterministically (buyItem → jsonTurn preBuy).
                   // Also right after a chip purchase, so the player can keep buying.
                   ...(inferShoppingIntent(playerText) || buyItemId ? marketChips(result.state) : []),
+                  // SHIPYARD (HANDOFF_COMBAT_V2_3.md): same shopping-intent gate,
+                  // plus right after a shipyard chip so the player can keep outfitting.
+                  ...(inferShoppingIntent(playerText) || buyShipItemId || sellShipItemRef
+                    ? shipyardChips(result.state)
+                    : []),
                   ...(() => {
                     const rq = repairQuote(result.state);
                     return rq ? [{ label: `Repair hull (¢${rq.cost})`, repairHull: true }] : [];

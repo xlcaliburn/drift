@@ -1,4 +1,4 @@
-import type { CampaignState, Character } from "@/shared/schemas";
+import type { CampaignState, Character, Ship } from "@/shared/schemas";
 import type { RNG, EngineEvent } from "@/engine";
 import type { SceneCard } from "@/shared/scene";
 import { economy } from "@/content";
@@ -6,6 +6,17 @@ import { catalogItem, itemCount, allItems, slotsUsed, maxSlotsFor, resolveGearIt
 import { repPriceFactor, localRep, SELL_RATE, marketTierFor } from "@/engine/market";
 import { gearValue, patronHelp, PATRON_STIM_FLOOR } from "@/shared/netWorth";
 import { repairRatePerHp } from "@/shared/crew";
+import {
+  shipyardStock,
+  materializeStockWeapons,
+  deriveShip2Profile,
+  isSystemFitted,
+  applyShipSystemField,
+  unapplyShipSystemField,
+  mountItemPriceForType,
+} from "@/shared/ship2";
+import { ship2 as ship2Catalog } from "@/content";
+import { fmtCredits } from "@/shared/lexicon";
 
 /**
  * The economy side of TurnRuntime, split out of engineBridge.ts as free functions
@@ -399,6 +410,118 @@ export function sellItem(rt: EconRT, name: string): { line?: string; error?: str
   const line = `💰 Sold ${existing.name} — +¢${paid}. ¢${after} total.`;
   rt.events.push({ type: "note", breakdown: line });
   return { line };
+}
+
+/**
+ * Buy = install in one step (HANDOFF_COMBAT_V2_3.md Task C) — a shipyard
+ * mount or system item, at a docked market. Re-derives `shipyardStock`
+ * itself (never trusts a stale/crafted chip's own numbers — the allocation-
+ * clamp precedent, CHECKS.md §0): tier/slot/already-fitted all come from
+ * that ONE truth table, so the runtime and the chip layer can never disagree.
+ * The FIRST install on a ship with an empty `weapons[]` materializes its
+ * class-default stock guns first, so buying never silently deletes them.
+ */
+export function buyShipItem(rt: EconRT, itemId: string): { line?: string; error?: string } {
+  const pc = pcOf(rt);
+  if (!pc) return { error: "no character" };
+  if (!rt.state.ship) return { error: "no ship to outfit" };
+
+  const stock = shipyardStock(rt.state);
+  const mountEntry = stock.mounts.find((m) => m.id === itemId);
+  const systemEntry = stock.systems.find((m) => m.id === itemId);
+  const entry = mountEntry ?? systemEntry;
+  if (!entry) return { error: `no such shipyard item "${itemId}" here` };
+  if (!entry.canBuy) return { error: entry.reason ?? `can't buy ${entry.name} here` };
+
+  // HAGGLE IS ENGINE-OWNED (same rule buyItem uses) — shipyardStock's own
+  // price is already rep-adjusted; haggle is one more multiplier on top.
+  const haggled = rt.events.some(
+    (e) => e.type === "roll" && ["negotiation", "diplomacy"].includes(e.skill) && e.outcome.includes("success"),
+  );
+  const price = haggled ? Math.round(entry.price * 0.9) : entry.price;
+  if ((pc.credits ?? 0) < price) return { error: `can't afford it (${fmtCredits(price)}, holding ${fmtCredits(pc.credits ?? 0)})` };
+
+  // Materialize the stock loadout only for a MOUNT buy — a system purchase
+  // never touches weapons[], so there's nothing to write early.
+  let ship: Ship = mountEntry ? materializeStockWeapons(rt.state.ship) : rt.state.ship;
+  if (mountEntry) {
+    const item = ship2Catalog.outfitting.mountItems[itemId];
+    ship = {
+      ...ship,
+      weapons: [...ship.weapons, { name: item.name, type: item.type, damage: item.damage, ...(item.ammo ? { ammo: item.ammo } : {}) }],
+    };
+  } else {
+    const item = ship2Catalog.outfitting.systemItems[itemId];
+    ship = applyShipSystemField(ship, item.field, item.numericValue);
+  }
+
+  const after = (pc.credits ?? 0) - price;
+  rt.state = {
+    ...rt.state,
+    ship,
+    characters: rt.state.characters.map((c) => (c.id === pc.id ? { ...c, credits: after } : c)),
+  };
+  const line = `🔧 ${entry.name} fitted — ${fmtCredits(price)}${haggled ? " (haggled down)" : ""}. ${fmtCredits(after)} left.`;
+  rt.events.push({ type: "note", breakdown: line });
+  return { line };
+}
+
+/**
+ * Sell = strip (HANDOFF_COMBAT_V2_3.md Task C) — at the flat SELL_RATE (40%)
+ * of what that hardware would cost new. `ref` matches a carried mount
+ * (weapon name, leniently) or a fitted system (item id or name), same
+ * lenient-match style as `sellItem`. A ship with an empty `weapons[]` is
+ * materialized first — selling a "stock" gun should work exactly like
+ * selling one you bought.
+ */
+export function sellShipItem(rt: EconRT, ref: string): { line?: string; error?: string } {
+  const pc = pcOf(rt);
+  if (!pc) return { error: "no character" };
+  const s = rt.state.ship;
+  if (!s) return { error: "no ship to strip" };
+  const norm = ref.trim().toLowerCase().replace(/^(a|an|the)\s+/, "");
+
+  const materialized = materializeStockWeapons(s);
+  const profile = deriveShip2Profile(materialized, []);
+  const mountMatch =
+    profile.mounts.find((m) => m.name.toLowerCase() === norm) ??
+    profile.mounts.find((m) => m.key.toLowerCase() === norm) ??
+    profile.mounts.find((m) => m.name.toLowerCase().includes(norm));
+
+  if (mountMatch && mountMatch.weaponIndex !== undefined) {
+    const weapon = materialized.weapons[mountMatch.weaponIndex];
+    const paid = Math.max(1, Math.round(mountItemPriceForType(weapon.type) * SELL_RATE));
+    const weapons = materialized.weapons.filter((_, i) => i !== mountMatch.weaponIndex);
+    const after = (pc.credits ?? 0) + paid;
+    rt.state = {
+      ...rt.state,
+      ship: { ...materialized, weapons },
+      characters: rt.state.characters.map((c) => (c.id === pc.id ? { ...c, credits: after } : c)),
+    };
+    const line = `🔧 Stripped the ${weapon.name} — +${fmtCredits(paid)}. ${fmtCredits(after)} total.`;
+    rt.events.push({ type: "note", breakdown: line });
+    return { line };
+  }
+
+  const systemMatch = Object.entries(ship2Catalog.outfitting.systemItems).find(
+    ([id, item]) => id.toLowerCase() === norm || item.name.toLowerCase() === norm || item.name.toLowerCase().includes(norm),
+  );
+  if (systemMatch) {
+    const [, item] = systemMatch;
+    if (!isSystemFitted(materialized, item.field)) return { error: `${item.name} isn't fitted` };
+    const paid = Math.max(1, Math.round(item.price * SELL_RATE));
+    const after = (pc.credits ?? 0) + paid;
+    rt.state = {
+      ...rt.state,
+      ship: unapplyShipSystemField(materialized, item.field),
+      characters: rt.state.characters.map((c) => (c.id === pc.id ? { ...c, credits: after } : c)),
+    };
+    const line = `🔧 Stripped the ${item.name} — +${fmtCredits(paid)}. ${fmtCredits(after)} total.`;
+    rt.events.push({ type: "note", breakdown: line });
+    return { line };
+  }
+
+  return { error: `not carrying/fitted "${ref.trim()}"` };
 }
 
 /**

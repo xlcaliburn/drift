@@ -29,6 +29,11 @@ export const CHIP_KINDS: ChipKind[] = [
     tip: "Repair the hull at the dock — the engine charges ¢12/HP (credit extended if short).",
   },
   {
+    match: (c) => !!c.buyShipItem || !!c.sellShipItem,
+    icon: "🔧",
+    tip: "The shipyard — the engine installs or strips it immediately at the quoted price.",
+  },
+  {
     match: (c) => !!c.patronRest,
     icon: "🛟",
     tip: "Your patron patches you up for free — full HP & hull, a stim or two, a small stipend if you're broke. Offered while you're still finding your feet.",

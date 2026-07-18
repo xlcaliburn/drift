@@ -139,6 +139,12 @@ export const ChoiceOption = z.object({
   /** Set on a market "Buy X — ¢Y" chip: the catalog item id. The ENGINE runs the
    *  till deterministically (jsonTurn preBuy → buyItem). ITEMS.md shop flow. */
   buyItem: optionalNullable(z.string()),
+  /** Set on a shipyard "Install X — ¢Y" chip: the outfitting item id. The
+   *  ENGINE installs deterministically (jsonTurn preBuyShip → buyShipItem).
+   *  HANDOFF_COMBAT_V2_3.md. */
+  buyShipItem: optionalNullable(z.string()),
+  /** Set on a shipyard "Strip X — +¢Y" chip: the mount/system reference. */
+  sellShipItem: optionalNullable(z.string()),
   /** Set on a job-board chip: the job id to accept (offered → active). QUESTS.md. */
   acceptJob: optionalNullable(z.string()),
   /** Set on a job-board chip: the job id to abandon (active → failed). */

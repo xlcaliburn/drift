@@ -9,6 +9,7 @@ import {
   shipSystemSlots,
   materializeStockWeapons,
   shipyardStock,
+  shipyardChips,
   type Ship2Profile,
 } from "./ship2";
 import type { Character, Ship, CampaignState } from "./schemas";
@@ -411,5 +412,62 @@ describe("shipyardStock (HANDOFF_COMBAT_V2_3.md Task B)", () => {
     const cheap = shipyardStock(state({ tags: ["blackmarket"], rep: 5 }));
     const flat = shipyardStock(state({ tags: ["blackmarket"], rep: 0 }));
     expect(cheap.mounts[0].price).toBeLessThan(flat.mounts[0].price);
+  });
+});
+
+describe("shipyardChips (HANDOFF_COMBAT_V2_3.md Task C)", () => {
+  function state(over: { ship?: Ship; credits?: number; tags?: string[] } = {}): CampaignState {
+    return {
+      campaign: { id: "c", universeId: "u", currentLocationId: "loc-dock", tendaysElapsed: 0 },
+      universe: { id: "u", name: "U" },
+      characters: [
+        { id: "pc-1", kind: "pc", name: "Vess", credits: over.credits ?? 2000, hp: 18, maxHp: 18, ac: 12 } as unknown as Character,
+      ],
+      ship: over.ship ?? ship(),
+      factions: [{ id: "f-dock", name: "Dockers", defaultRep: 0, alignment: "neutral", homeLocationId: "loc-dock", color: "#fff" }],
+      factionRep: [{ factionId: "f-dock", rep: 0 }],
+      locations: [{ id: "loc-dock", universeId: "u", name: "Dock", tags: [...(over.tags ?? []), "dock"] }],
+      clocks: [],
+      threads: [],
+      contracts: [],
+      npcs: [],
+    } as unknown as CampaignState;
+  }
+
+  it("only affordable, buyable installs get a chip", () => {
+    const chips = shipyardChips(state({ credits: 300, tags: ["blackmarket"] })); // T3, but broke
+    expect(chips.some((c) => c.label.startsWith("Install Kinetic cannon"))).toBe(true); // ¢250, affordable
+    expect(chips.some((c) => c.label.startsWith("Install Beam lance"))).toBe(false); // ¢450, not affordable
+    expect(chips.every((c) => !!c.buyShipItem)).toBe(true);
+  });
+
+  it("a strip chip appears for each REAL fitted mount/system, none for virtual stock", () => {
+    const bare = shipyardChips(state()); // hauler, empty weapons[] — virtual stock only
+    expect(bare.some((c) => c.sellShipItem)).toBe(false);
+
+    const fitted = ship({ weapons: [{ name: "Cannon", type: "kinetic", damage: "2d6" }], hasShield: true });
+    const chips = shipyardChips(state({ ship: fitted, credits: 0 })); // broke, so buy chips are all filtered out
+    expect(chips.some((c) => c.label.startsWith("Strip Cannon") && c.sellShipItem === "railgun")).toBe(true);
+    expect(chips.some((c) => c.label.startsWith("Strip Shield emitter") && c.sellShipItem === "shieldEmitter")).toBe(true);
+  });
+
+  it("caps at 6 total chips", () => {
+    const loaded = ship({
+      weapons: [
+        { name: "A", type: "kinetic", damage: "2d6" },
+        { name: "B", type: "ion", damage: "1d6" },
+      ],
+      hasShield: true,
+      hasPointDefense: true,
+      damageReduction: 1,
+      evasiveAcBonus: 2,
+      burstDriveReady: true,
+    });
+    const chips = shipyardChips(state({ ship: loaded, credits: 5000, tags: ["blackmarket"] }));
+    expect(chips.length).toBeLessThanOrEqual(6);
+  });
+
+  it("empty when there's no market at this location", () => {
+    expect(shipyardChips(state({ tags: ["hazard"] }))).toEqual([]);
   });
 });

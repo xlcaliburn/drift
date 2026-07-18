@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { extractJsonObject, parseTurnPlan, repairTurnPlan, REPAIR_FALLBACK_NARRATION, MemberOrderSpec, CombatActionSpec, AllocationSpec } from "./turnPlan";
+import { extractJsonObject, parseTurnPlan, repairTurnPlan, REPAIR_FALLBACK_NARRATION, MemberOrderSpec, CombatActionSpec, AllocationSpec, ChoiceOption } from "./turnPlan";
 
 describe("extractJsonObject", () => {
   it("parses a bare JSON object", () => {
@@ -129,6 +129,28 @@ describe("repairTurnPlan", () => {
 });
 
 // The turn route validates staged squad orders (HANDOFF_COMBAT_V2_1 Task C)
+// The shipyard chips (HANDOFF_COMBAT_V2_3.md Task C) round-trip through
+// lastChoices persistence like every other engine-owned ChoiceOption field.
+describe("ChoiceOption — shipyard fields (HANDOFF_COMBAT_V2_3.md)", () => {
+  it("accepts a well-formed buyShipItem chip", () => {
+    expect(ChoiceOption.safeParse({ label: "Install Beam lance — ¢450", buyShipItem: "beamLance" }).success).toBe(true);
+  });
+
+  it("accepts a well-formed sellShipItem chip", () => {
+    expect(ChoiceOption.safeParse({ label: "Strip Beam lance — +¢180", sellShipItem: "beamLance" }).success).toBe(true);
+  });
+
+  it("tolerates null (cheap models write absent fields as null)", () => {
+    const r = ChoiceOption.safeParse({ label: "Move on", buyShipItem: null, sellShipItem: null });
+    expect(r.success).toBe(true);
+    expect(r.data?.buyShipItem).toBeUndefined();
+  });
+
+  it("a label-only choice still parses (both fields optional)", () => {
+    expect(ChoiceOption.safeParse({ label: "Keep moving" }).success).toBe(true);
+  });
+});
+
 // ship2's power allocation rides the existing combatAction envelope
 // (HANDOFF_COMBAT_V2_2.md Task C) — a new "allocate" type + bounded alloc.
 describe("CombatActionSpec — the \"allocate\" type (ship2)", () => {

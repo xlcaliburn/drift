@@ -60,6 +60,12 @@ export interface JsonTurnInput {
   /** A clicked market "Buy X — ¢Y" chip: the catalog id. The engine runs the till
    *  BEFORE the model (deterministic purchase; the model narrates the counter). */
   preBuy?: string;
+  /** A clicked shipyard "Install X — ¢Y" chip (HANDOFF_COMBAT_V2_3.md) — the
+   *  outfitting item id; the engine installs it deterministically. */
+  preBuyShip?: string;
+  /** A clicked shipyard "Strip X — +¢Y" chip — the mount/system reference;
+   *  the engine strips it deterministically. */
+  preSellShip?: string;
   /** A clicked "Rest up with <patron>" chip — the engine applies the free safety
    *  net (rest/stims/stipend/repair) before narrating (STARTER.md). */
   preRest?: boolean;
@@ -594,6 +600,29 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
   if (input.preRepair && pc) {
     toolCalls.push("repair_ship");
     const res = runtime.repairShip();
+    if (res.line) {
+      engineLines.push(`ENGINE RESULT: ${res.line}`);
+      emit([res.line]);
+    } else if (res.error) {
+      emit([`⚠ ${res.error}`]);
+    }
+  }
+  // A clicked shipyard "Install X" chip — engine installs deterministically
+  // (HANDOFF_COMBAT_V2_3.md Task C), same "engine runs it, model narrates" shape.
+  if (input.preBuyShip && pc) {
+    toolCalls.push("buy_ship_item");
+    const res = runtime.buyShipItem(input.preBuyShip);
+    if (res.line) {
+      engineLines.push(`ENGINE RESULT: ${res.line}`);
+      emit([res.line]);
+    } else if (res.error) {
+      emit([`⚠ No sale: ${res.error}`]);
+    }
+  }
+  // A clicked shipyard "Strip X" chip — engine strips deterministically.
+  if (input.preSellShip && pc) {
+    toolCalls.push("sell_ship_item");
+    const res = runtime.sellShipItem(input.preSellShip);
     if (res.line) {
       engineLines.push(`ENGINE RESULT: ${res.line}`);
       emit([res.line]);

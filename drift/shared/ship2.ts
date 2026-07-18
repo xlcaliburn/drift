@@ -2,7 +2,8 @@ import type { Character, Ship, CampaignState } from "./schemas";
 import type { UsableConsumable } from "./items";
 import type { CombatAction } from "./combat";
 import { ship2 as ship2Catalog } from "@/content";
-import { marketTierFor, repPriceFactor, localRep } from "@/engine/market";
+import { marketTierFor, repPriceFactor, localRep, SELL_RATE } from "@/engine/market";
+import { fmtCredits } from "./lexicon";
 
 /**
  * Client-safe ship2 types + pure helpers (COMBAT_V2.md Part B, HANDOFF_COMBAT_V2_2.md
@@ -325,8 +326,10 @@ export function shipMountSlots(ship: Ship): { used: number; cap: number } {
   return { used, cap: cls?.mountSlots ?? 1 };
 }
 
-/** Which of the five system fields is currently fitted. */
-function isSystemFitted(ship: Ship, field: string): boolean {
+/** Which of the five system fields is currently fitted. Exported — the
+ *  buy/sell runtime (llm/runtimeEconomy.ts) needs the SAME check the
+ *  shipyard's own truth table uses, not a re-derived copy. */
+export function isSystemFitted(ship: Ship, field: string): boolean {
   switch (field) {
     case "damageReduction":
       return ship.damageReduction > 0;
@@ -341,6 +344,52 @@ function isSystemFitted(ship: Ship, field: string): boolean {
     default:
       return false;
   }
+}
+
+/** Install a system item — sets the field the purchase pays for. */
+export function applyShipSystemField(ship: Ship, field: string, numericValue: number | undefined): Ship {
+  switch (field) {
+    case "damageReduction":
+      return { ...ship, damageReduction: numericValue ?? 1 };
+    case "evasiveAcBonus":
+      return { ...ship, evasiveAcBonus: numericValue ?? 1 };
+    case "hasShield":
+      return { ...ship, hasShield: true, shieldReady: true };
+    case "hasPointDefense":
+      return { ...ship, hasPointDefense: true };
+    case "burstDriveReady":
+      return { ...ship, burstDriveReady: true };
+    default:
+      return ship;
+  }
+}
+
+/** Strip a fitted system — the sell side of `applyShipSystemField`. */
+export function unapplyShipSystemField(ship: Ship, field: string): Ship {
+  switch (field) {
+    case "damageReduction":
+      return { ...ship, damageReduction: 0 };
+    case "evasiveAcBonus":
+      return { ...ship, evasiveAcBonus: 0 };
+    case "hasShield":
+      return { ...ship, hasShield: false };
+    case "hasPointDefense":
+      return { ...ship, hasPointDefense: false };
+    case "burstDriveReady":
+      return { ...ship, burstDriveReady: false };
+    default:
+      return ship;
+  }
+}
+
+/** A weapon's resale value by TYPE — the same price the shipyard would
+ *  charge to buy that type new. An unrecognized type (a hand-authored weapon
+ *  with no catalog match) falls back to the kinetic cannon's price, per
+ *  HANDOFF_COMBAT_V2_3.md's rule. */
+export function mountItemPriceForType(type: string): number {
+  const outfitting = ship2Catalog.outfitting as OutfittingCatalog;
+  const match = Object.values(outfitting.mountItems).find((item) => item.type === type);
+  return match?.price ?? outfitting.mountItems.kineticCannon?.price ?? 250;
 }
 
 /** `{ used, cap }` for this ship's system slots. A SPENT burst drive
@@ -433,4 +482,45 @@ export function shipyardStock(state: CampaignState): ShipyardStock {
   });
 
   return { mounts, systems };
+}
+
+export interface ShipyardChip {
+  label: string;
+  buyShipItem?: string;
+  sellShipItem?: string;
+}
+
+/**
+ * Engine-generated shipyard chips (HANDOFF_COMBAT_V2_3.md Task C) — shown
+ * alongside `marketChips` from the same shopping-intent block: affordable
+ * installs (`shipyardStock`'s tier/slot/already-fitted truth, further
+ * filtered by credits here — same division `marketChips` uses) plus a strip
+ * chip for each fitted mount/system. Capped at 6 total, like the market.
+ */
+export function shipyardChips(state: CampaignState): ShipyardChip[] {
+  const stock = shipyardStock(state);
+  const credits = state.characters.find((c) => c.kind === "pc")?.credits ?? 0;
+  const buyChips: ShipyardChip[] = [...stock.mounts, ...stock.systems]
+    .filter((e) => e.canBuy && e.price <= credits)
+    .map((e) => ({ label: `Install ${e.name} — ${fmtCredits(e.price)}`, buyShipItem: e.id }));
+
+  const stripChips: ShipyardChip[] = [];
+  const ship = state.ship;
+  if (ship) {
+    const profile = deriveShip2Profile(ship, []);
+    for (const m of profile.mounts) {
+      if (m.weaponIndex === undefined) continue; // a virtual stock mount — nothing real to strip yet
+      const weaponType = MOUNT_TO_WEAPON_TYPE[m.id] ?? "kinetic";
+      const refund = Math.max(1, Math.round(mountItemPriceForType(weaponType) * SELL_RATE));
+      stripChips.push({ label: `Strip ${m.name} — +${fmtCredits(refund)}`, sellShipItem: m.key });
+    }
+    const outfitting = ship2Catalog.outfitting as OutfittingCatalog;
+    for (const [id, item] of Object.entries(outfitting.systemItems)) {
+      if (!isSystemFitted(ship, item.field)) continue;
+      const refund = Math.max(1, Math.round(item.price * SELL_RATE));
+      stripChips.push({ label: `Strip ${item.name} — +${fmtCredits(refund)}`, sellShipItem: id });
+    }
+  }
+
+  return [...buyChips, ...stripChips].slice(0, 6);
 }

@@ -31,6 +31,8 @@ import {
   buyItem,
   sellItem,
   repairShip,
+  buyShipItem,
+  sellShipItem,
   restWithPatron,
   syncDockDebt,
 } from "./runtimeEconomy";
@@ -264,6 +266,16 @@ export class TurnRuntime {
   /** Dock hull repair at ¢12/HP, credit extended (runtimeEconomy.repairShip). */
   repairShip(hpWanted?: number): { line?: string; error?: string } {
     return repairShip(this, hpWanted);
+  }
+
+  /** Install a shipyard mount/system in one step (runtimeEconomy.buyShipItem). */
+  buyShipItem(itemId: string): { line?: string; error?: string } {
+    return buyShipItem(this, itemId);
+  }
+
+  /** Strip a fitted mount/system at 40% (runtimeEconomy.sellShipItem). */
+  sellShipItem(ref: string): { line?: string; error?: string } {
+    return sellShipItem(this, ref);
   }
 
   /** The faction PATRON's free safety net (runtimeEconomy.restWithPatron). */
