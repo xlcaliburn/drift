@@ -104,19 +104,29 @@ chapter that showcases both combat systems (COMBAT_V2.md):
    (dormant) until content lands** — every field of the machinery is exercised,
    but zero chapters are armed on any real campaign. `STORY_AUTHORING.md`
    (the owner-facing format guide) shipped alongside it.
-3a. **Content machinery** — **specced into `HANDOFF_STORY_2.md` (READY TO
-   IMPLEMENT)**. The build-order's old "content, not code" framing was
-   wrong: three things the script depends on have no runtime. This slice
-   wires authored cast depth as a PACK-ONLY live overlay (the seed cast
-   loads from the DB npcs table, so `seedNpcs` is a dead end — and
-   persisting `secret` would leak it to the client via `/api/state`),
-   chapter-gated `secret`/`arc` reveals (a new castReveals section:
-   chapter-active ∧ cast-member ∧ present), sidequests as a thin wrapper
-   on the Job machinery (placed, act/rep/trust/fact-triggered, one-shot
-   via the jobs slice itself — completed/failed jobs persist forever, so
-   no migration), and signature chapter rewards (catalog `itemId` through
-   the full-pack pendingPickup path + `crewUnlock`). Ships DORMANT like
-   slice 2: live pack authors nothing.
+3a. ~~**Content machinery**~~ — SHIPPED 2026-07-18 (`HANDOFF_STORY_2.md`,
+   fully annotated). The build-order's old "content, not code" framing was
+   wrong: three things the script depends on had no runtime — this slice
+   built them. Authored cast depth is a PACK-ONLY live overlay
+   (`content/pack/index.ts`'s `authoredCastDepth` — the seed cast loads from
+   the DB npcs table, so `seedNpcs` was a dead end, and persisting `secret`
+   would have leaked it to the client via `/api/state`); `backstory` is
+   always-on + spoiler-safe (wins over the generated hook), `secret`/`arc`
+   are chapter-gated (`promptSections/castReveals.ts`: chapter-active ∧
+   cast-member ∧ present, arc picked by act). Sidequests
+   (`shared/sidequests.ts`) are a thin wrapper on the Job machinery — placed,
+   act/rep/trust/fact-triggered, one-shot for free (a completed/failed
+   `sq-<id>` job persists in the jobs slice forever — no migration needed).
+   Signature chapter rewards (`itemId` through the full-pack pendingPickup
+   path, `crewUnlock` raising trust to recruit-eligible) ride the existing
+   payout bridge. **Live pack ships zero authored depth and zero
+   sidequests** — every field of the machinery is exercised against
+   test-only stubs, dormant on every real campaign. A review pass caught and
+   fixed one real correctness bug in the process: the personal-job
+   arc-resolution gate (`shared/jobsRuntime.ts`) would have falsely
+   "resolved" an arc that was never opened the first time a sidequest's
+   giver was any NPC the player already had standing with — tightened to
+   only fire for a job that genuinely opened as a personal favor.
 3b. **Authored content pass** — the actual season-one script (Fable drafts
    the full 9 chapters + ~12 sidequests + cast depth grounded in existing
    canon; owner edits the pack files directly, per `STORY_AUTHORING.md`).

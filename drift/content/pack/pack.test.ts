@@ -202,6 +202,23 @@ describe("content pack — storyline schema + referential integrity (HANDOFF_STO
     expect(problems.some((p) => p.includes("reward faction f-nowhere"))).toBe(true);
   });
 
+  it("catches an unknown signature-item reward id, and an unknown crewUnlock npc (HANDOFF_STORY_2.md Task D)", () => {
+    const problems = validatePack({
+      ...pack,
+      storyline: { chapters: [chapter({ reward: { credits: 0, itemId: "not-a-real-item", crewUnlock: "npc-nowhere" } })] },
+    });
+    expect(problems.some((p) => p.includes("reward itemId not-a-real-item"))).toBe(true);
+    expect(problems.some((p) => p.includes("reward crewUnlock npc-nowhere"))).toBe(true);
+  });
+
+  it("a REAL catalog itemId and a real cast crewUnlock pass clean", () => {
+    const problems = validatePack({
+      ...pack,
+      storyline: { chapters: [chapter({ reward: { credits: 0, itemId: "medkit", crewUnlock: pack.cast[0].id } })] },
+    });
+    expect(problems).toEqual([]);
+  });
+
   it("the mortal-NPC rule: a beat ABOUT a cast member needs a fallbackDirective", () => {
     const missing = validatePack({
       ...pack,

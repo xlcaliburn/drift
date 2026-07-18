@@ -717,8 +717,14 @@ export async function POST(req: NextRequest) {
           signals: storylineSignals,
           deliveredBeat: preTurnBeat ?? undefined,
         });
-        result.state = storylineRes.state; // credits + faction rep for any chapter paid out
+        result.state = storylineRes.state; // credits + faction rep + a signature item for any chapter paid out
         result.events = [...result.events, ...storylineRes.events];
+        // Fold any crewUnlock relation bump back onto the live relations (same
+        // pattern as jobsRes.npcRelations above).
+        session.npcRelations = storylineRes.npcRelations;
+        // A signature item that didn't fit the pack parks the same way any other
+        // pickup does — the existing swap chips take it from here (trap 5).
+        if (storylineRes.pendingPickup) session.sceneCard.pendingPickup = storylineRes.pendingPickup;
 
         // ── ENGINE-OWNED TIME (engine/time.ts): a station hop, or every Nth scene
         //    close in place, advances the tenday clock — deterministic, never model-

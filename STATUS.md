@@ -30,7 +30,7 @@ npm install
 cp .env.example .env.local     # DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY; + Supabase vars for auth
 npm run dev                    # http://localhost:3000
 npx tsc --noEmit               # fast typecheck (never touches .next)
-npx vitest run                 # ~1049 model-free tests, no keys needed
+npx vitest run                 # ~1093 model-free tests, no keys needed
 ```
 
 - **Keyless mode** (no Supabase vars): no login, stub dev admin, nothing persists.
@@ -68,17 +68,25 @@ npx vitest run                 # ~1049 model-free tests, no keys needed
      prompt section, the Story tab's "Season" block, and
      `STORY_AUTHORING.md` (the owner-facing format guide) — proven against a
      TEST-ONLY 2-chapter stub; **the live pack ships an empty storyline
-     (dormant)** until content lands. NEXT: **`HANDOFF_STORY_2.md` (READY
-     TO IMPLEMENT)** — slice 3a, the content machinery the script depends
-     on: authored cast depth as a pack-only live overlay (never persisted,
-     never client-sent), chapter-gated secret/arc reveals, sidequests as a
-     thin Job wrapper (one-shot via the jobs slice — NO migration), and
-     signature chapter rewards (item via pendingPickup + crewUnlock). Ships
-     dormant. THEN 3b: the season-one content pass (Fable drafts the 9
-     chapters + ~12 sidequests + cast depth, owner edits per
-     `STORY_AUTHORING.md` — genuinely no code once 3a lands), then the
-     PROLOGUE (tutorial as authored Chapter 0 showcasing both combat
-     systems with a temporary ally).
+     (dormant)** until content lands. **`HANDOFF_STORY_2.md` (slice 3a) is
+     ALSO FULLY SHIPPED (2026-07-18)**: authored cast depth as a pack-only
+     live overlay (`content/pack/index.ts`'s `authoredCastDepth` — never
+     persisted, never client-sent; `backstory` always-on/spoiler-safe,
+     `secret`/`arc` chapter-gated via `promptSections/castReveals.ts`),
+     sidequests as a thin Job wrapper (`shared/sidequests.ts` — placed,
+     triggered, one-shot for free via the jobs slice itself, NO migration),
+     and signature chapter rewards (`itemId` via the full-pack pendingPickup
+     path, `crewUnlock` raising trust to recruit-eligible). **Live pack
+     ships zero authored depth and zero sidequests** — dormant like the
+     storyline itself. A review pass caught and fixed a real bug along the
+     way: the personal-job arc-resolution gate in `shared/jobsRuntime.ts`
+     would have falsely resolved an arc that was never opened the first
+     time a sidequest's giver was an NPC the player already had standing
+     with — tightened to `arcStage === "active"`. NEXT: 3b, the season-one
+     content pass (Fable drafts the 9 chapters + ~12 sidequests + cast
+     depth, owner edits per `STORY_AUTHORING.md` — genuinely no code now
+     that 3a has landed), then the PROLOGUE (tutorial as authored Chapter 0
+     showcasing both combat systems with a temporary ally). NOT YET STARTED.
    - Squad orders' own follow-up: aim/cover/switch + role specials
      (engineer overcharge etc.) for crew, deferred this slice (COMBAT_V2.md's
      shipped-note). Ship2's crew passives are similarly all-always-on, not

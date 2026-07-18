@@ -1,12 +1,12 @@
 # HANDOFF — Story slice 2 (3a): the content machinery — cast depth, reveals, sidequests, signature rewards
 
-*Strategy phase output (Fable, 2026-07-18). Read `WORKFLOW.md` first, then this
-doc fully. Design source: `STORY.md` §1-2 + the owner's four locked calls
-(2026-07-18): thin-wrapper sidequests, chapter-gated reveals, signature
-rewards in scope, machinery-first-then-content. This slice is the LAST
-machinery before the season script (3b) — everything here ships DORMANT
-(live pack authors nothing yet) and proven against test-only stubs, exactly
-like HANDOFF_STORY_1.*
+*Strategy phase output (Fable, 2026-07-18). **FULLY SHIPPED 2026-07-18** —
+all four tasks annotated below. Design source: `STORY.md` §1-2 + the owner's
+four locked calls (2026-07-18): thin-wrapper sidequests, chapter-gated
+reveals, signature rewards in scope, machinery-first-then-content. This
+slice is the LAST machinery before the season script (3b) — everything here
+ships DORMANT (live pack authors nothing yet) and proven against test-only
+stubs, exactly like HANDOFF_STORY_1.*
 
 ## Why this slice exists (what the review of the build order found)
 
@@ -62,7 +62,7 @@ decision-final handoff rather than letting the implementer guess.
 6. **Stubs are TEST-ONLY.** Live pack ships `sidequests: []` and zero
    authored depth. Same rule as STORY_1 trap 3.
 
-## Task A — authored cast depth: the pack-only live overlay
+## Task A — authored cast depth: the pack-only live overlay — ✅ SHIPPED 2026-07-18
 
 1. `content/pack/index.ts` (or a small helper module): export
    `authoredCastDepth(npcId): { backstory?: string; secret?: string; arc?: string[] } | undefined`
@@ -80,7 +80,19 @@ decision-final handoff rather than letting the implementer guess.
 depth falls back exactly as before; nothing in `/api/state`'s payload ever
 carries `secret` (assert the state route's npc shape); golden unchanged.
 
-## Task B — chapter-gated reveals (`secret` + `arc`)
+**Shipped as specced**, with one substitution: `/api/state` isn't unit
+tested anywhere in this codebase (no `app/api/*` route has a direct test —
+that layer sits outside the vitest suite's scope), so "nothing in the
+payload carries `secret`" is proven as a STRUCTURAL guarantee instead: the
+state-level `Npc` zod schema has no `secret`/`arc` field at all, and
+`content/pack/pack.test.ts` pins that `seedNpcs`' explicit field list
+(id/universeId/name/oneBreath/factionId/locationId/role) can't pass them
+through even if a pack cast entry carried them. `buildAuthoredCastDepth` was
+also extracted as a standalone pure function (not in the spec) so the
+map-building logic is unit-testable without depending on the live (empty)
+pack.
+
+## Task B — chapter-gated reveals (`secret` + `arc`) — ✅ SHIPPED 2026-07-18
 
 1. New `llm/promptSections/castReveals.ts` + ONE registry entry. Renders
    ONLY when a storyline chapter is ACTIVE (read `storyline` from
@@ -99,7 +111,13 @@ carries `secret` (assert the state route's npc shape); golden unchanged.
 present) — all three individually falsified; arc picks by act; dormant
 pack renders nothing.
 
-## Task C — sidequests: authored, placed, one-shot (thin wrapper on Job)
+**Shipped as specced.** `castReveals.ts` mirrors `activeChapter.ts`'s
+established shape exactly (imports `pack` directly, reads `storyline` +
+`memory.sceneCard` from `SectionCtx`) — no new `SectionCtx` field or
+`buildContextSlice` parameter needed, since everything it reads was already
+threaded. Registered right after `activeChapter` in the same context group.
+
+## Task C — sidequests: authored, placed, one-shot (thin wrapper on Job) — ✅ SHIPPED 2026-07-18
 
 1. **Schema** (`content/pack/types.ts`): `PackSidequest = { id (unique,
    prefix-free — the runtime prefixes it), title, blurb, giverNpcId (a pack
@@ -143,7 +161,21 @@ visit), board displacement (4 offers max with an injected one present),
 materialized giver adopts the real pack NPC, reward tier unclamped.
 `pack.test.ts`: validatePack rules + live pack ships zero sidequests.
 
-## Task D — signature rewards + docs close-out
+**Shipped as specced**, plus one real bug found and fixed during
+implementation (not in the original spec): the existing personal-job
+arc-resolution block in `shared/jobsRuntime.ts` (`giver !== "board" &&
+rel.arcStage !== "resolved"`) would have falsely resolved an arc the moment
+ANY sidequest's giver was an npc the player already had prior standing
+with — a sidequest never sets `arcStage:"active"` at accept the way
+`generatePersonalJob` does, so an undefined `arcStage` slipped through the
+old `!== "resolved"` check and permanently blocked that NPC's real
+personal-favor offer (`personalJobAvailable` requires `!rel.arcStage`).
+Fixed by tightening the gate to `rel.arcStage === "active"` — a correctness
+fix independent of sidequests, exposed by this new giver-is-npc job type,
+with a regression test and zero behavior change for the existing (only)
+caller (`generatePersonalJob`'s accept path already sets `"active"`).
+
+## Task D — signature rewards + docs close-out — ✅ SHIPPED 2026-07-18
 
 1. `PackStoryChapter.reward` gains `itemId?` (a `shared/items` CATALOG id —
    validatePack checks it resolves) and `crewUnlock?` (a pack cast npc id).
@@ -163,6 +195,21 @@ materialized giver adopts the real pack NPC, reward tier unclamped.
    map; CHECKS.md rows (pack-only depth = no leak surface; sidequest
    one-shot-via-jobs-slice); annotate THIS handoff per WORKFLOW.md.
 
+**Shipped as specced**, with the "invasive" question resolved in favor of
+keeping `resolveStorylineTurn` decoupled from scene-memory machinery
+entirely: `StorylineTurnResult` gained a `pendingPickup?` field instead of
+the function taking/mutating `sceneCard` — the route applies it onto
+`session.sceneCard.pendingPickup` itself (one `if` at the same call site
+that already folds `npcRelations`/`storyline` back). `bestArmor`'s AC-recompute
+logic (10 + reflex + best single piece) is duplicated inline as
+`bestArmorBonus` rather than importing `llm/runtimeEconomy.ts`'s version —
+`shared/` must never depend on `llm/` (same reasoning as `shared/storyline.ts`'s
+duplicated `npcIsGone`). `content/pack/types.ts`'s `validatePack` now imports
+`catalogItem` from `@/shared/items` for the `itemId` resolution check — traced
+as non-circular (`shared/items.ts`'s only pack dependency is a raw JSON import
+via `content/index.ts`'s facade, never `content/pack/index.ts` or `types.ts`
+itself) and confirmed with both `tsc` and a live test run.
+
 ## Explicitly OUT of scope
 
 The season script itself and ALL authored content (3b — chapters, depth on
@@ -173,15 +220,24 @@ delivered reveal is not marked — the section keeps offering it while the
 chapter runs; beat delivery already covers one-shot narrative moments);
 NPC-initiated contact; seasons/end-dates.
 
-## Definition of done
+## Definition of done — ALL MET (2026-07-18)
 
-- `tsc` clean; full suite green (1051 baseline + new); golden
-  BYTE-IDENTICAL (both new sections dormant-silent).
-- NO new migration (trap 3 — if you find yourself writing one, re-read it).
-- Live pack: `sidequests: []`, zero authored depth — a live campaign
+- ✅ `tsc` clean; full suite green (1051 baseline → **1093 final**, +42);
+  golden BYTE-IDENTICAL throughout (both new sections dormant-silent).
+- ✅ NO new migration (trap 3 held) — sidequest one-shot rides the jobs
+  slice itself.
+- ✅ Live pack: `sidequests: []`, zero authored depth — a live campaign
   behaves identically pre/post deploy (dormancy is the shipping state).
-- The test stubs drive: authored-backstory overlay; a secret revealed only
-  under chapter+presence; a sidequest's full offer→accept→advance→payout→
-  never-again loop incl. the expiry-then-reoffer path; a signature item
-  granted into a FULL pack landing as pendingPickup.
-- One commit per task; annotate this handoff per WORKFLOW.md Phase 2.
+- ✅ The test stubs drive: authored-backstory overlay (Task A); a secret
+  revealed only under chapter+presence, arc by act (Task B); a sidequest's
+  full placement→trigger→one-shot→board-displacement loop incl. the
+  expiry-then-reoffer path (Task C); a signature item granted into a FULL
+  pack landing as `pendingPickup`, and a `crewUnlock` that never lowers an
+  already-higher disposition (Task D).
+- ✅ One commit per task (four commits); this handoff annotated per
+  WORKFLOW.md Phase 2, every task's actual decisions recorded in the gaps.
+- ✅ One real bug found and fixed during implementation, not in the
+  original spec: the personal-job arc-resolution gate in
+  `shared/jobsRuntime.ts` was too loose for a giver-is-npc job that never
+  opens an arc (a sidequest) — tightened to `arcStage === "active"`, with a
+  regression test.

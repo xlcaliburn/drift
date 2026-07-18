@@ -87,3 +87,70 @@ describe("resolveStorylineTurn", () => {
     expect(after.chapters["ch-1"].deliveredBeatIds).toEqual(["b1"]);
   });
 });
+
+describe("resolveStorylineTurn — signature rewards (HANDOFF_STORY_2.md Task D)", () => {
+  function stubWithReward(reward: Partial<PackStoryline["chapters"][number]["reward"]>): PackStoryline {
+    const s = stub();
+    return { chapters: [{ ...s.chapters[0], reward: { ...s.chapters[0].reward, ...reward } }] };
+  }
+
+  it("grants a fitting signature item straight into gear, with AC recomputed for armor", () => {
+    const s = state();
+    const res = resolveStorylineTurn({
+      content: stubWithReward({ itemId: "combatArmor" }),
+      storyline: { chapters: {} }, state: s, npcRelations: {}, facts: [],
+      signals: turnSignals("loc-b", [], false, []),
+    });
+    const pc = res.state.characters.find((c) => c.kind === "pc")!;
+    expect(pc.gear.some((g) => g.itemId === "combatArmor")).toBe(true);
+    expect(pc.ac).toBe(10 + 0 + 3); // reflex 0 + combatArmor's acBonus 3
+    expect(res.lines.some((l) => l.includes("Reward: Combat armor"))).toBe(true);
+    expect(res.pendingPickup).toBeUndefined();
+  });
+
+  it("parks a signature item as pendingPickup when the pack is full, without losing it", () => {
+    const full = state();
+    const pc = full.characters[0];
+    // 8 slots (might 0) filled with 8 single-slot flavor items.
+    (pc as { gear: unknown[] }).gear = Array.from({ length: 8 }, (_, i) => ({ name: `Junk ${i}` }));
+    const res = resolveStorylineTurn({
+      content: stubWithReward({ itemId: "combatArmor" }),
+      storyline: { chapters: {} }, state: full, npcRelations: {}, facts: [],
+      signals: turnSignals("loc-b", [], false, []),
+    });
+    const resultPc = res.state.characters.find((c) => c.kind === "pc")!;
+    expect(resultPc.gear.some((g) => g.itemId === "combatArmor")).toBe(false); // never silently lost into gear
+    expect(res.pendingPickup).toEqual({ name: "Combat armor", itemId: "combatArmor" });
+    expect(res.lines.some((l) => l.includes("won't fit"))).toBe(true);
+  });
+
+  it("crewUnlock raises disposition to TRUST_THRESHOLD (never lowers an already-higher one) and logs why", () => {
+    const s = state();
+    s.npcs = [{ id: "npc-ilyana", universeId: "u", name: "Ilyana", oneBreath: "x" }] as never;
+    const belowThreshold = resolveStorylineTurn({
+      content: stubWithReward({ crewUnlock: "npc-ilyana" }),
+      storyline: { chapters: {} }, state: s, npcRelations: { "npc-ilyana": { disposition: 0 } }, facts: [],
+      signals: turnSignals("loc-b", [], false, []),
+    });
+    expect(belowThreshold.npcRelations["npc-ilyana"].disposition).toBe(2); // TRUST_THRESHOLD
+    expect(belowThreshold.npcRelations["npc-ilyana"].log?.length).toBeGreaterThan(0);
+    expect(belowThreshold.lines.some((l) => l.includes("Ilyana would sign on"))).toBe(true);
+
+    const alreadyAlly = resolveStorylineTurn({
+      content: stubWithReward({ crewUnlock: "npc-ilyana" }),
+      storyline: { chapters: {} }, state: s, npcRelations: { "npc-ilyana": { disposition: 3 } }, facts: [],
+      signals: turnSignals("loc-b", [], false, []),
+    });
+    expect(alreadyAlly.npcRelations["npc-ilyana"].disposition).toBe(3); // never LOWERED
+  });
+
+  it("an unrecognized itemId degrades to a no-op, without crashing (validatePack normally prevents this)", () => {
+    const s = state();
+    const res = resolveStorylineTurn({
+      content: stubWithReward({ itemId: "not-a-real-item" }),
+      storyline: { chapters: {} }, state: s, npcRelations: {}, facts: [],
+      signals: turnSignals("loc-b", [], false, []),
+    });
+    expect(res.state.characters.find((c) => c.kind === "pc")!.gear).toEqual([]);
+  });
+});

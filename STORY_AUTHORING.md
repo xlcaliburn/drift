@@ -1,10 +1,11 @@
 # STORY_AUTHORING.md — writing a season's chapters
 
-*Owner-facing guide (HANDOFF_STORY_1.md Task D). The machinery this doc
-describes SHIPPED 2026-07-18 — `content/pack/drift/storyline.ts` still ships
-`{ chapters: [] }` (dormant, no season written yet). This is the reference
-for when a season IS written: Fable drafts a first pass, you edit the file
-directly, same as any other pack file.*
+*Owner-facing guide (HANDOFF_STORY_1.md Task D, extended by
+HANDOFF_STORY_2.md Task D). The machinery this doc describes SHIPPED
+2026-07-18 — `content/pack/drift/storyline.ts` still ships `{ chapters: [] }`
+and `content/pack/drift/sidequests.ts` ships `[]` (dormant, no season written
+yet). This is the reference for when a season IS written (3b): Fable drafts a
+first pass, you edit the pack files directly, same as any other pack data.*
 
 ## The one thing to internalize
 
@@ -103,8 +104,14 @@ way it validates the rest of the pack.
 
   // Paid the moment every objective is done AND the choice (if any) is
   // picked. Flat numbers — no RNG band like job rewards; write the exact
-  // amount a chapter of this weight should pay.
-  reward: { credits: 100, factionRep: { factionId: "f-crown", delta: 1 } },
+  // amount a chapter of this weight should pay. itemId/crewUnlock are
+  // OPTIONAL "signature reward" additions — see that section below.
+  reward: {
+    credits: 100,
+    factionRep: { factionId: "f-crown", delta: 1 },
+    itemId: "combatArmor",       // optional — a real shared/items catalog id
+    crewUnlock: "npc-ilyana",    // optional — a real pack cast id
+  },
 }
 ```
 
@@ -120,6 +127,107 @@ they're not around to deliver it in person. Write the fallback as "how the
 same information reaches the player without them" (a note in their effects,
 someone else who knew, a recording) — never just "they're not here, skip
 this," which reads as a plot hole.
+
+## Authored cast depth — backstory, secret, arc
+
+`pack.cast` entries (the same array `castNpcIds` references) can carry three
+OPTIONAL fields, read LIVE from the pack — never persisted, never sent to
+the client (HANDOFF_STORY_2.md Task A). Editing any of them applies on a
+campaign's very next turn, same as chapter prose.
+
+```ts
+{
+  id: "npc-ilyana", name: "Ilyana", oneBreath: "...", /* ...existing fields... */
+  backstory: "A former Crown auditor who fled a cooked ledger.",
+  secret: "She's the one who cooked it — the ledger she's chasing is her own.",
+  arc: [
+    "Guarded, professional — still hiding the truth.",
+    "Cracks start to show once you press on the ledger.",
+    "Fully open with you, whatever the fallout.",
+  ],
+}
+```
+
+- **`backstory` is ALWAYS-ON and SPOILER-SAFE.** It surfaces in the
+  narrator's `[hook: ...]` line for anyone present, and in a trusted NPC's
+  personal-favor want — the SAME places the generated fallback would have
+  shown. Write it as the thing the character would tell a near-stranger, not
+  the truth underneath.
+- **`secret` is the GATED reveal.** It surfaces ONLY while this NPC's
+  entry in `castNpcIds` belongs to the ACTIVE chapter and they're PRESENT in
+  the scene — both engine facts, checked by `promptSections/castReveals.ts`.
+  The model still chooses WHEN and HOW within that window (never forced into
+  one specific turn), but it can never fire before the chapter arms it.
+  Write the reveal itself here, not a hint — the section tells the narrator
+  "you may now let this surface."
+- **`arc`** is one line PER ACT (index 0 = act 1, index 1 = act 2, …) — how
+  this person has changed by the time the season reaches that act. Only
+  rendered while a chapter of that act is active; an NPC with no entry for
+  the current act simply gets no arc line (not an error).
+
+## Sidequests — placed, authored, one-shot
+
+`content/pack/drift/sidequests.ts` exports `driftSidequests: PackSidequest[]`
+— a FLAT array (no ordering rule; each is independent). A sidequest is a
+thin wrapper on the same Job machinery the procedural board runs — it
+becomes a real offered job the moment its trigger holds, at its own posted
+location, and the player can't tell it apart from a generated offer except
+that its giver, stakes, and story are yours.
+
+```ts
+{
+  id: "the-quiet-debt",         // FOREVER, unique. Runtime job id = "sq-<id>".
+  title: "The Quiet Debt",
+  blurb: "Ilyana needs a courier who won't ask questions.",
+  giverNpcId: "npc-ilyana",      // a REAL pack.cast id — never invented here
+  factionId: "f-crown",          // optional
+  tier: "T1",                    // T0-T3 — YOUR call, never clamped down
+  postedLocationId: "loc-meridian", // where it's OFFERED (station-local)
+
+  trigger: {                     // OPTIONAL — omit to offer immediately
+    actAtLeast: 2,                 // the season must have reached this act
+    factionRepAtLeast: { factionId: "f-crown", rep: 1 },
+    npcTrustAtLeast: { npcId: "npc-ilyana", disposition: 1 },
+    hasFact: "sided-crown",
+  },
+
+  objectives: [                  // same shape/kinds as a chapter's — reuses
+    { id: "o1", kind: "travel", summary: "Deliver the case to Rook", locationId: "loc-rook" },
+  ],
+  cargo: "a sealed case",         // optional — becomes real inventory on accept
+  complication: "Sable eyes on the lane", // optional flavor line
+
+  reward: { repFactionId: "f-crown", repDelta: 1 }, // credits roll from `tier`'s band
+}
+```
+
+**One-shot is automatic** — once a player completes or abandons a sidequest,
+it never re-offers (the completed/failed job record itself is the guard). An
+OFFERED-but-ignored one that expires or gets walked away from DOES come back
+on a later visit — that's by design (it's declining the offer, not the job).
+
+**Never invent a giver inline.** `giverNpcId` must be an id already in
+`pack.cast` — if the person doesn't exist yet, add them to the cast list
+first (with a `backstory`/`secret`/`arc` if the season wants depth on them).
+
+## Signature rewards — a chapter's act-finale payoff
+
+A storyline chapter's `reward` can optionally carry:
+
+- **`itemId`** — a real id from `shared/items.ts`'s catalog (the same ids
+  the shop/loot flow use). Granted the moment the chapter completes: if it
+  fits the player's pack, it goes straight into their gear; if the pack is
+  full, it's parked exactly like any other full-pack pickup (a swap chip
+  offers to drop something for it) — it's never silently lost.
+- **`crewUnlock`** — a real `pack.cast` id. Completing the chapter raises
+  that NPC's trust to the recruit-eligible threshold (never LOWERS it if
+  they're already more trusted than that) — they still only actually join
+  when the normal recruit chip's other conditions hold (a free berth, them
+  being present). This is "you've earned the right to ask", not "they're
+  now standing in front of you."
+
+Both are optional and independent — a chapter can carry neither, either, or
+both alongside its credits/rep.
 
 ## How triggers compose
 
@@ -161,21 +269,22 @@ never blocks anything else the player is doing.
 
 ## Trying a chapter locally
 
-`shared/storyline.test.ts` is the reference — it builds a small 2-chapter
-fixture and drives it through the full loop (trigger → beats → objectives →
-choice → reward → next chapter) with plain function calls, no server, no
-model. Copy that pattern to sanity-check a real chapter's shape before it
-ever reaches a live campaign: build a `PackStoryline` with your chapter(s),
-call `evaluateTriggers`/`advanceStoryline`/`nextBeat` against a fixture
-`CampaignState`, and watch what comes out. `npm test` also runs the full
-storyline schema against `content/pack/pack.test.ts`'s validator, which is
-the same check that gates the real pack.
+`shared/storyline.test.ts` is the reference for a chapter — it builds a small
+2-chapter fixture and drives it through the full loop (trigger → beats →
+objectives → choice → reward → next chapter) with plain function calls, no
+server, no model. `shared/sidequests.test.ts` is the equivalent for a
+sidequest (placement, trigger gating, one-shot). Copy either pattern to
+sanity-check a real entry's shape before it ever reaches a live campaign.
+`npm test` also runs the full storyline + sidequest schemas against
+`content/pack/pack.test.ts`'s validator, which is the same check that gates
+the real pack.
 
-## What this slice does NOT do (yet)
+## What this machinery does NOT do (yet)
 
-No unique-item rewards (credits + faction rep only). No typed-text choice
-inference — the choicePoint only resolves from a clicked chip. No
-season/end-date concept. No NPC-initiated contact (a chapter can't reach out
-to the player between turns; it waits for the trigger to hold and then
-patiently nudges). These are tracked in `STORY.md`'s backlog, not blockers for
-writing a season with what's here.
+No typed-text choice inference — the choicePoint only resolves from a
+clicked chip. No season/end-date concept. No NPC-initiated contact (a
+chapter can't reach out to the player between turns; it waits for the
+trigger to hold and then patiently nudges). No secret-reveal TRACKING — the
+castReveals section keeps offering a secret every turn its gate holds; it
+isn't marked "delivered" the way a beat is. These are tracked in `STORY.md`'s
+backlog, not blockers for writing a season with what's here.

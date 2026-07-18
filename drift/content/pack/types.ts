@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { UniqueSkill, AttributeKey } from "@/shared/schemas";
+import { catalogItem } from "@/shared/items";
 
 /**
  * THE CONTENT PACK SCHEMA — the single authored source of world truth. Everything
@@ -434,6 +435,16 @@ export const PackStoryChapter = z.object({
   reward: z.object({
     credits: z.number().int().min(0),
     factionRep: z.object({ factionId: z.string(), delta: z.number().int() }).optional(),
+    /** A SIGNATURE item reward (an act finale) — a shared/items CATALOG id;
+     *  validatePack checks it resolves. Granted through the same full-pack
+     *  pickup path loot uses (shared/storylineRuntime.ts): fits → straight
+     *  into gear; pack full → parked as sceneCard.pendingPickup, same swap
+     *  chips as any other pickup. */
+    itemId: z.string().optional(),
+    /** Raises this pack cast NPC to recruit-eligibility (disposition to at
+     *  least TRUST_THRESHOLD) — `recruitOffer` still gates on berth/presence
+     *  as normal; this only clears the trust bar. */
+    crewUnlock: z.string().optional(),
   }),
 });
 export type PackStoryChapter = z.infer<typeof PackStoryChapter>;
@@ -645,6 +656,13 @@ export function validatePack(pack: ContentPack): string[] {
     }
     if (chapter.reward.factionRep && !facIds.has(chapter.reward.factionRep.factionId)) {
       problems.push(`${tag}: reward faction ${chapter.reward.factionRep.factionId} is not a faction`);
+    }
+    // Signature rewards (HANDOFF_STORY_2.md Task D).
+    if (chapter.reward.itemId && !catalogItem(chapter.reward.itemId)) {
+      problems.push(`${tag}: reward itemId ${chapter.reward.itemId} is not a catalog item`);
+    }
+    if (chapter.reward.crewUnlock && !npcIds.has(chapter.reward.crewUnlock)) {
+      problems.push(`${tag}: reward crewUnlock ${chapter.reward.crewUnlock} is not an npc`);
     }
   });
 
