@@ -163,6 +163,29 @@ route's exact validation). 877 tests pass (868 baseline + 9), `tsc` clean,
 golden byte-identical, zero live campaigns mid-fight at check time (queried
 again post-Task-C).*
 
+*Review (Phase 3, 2026-07-18) — two defects found, both fixed forward:
+(1) `upkeepPerTenday` still counted temporary members that `chargeCrewUpkeep`
+never charges — the QUOTED number (Status tab, the hire line in
+`runtimeCrew.ts`) would have lied the moment STORY.md spawns an ally, and the
+`?? TIERS[…].wage` fallback would even price a wage-less one; now filtered to
+match the charger, with the quoted-number assertion added to the crew test.
+(2) `PlayClient` cleared the staged crew orders the moment the request was
+SENT — a retryable narrator failure (which saves nothing server-side) lost the
+orders, so the "resume the exact same action" retry silently ran with everyone
+auto-acting; the clear now lives in the `done` handler, where a round has
+actually committed. Verified clean in review: `temporary` persists through the
+generic snake/camel row mappers (no capitals — passes straight through to
+migration 030's column, and `Character.parse` tolerates its absence); a
+crafted `combatActions` entry carrying the PC's own memberId can't double-act
+the PC (the PC's real action is first in the array and `find` takes the first
+match) and crewPhase only consults `kind:"party"` members; the second
+`getSession` branch needs no `system` normalization (it's `combat: null` by
+construction). One benign quirk left as-is: an UN-ordered member's
+no-living-target `break` (pinned legacy behavior) can skip a LATER member's
+ordered self-heal — but it only fires when every enemy is already dead, victory
+ends the fight immediately after, and the unspent item is preserved, so
+nothing of value is lost.*
+
 **Behavior:** the player may order EVERY standing party member each round;
 un-ordered members keep today's auto-act (`crewPhase`) so combat never stalls
 and a solo PC is byte-identical to today.

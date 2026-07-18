@@ -182,9 +182,13 @@ export function repairRatePerHp(state: CampaignState, baseRate: number): number 
 }
 
 /** Upkeep per tenday: wages + superlinear overhead (supplies/berth costs) —
- *  `wages + ceil(wages × factor × (crewCount − 1))`. Five hands cost more than 5×one. */
+ *  `wages + ceil(wages × factor × (crewCount − 1))`. Five hands cost more than 5×one.
+ *  Temporary members are excluded to MATCH chargeCrewUpkeep — this is the number
+ *  quoted to the player (Status tab, the hire line), and quoting a wage the
+ *  charger never takes would be a lie. Without the filter, the `?? TIERS[…].wage`
+ *  fallback below would even price a wage-less story ally. */
 export function upkeepPerTenday(state: CampaignState): number {
-  const crew = crewMembers(state);
+  const crew = crewMembers(state).filter((m) => !m.temporary);
   if (!crew.length) return 0;
   const wages = crew.reduce((s, c) => s + (c.wage ?? TIERS[(c.crewTier as CrewTier) ?? "T1"].wage), 0);
   const factor = (crewContent.overheadFactor as number) ?? 0.15;

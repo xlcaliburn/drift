@@ -243,9 +243,6 @@ export default function PlayClient({
             : {}),
         }),
       });
-      // Orders are per-round — clear the staging once this round is in flight;
-      // the next round's chips (if any) start fresh.
-      if (combat?.active) setCrewOrders({});
 
       // Gating errors (budget/auth/not-found) come back as plain JSON, not a stream.
       if (!res.ok || !res.body) {
@@ -303,6 +300,11 @@ export default function PlayClient({
             setChat((c) => [...c, { role: "dm", text: evt.narration || stripInlineMenu(streamed) || "…" }]);
             if (evt.state) setState(evt.state);
             setCombat(evt.combat ?? null);
+            // Orders are per-round — clear the staging only once a round has
+            // actually COMMITTED (done), never on send: a retryable narrator
+            // failure saves nothing server-side, and the retry contract is
+            // "resume the exact same action", crew orders included.
+            setCrewOrders({});
             if (evt.npcRelations) setNpcRelations(evt.npcRelations);
             if (evt.sceneCard) setSceneCard(evt.sceneCard);
             if (evt.jobs) setJobs(evt.jobs);

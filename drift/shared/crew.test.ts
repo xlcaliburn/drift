@@ -169,6 +169,10 @@ describe("upkeep — wages + superlinear overhead, charged as tendays pass", () 
     const mixed = state({ characters: [pc(500), ally, crewMember("Paid")], shipClass: "hauler" });
     const r2 = chargeCrewUpkeep(mixed, 1, maxRng);
     expect(r2.lines[0]).toMatch(/Crew upkeep: -¢25 \(1 crew\)/); // only "Paid" counted
+    // The QUOTED number (Status tab / hire line) matches what's actually charged:
+    // the ally alone quotes 0, and alongside a hire adds no wage and no overhead.
+    expect(upkeepPerTenday(s)).toBe(0);
+    expect(upkeepPerTenday(mixed)).toBe(25);
   });
 
   it("role passives: specialists assist their skill (+1, non-stacking per role)", () => {
