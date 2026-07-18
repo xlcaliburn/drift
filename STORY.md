@@ -87,12 +87,17 @@ chapter that showcases both combat systems (COMBAT_V2.md):
 
 ## Build order (each slice = one handoff)
 
-1. **QUESTS 1b `report` objective** (small, unblocks everything authored).
+1. **QUESTS 1b `report` objective** (small, unblocks everything authored) —
+   **specced into `HANDOFF_STORY_1.md` (READY TO IMPLEMENT)** together with:
 2. **Storyline machinery** — schemas, runtime slice, trigger/advance engine,
-   activeChapter section, Story tab. Testable with a 2-chapter stub.
-3. **Authored content pass** — the actual season-one script (owner + Fable
-   writing session: 9 chapters, ~12 sidequests, cast depth). Content, not code.
-4. **Prologue** — after COMBAT_V2 lands (it demos those systems).
+   activeChapter section, Story tab. Proven with a TEST-ONLY 2-chapter stub;
+   the live pack ships an empty storyline (dormant) until content lands.
+   Also delivers `STORY_AUTHORING.md`, the owner-facing format guide.
+3. **Authored content pass** — the actual season-one script (Fable drafts
+   the full 9 chapters + ~12 sidequests + cast depth grounded in existing
+   canon; owner edits the pack files directly). Content, not code.
+4. **Prologue** — COMBAT_V2 has landed, so this is unblocked; it rides after
+   the content slice (Chapter 0 is content too).
 
 ## Decisions (RESOLVED 2026-07-18 — owner approved recommendations)
 
@@ -102,3 +107,19 @@ chapter that showcases both combat systems (COMBAT_V2.md):
   facts; never parallel chapter trees.
 - **Storyline cast CAN die mid-season** — the fate system records it; every
   beat referencing a mortal NPC carries an authored fallback variant.
+
+### Second round (2026-07-18, pre-implementation)
+
+- **Machinery first, stub story** — engine on tested rails before any script.
+- **Fable drafts, owner edits** — the pack format is the editing surface;
+  `STORY_AUTHORING.md` documents it. **Hot-editability is a design goal**:
+  campaigns persist only progress POINTERS (chapter/beat/choice ids), content
+  is read live from the pack each turn — prose/beat/reward edits apply
+  immediately even to campaigns mid-chapter. Ids are forever; everything
+  else is editable; the engine degrades gracefully on removed ids.
+- **Retrofit live campaigns** — triggers are state PREDICATES re-evaluated
+  every turn (never event-edges), so existing campaigns qualify naturally
+  the moment content ships.
+- **Patient pacing** — an open chapter surfaces and WAITS (activeChapter
+  directive + Story tab + a nudge after ~3 quiet tendays); it never hijacks
+  the sandbox.
