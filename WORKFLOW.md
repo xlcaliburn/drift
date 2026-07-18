@@ -65,6 +65,9 @@ rest.
   npcRelations…): Zod defaults never run on load, so a NEW field on a persisted
   type MUST ship with load-time normalization (see `jobs` in `lib/state.ts`).
   This exact miss was the review-pass critical on the worked example.
+- **New engine/UI strings use `shared/lexicon.ts`** — never a bare ¢/tenday/
+  hull literal. It's an M2 seed (word-level only, not pack-backed yet); M2
+  migrates the OLD call sites later. New code shouldn't add to that pile.
 
 ---
 
