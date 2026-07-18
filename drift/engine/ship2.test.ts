@@ -166,8 +166,8 @@ describe("resolvePolicyAllocation", () => {
   const gunshipProfile: Ship2Profile = {
     shipClass: "gunship", reactor: 5, engineCap: 1, shieldCap: 2, armor: 0, hasPointDefense: false, gunnerBoost: false,
     mounts: [
-      { id: "railgun", name: "Railgun", power: 2, dice: 1, hitOn: 4, dmgPerHit: 3 },
-      { id: "beamLance", name: "Beam lance", power: 2, dice: 2, hitOn: 5, dmgPerHit: 2, overchargeHitOn: 4 },
+      { id: "railgun", key: "railgun", name: "Railgun", power: 2, dice: 1, hitOn: 4, dmgPerHit: 3 },
+      { id: "beamLance", key: "beamLance", name: "Beam lance", power: 2, dice: 2, hitOn: 5, dmgPerHit: 2, overchargeHitOn: 4 },
     ],
   };
 
@@ -194,7 +194,7 @@ describe("resolvePolicyAllocation", () => {
   it("a dry ammo-limited mount is skipped by a guns token", () => {
     const withDryRack: Ship2Profile = {
       ...gunshipProfile,
-      mounts: [{ id: "missileRack", name: "Missile rack", power: 2, dice: 4, hitOn: 4, dmgPerHit: 1, ammoLimited: true, pdHitOn: 5, ammo: 0 }],
+      mounts: [{ id: "missileRack", key: "missileRack", name: "Missile rack", power: 2, dice: 4, hitOn: 4, dmgPerHit: 1, ammoLimited: true, pdHitOn: 5, ammo: 0 }],
     };
     const out = resolvePolicyAllocation(withDryRack, ["guns", "shields"]);
     expect(out.mounts).toEqual([]);

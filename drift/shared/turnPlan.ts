@@ -64,7 +64,9 @@ export type DangerSpec = z.infer<typeof DangerSpec>;
  *  re-validates against the live profile (shared/ship2.ts's
  *  validateAllocation) before anything resolves. */
 export const AllocationSpec = z.object({
-  mounts: z.array(z.string()).max(4),
+  // mount KEYS (HANDOFF_COMBAT_V2_3.md — mount instance keys, not shared
+  // profile ids); cap 6 = the largest class's mountSlots + headroom.
+  mounts: z.array(z.string()).max(6),
   shields: z.number().int().min(0).max(6),
   engines: z.number().int().min(0).max(6),
   overcharge: optionalNullable(z.boolean()),

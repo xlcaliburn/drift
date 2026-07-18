@@ -268,6 +268,50 @@ describe("ship2 CombatSystem — crew passives + missile ammo", () => {
     expect(r.combat.enemies[0].hp).toBe(20); // nothing fired
     expect(rt.state.ship!.weapons[0].ammo).toBe(0); // unchanged, not driven negative
   });
+
+  it("two of the same weapon fire as independent instances — BOTH hit in one allocation (HANDOFF_COMBAT_V2_3 Task A)", () => {
+    // gunship class (reactor 5) — enough headroom to fire BOTH 2-power
+    // railguns at once; the default hauler's reactor 3 can only afford one.
+    const twoCannons = ship({
+      shipClass: "gunship",
+      weapons: [
+        { name: "Port cannon", type: "kinetic", damage: "2d6" },
+        { name: "Starboard cannon", type: "kinetic", damage: "2d6" },
+      ],
+    });
+    const oneCannon = ship({ shipClass: "gunship", weapons: [{ name: "Cannon", type: "kinetic", damage: "2d6" }] });
+    const rtTwo = new TurnRuntime(state(twoCannons), maxRng);
+    const rtOne = new TurnRuntime(state(oneCannon), maxRng);
+    const target = () => enemy({ hp: 999, ship2Class: "fighter" }); // no evasion/armor/shields to muddy the math
+    const rTwo = rtTwo.resolveCombatRound(ship2Combat([target()], rtTwo.state.ship!), {
+      type: "allocate",
+      alloc: { mounts: ["railgun", "railgun-2"], shields: 0, engines: 0 },
+    });
+    const rOne = rtOne.resolveCombatRound(ship2Combat([target()], rtOne.state.ship!), {
+      type: "allocate",
+      alloc: { mounts: ["railgun"], shields: 0, engines: 0 },
+    });
+    const dmgTwo = 999 - rTwo.combat.enemies[0].hp;
+    const dmgOne = 999 - rOne.combat.enemies[0].hp;
+    expect(dmgOne).toBeGreaterThan(0);
+    expect(dmgTwo).toBe(dmgOne * 2); // both railguns hit — exactly double under maxRng
+  });
+
+  it("ammo decrement hits ONLY the fired rack when two missile racks are carried", () => {
+    const s = ship({
+      weapons: [
+        { name: "Fore rack", type: "missile", damage: "1d8", ammo: 3 },
+        { name: "Aft rack", type: "missile", damage: "1d8", ammo: 5 },
+      ],
+    });
+    const rt = new TurnRuntime(state(s), maxRng);
+    rt.resolveCombatRound(ship2Combat([enemy({ hp: 999 })], rt.state.ship!), {
+      type: "allocate",
+      alloc: { mounts: ["missileRack"], shields: 0, engines: 0 }, // fires only the FIRST rack (key "missileRack")
+    });
+    expect(rt.state.ship!.weapons[0].ammo).toBe(2); // fore rack fired
+    expect(rt.state.ship!.weapons[1].ammo).toBe(5); // aft rack untouched
+  });
 });
 
 describe("ship2 CombatSystem — surprise + escalating heat", () => {

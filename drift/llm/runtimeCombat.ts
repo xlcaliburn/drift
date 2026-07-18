@@ -797,7 +797,7 @@ const classicSystem: CombatSystem = {
  *  chip type, or an "allocate" with missing/bad `alloc` data) — fire
  *  everything owned+loaded with shields maxed, so a round can never stall. */
 function defaultShip2Allocation(profile: Ship2Profile): Allocation {
-  return { mounts: profile.mounts.filter((m) => !m.ammoLimited || (m.ammo ?? 0) > 0).map((m) => m.id), shields: profile.shieldCap, engines: 0 };
+  return { mounts: profile.mounts.filter((m) => !m.ammoLimited || (m.ammo ?? 0) > 0).map((m) => m.key), shields: profile.shieldCap, engines: 0 };
 }
 
 /**
@@ -917,28 +917,38 @@ function resolveShip2Round(
     const targetEvasion = Math.min(2, enemyAlloc.engines);
     // Overcharge lands on the first fired mount that supports it — same
     // first-match rule validateAllocation used to decide `alloc.overcharge`.
-    const overchargeId = alloc.overcharge
-      ? alloc.mounts.find((id) => profile.mounts.find((m) => m.id === id)?.overchargeHitOn !== undefined)
+    // `alloc.mounts` holds KEYS (HANDOFF_COMBAT_V2_3 Task A — two same-type
+    // mounts fire as distinct instances), never the shared profile `id`.
+    const overchargeKey = alloc.overcharge
+      ? alloc.mounts.find((key) => profile.mounts.find((m) => m.key === key)?.overchargeHitOn !== undefined)
       : undefined;
-    let playerResults: MountFireResult[] = alloc.mounts.map((id) => {
-      const m = profile.mounts.find((x) => x.id === id)!;
-      return rollMount(m, { evasionBonus: targetEvasion, overcharged: id === overchargeId }, rt.rng);
+    let playerResults: MountFireResult[] = alloc.mounts.map((key) => {
+      const m = profile.mounts.find((x) => x.key === key)!;
+      return rollMount(m, { evasionBonus: targetEvasion, overcharged: key === overchargeKey }, rt.rng);
     });
     if (profile.gunnerBoost) playerResults = applyGunnerBoost(playerResults);
     playerResults = playerResults.map((r) => {
-      const m = profile.mounts.find((x) => x.id === r.mountId)!;
+      const m = profile.mounts.find((x) => x.key === r.mountKey)!;
       return applyPointDefense(r, m, enemyProfile.hasPointDefense, rt.rng);
     });
     const playerVolley = resolveVolley("You", playerResults, { armor: enemyProfile.armor, shieldPool: enemyAlloc.shields * 2 });
     lines.push(`🎯 ${playerVolley.breakdown}`);
     // The player's own missile ammo is the single source of truth
-    // (ship.weapons[].ammo) — decrement it so the reload consumable still works.
-    if (alloc.mounts.includes("missileRack")) {
+    // (ship.weapons[].ammo) — decrement ONLY the fired rack's own entry
+    // (weaponIndex), so a ship carrying two missile racks doesn't drain both
+    // when only one fires.
+    const firedMissileIndices = alloc.mounts
+      .map((key) => profile.mounts.find((m) => m.key === key))
+      .filter((m): m is (typeof profile.mounts)[number] => !!m && !!m.ammoLimited && m.weaponIndex !== undefined)
+      .map((m) => m.weaponIndex as number);
+    if (firedMissileIndices.length) {
       rt.state = {
         ...rt.state,
         ship: {
           ...rt.state.ship!,
-          weapons: rt.state.ship!.weapons.map((w) => (w.type === "missile" ? { ...w, ammo: Math.max(0, (w.ammo ?? 0) - 1) } : w)),
+          weapons: rt.state.ship!.weapons.map((w, i) =>
+            firedMissileIndices.includes(i) ? { ...w, ammo: Math.max(0, (w.ammo ?? 0) - 1) } : w,
+          ),
         },
       };
     }
@@ -978,15 +988,19 @@ function finishShip2Round(
     const baseProfile = deriveEnemyShip2Profile(enemy.ship2Class ?? "fighter", enemy.hasPointDefense ?? false, enemy.missileAmmo);
     const enemyProfile = enemyReactorMod ? { ...baseProfile, reactor: Math.max(0, baseProfile.reactor + enemyReactorMod) } : baseProfile;
     const enemyAlloc = resolvePolicyAllocation(enemyProfile, ship2ClassPolicy(enemy.ship2Class ?? "fighter"));
-    let fired: MountFireResult[] = enemyAlloc.mounts.map((id) => {
-      const m = enemyProfile.mounts.find((x) => x.id === id)!;
+    let fired: MountFireResult[] = enemyAlloc.mounts.map((key) => {
+      const m = enemyProfile.mounts.find((x) => x.key === key)!;
       return rollMount(m, { evasionBonus: playerEvasion }, rt.rng);
     });
     fired = fired.map((r) => {
-      const m = enemyProfile.mounts.find((x) => x.id === r.mountId)!;
+      const m = enemyProfile.mounts.find((x) => x.key === r.mountKey)!;
       return applyPointDefense(r, m, profile.hasPointDefense, rt.rng);
     });
-    if (enemyAlloc.mounts.includes("missileRack")) {
+    // Enemy ships track ONE flat missileAmmo counter (no per-weapon index —
+    // no enemy class carries two racks), so a fired ammo-limited mount is
+    // enough to identify the decrement target.
+    const firedAmmoLimited = enemyAlloc.mounts.some((key) => enemyProfile.mounts.find((m) => m.key === key)?.ammoLimited);
+    if (firedAmmoLimited) {
       nextEnemies = nextEnemies.map((e) => (e.id === enemy.id ? { ...e, missileAmmo: Math.max(0, (e.missileAmmo ?? 0) - 1) } : e));
     }
     enemyResults = enemyResults.concat(fired);

@@ -64,7 +64,7 @@ describe("combatChipsFor — system-aware chip dispatch (HANDOFF_COMBAT_V2_2.md 
 
   const ship2Profile: Ship2Profile = {
     shipClass: "hauler", reactor: 3, engineCap: 1, shieldCap: 1, armor: 1, hasPointDefense: false, gunnerBoost: false,
-    mounts: [{ id: "railgun", name: "Railgun", power: 2, dice: 1, hitOn: 4, dmgPerHit: 3 }],
+    mounts: [{ id: "railgun", key: "railgun", name: "Railgun", power: 2, dice: 1, hitOn: 4, dmgPerHit: 3 }],
   };
   const ship2Combat = (enemies: CombatEnemy[]): CombatState => ({
     ...combat(enemies),

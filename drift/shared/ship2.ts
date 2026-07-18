@@ -11,8 +11,14 @@ import { ship2 as ship2Catalog } from "@/content";
  */
 
 export interface Ship2MountInstance {
-  /** Catalog mount id (railgun/autocannon/beamLance/missileRack). */
+  /** Catalog mount id (railgun/autocannon/beamLance/missileRack) — shared by
+   *  every instance of that profile; NOT unique when a ship carries two of
+   *  the same mount (HANDOFF_COMBAT_V2_3 Task A — the multi-mount fix). */
   id: string;
+  /** Unique per ship: the profile id, or `${id}-2`/`${id}-3`/… for repeats
+   *  (assignMountKeys, in ship.weapons[] order). Allocations/lookups key on
+   *  THIS, never `id` — two railguns must be independently fireable. */
+  key: string;
   name: string;
   power: number;
   dice: number;
@@ -24,6 +30,11 @@ export interface Ship2MountInstance {
   /** Player-side ammo-limited mounts read live off `ship.weapons[].ammo`; an
    *  undefined ammo on a non-ammo-limited mount means "unlimited". */
   ammo?: number;
+  /** The `ship.weapons[]` index this instance derives from (player ships
+   *  only) — lets the ammo decrement hit ONLY the fired rack, not every
+   *  missile weapon the ship carries. Undefined for a class-default virtual
+   *  mount (no real weapons[] entry backs it yet) and always for enemies. */
+  weaponIndex?: number;
 }
 
 export interface Ship2Profile {
@@ -40,7 +51,9 @@ export interface Ship2Profile {
 }
 
 export interface Allocation {
-  /** Mount ids fired this round (each costs its `power`, drawn from `reactor`). */
+  /** Mount KEYS fired this round (each costs its `power`, drawn from
+   *  `reactor`) — `Ship2MountInstance.key`, NOT `.id` (two railguns need two
+   *  distinct entries to both fire). */
   mounts: string[];
   shields: number;
   engines: number;
@@ -74,7 +87,14 @@ type MountCatalogEntry = {
 };
 type ClassCatalogEntry = { reactor: number; engineCap: number; shieldCap: number; armor: number; mounts: string[]; policy: string[] };
 
-function mountFromCatalog(mountId: string, nameOverride: string | undefined, ammo: number | undefined): Ship2MountInstance {
+type MountWithoutKey = Omit<Ship2MountInstance, "key">;
+
+function mountFromCatalog(
+  mountId: string,
+  nameOverride: string | undefined,
+  ammo: number | undefined,
+  weaponIndex?: number,
+): MountWithoutKey {
   const catalog = ship2Catalog.mounts as Record<string, MountCatalogEntry>;
   const m = catalog[mountId];
   return {
@@ -88,7 +108,20 @@ function mountFromCatalog(mountId: string, nameOverride: string | undefined, amm
     ammoLimited: m?.ammoLimited,
     pdHitOn: m?.pdHitOn,
     ammo,
+    weaponIndex,
   };
+}
+
+/** Assign a unique `key` per mount in ship order — the profile id for the
+ *  first of its kind, `${id}-2`/`${id}-3`/… for repeats (HANDOFF_COMBAT_V2_3
+ *  Task A). Pure + order-stable: the same ship always keys the same way. */
+function assignMountKeys(mounts: MountWithoutKey[]): Ship2MountInstance[] {
+  const seen = new Map<string, number>();
+  return mounts.map((m) => {
+    const n = (seen.get(m.id) ?? 0) + 1;
+    seen.set(m.id, n);
+    return { ...m, key: n === 1 ? m.id : `${m.id}-${n}` };
+  });
 }
 
 /**
@@ -100,9 +133,10 @@ function mountFromCatalog(mountId: string, nameOverride: string | undefined, amm
 export function deriveShip2Profile(ship: Ship, standingCrew: Character[]): Ship2Profile {
   const classes = ship2Catalog.classes as Record<string, ClassCatalogEntry>;
   const cls = classes[ship.shipClass];
-  const mounts: Ship2MountInstance[] = ship.weapons.length
-    ? ship.weapons.map((w) => mountFromCatalog(WEAPON_TYPE_TO_MOUNT[w.type] ?? "railgun", w.name, w.ammo))
+  const rawMounts: MountWithoutKey[] = ship.weapons.length
+    ? ship.weapons.map((w, i) => mountFromCatalog(WEAPON_TYPE_TO_MOUNT[w.type] ?? "railgun", w.name, w.ammo, i))
     : (cls?.mounts ?? []).map((id) => mountFromCatalog(id, undefined, undefined));
+  const mounts = assignMountKeys(rawMounts);
 
   const hasEngineer = standingCrew.some((c) => c.crewRole === "engineer");
   const hasPilot = standingCrew.some((c) => c.crewRole === "pilot");
@@ -131,7 +165,11 @@ export function deriveShip2Profile(ship: Ship, standingCrew: Character[]): Ship2
 export function deriveEnemyShip2Profile(shipClass: string, hasPointDefense: boolean, missileAmmo: number | undefined): Ship2Profile {
   const classes = ship2Catalog.classes as Record<string, ClassCatalogEntry>;
   const cls = classes[shipClass];
-  const mounts = (cls?.mounts ?? []).map((id) => mountFromCatalog(id, undefined, id === "missileRack" ? missileAmmo ?? 0 : undefined));
+  // Class mount lists have no repeats today, so keys land equal to ids —
+  // assignMountKeys stays the ONE keying rule (not duplicated per side).
+  const mounts = assignMountKeys(
+    (cls?.mounts ?? []).map((id) => mountFromCatalog(id, undefined, id === "missileRack" ? missileAmmo ?? 0 : undefined)),
+  );
   return {
     shipClass,
     reactor: cls?.reactor ?? 3,
@@ -161,26 +199,26 @@ export function ship2ClassPolicy(shipClass: string): ("guns" | "shields" | "engi
  * being dropped outright.
  */
 export function validateAllocation(profile: Ship2Profile, alloc: Allocation): Allocation {
-  const byId = new Map(profile.mounts.map((m) => [m.id, m]));
+  const byKey = new Map(profile.mounts.map((m) => [m.key, m]));
   let remaining = Math.max(0, profile.reactor);
   const mounts: string[] = [];
   let overcharged = false;
 
-  for (const id of alloc.mounts ?? []) {
-    if (mounts.includes(id)) continue;
-    const m = byId.get(id);
+  for (const key of alloc.mounts ?? []) {
+    if (mounts.includes(key)) continue;
+    const m = byKey.get(key);
     if (!m) continue;
     if (m.ammoLimited && (m.ammo ?? 0) <= 0) continue;
     const wantsOvercharge = !!alloc.overcharge && !overcharged && m.overchargeHitOn !== undefined;
     const cost = m.power + (wantsOvercharge ? 1 : 0);
     if (cost <= remaining) {
       remaining -= cost;
-      mounts.push(id);
+      mounts.push(key);
       if (wantsOvercharge) overcharged = true;
     } else if (wantsOvercharge && m.power <= remaining) {
       // Can't afford the overcharge premium — still fire it at base profile.
       remaining -= m.power;
-      mounts.push(id);
+      mounts.push(key);
     }
   }
 
@@ -215,29 +253,29 @@ export function ship2Presets(
   const targetId = enemies[0]?.id;
   const targetName = enemies[0]?.name;
   const fireable = firableMounts(profile);
-  const allIds = fireable.map((m) => m.id);
+  const allKeys = fireable.map((m) => m.key);
   // "Best" = highest EXPECTED damage (dice × dmgPerHit × hit chance), not raw
   // max-possible — a reliable railgun (1d6≥4, 50%) can beat a swingier beam
   // lance (2d6≥5, ~33%) despite the lance's higher max damage.
   const expectedDamage = (m: (typeof fireable)[number]) => (m.dice * m.dmgPerHit * Math.max(0, 7 - m.hitOn)) / 6;
   const bestMount = [...fireable].sort((a, b) => expectedDamage(b) - expectedDamage(a))[0];
 
-  if (allIds.length) {
+  if (allKeys.length) {
     chips.push({
       label: `Alpha strike — all guns${targetName ? ` on ${targetName}` : ""}`,
-      combatAction: { type: "allocate", alloc: { mounts: allIds, shields: 0, engines: 0, targetId } },
+      combatAction: { type: "allocate", alloc: { mounts: allKeys, shields: 0, engines: 0, targetId } },
     });
   }
-  if (allIds.length && profile.shieldCap > 0) {
+  if (allKeys.length && profile.shieldCap > 0) {
     chips.push({
       label: "Guns + shields",
-      combatAction: { type: "allocate", alloc: { mounts: allIds, shields: profile.shieldCap, engines: 0, targetId } },
+      combatAction: { type: "allocate", alloc: { mounts: allKeys, shields: profile.shieldCap, engines: 0, targetId } },
     });
   }
   if (bestMount && profile.engineCap > 0) {
     chips.push({
       label: `Evasive attack — ${bestMount.name} + engines`,
-      combatAction: { type: "allocate", alloc: { mounts: [bestMount.id], shields: 0, engines: profile.engineCap, targetId } },
+      combatAction: { type: "allocate", alloc: { mounts: [bestMount.key], shields: 0, engines: profile.engineCap, targetId } },
     });
   }
   if (profile.shieldCap > 0 || profile.engineCap > 0) {

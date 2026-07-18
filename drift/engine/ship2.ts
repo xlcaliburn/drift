@@ -18,6 +18,10 @@ import type { Ship2Profile, Allocation } from "@/shared/ship2";
 
 export interface Ship2MountProfile {
   id: string;
+  /** Unique per-ship instance key (shared/ship2.ts's Ship2MountInstance.key)
+   *  — optional here only so ad-hoc engine test fixtures needn't set it;
+   *  real callers always pass a keyed instance. Falls back to `id`. */
+  key?: string;
   name: string;
   dice: number;
   hitOn: number;
@@ -34,6 +38,10 @@ export interface Ship2MountProfile {
 
 export interface MountFireResult {
   mountId: string;
+  /** The specific instance that fired (mount.key ?? mount.id) — the caller
+   *  re-finds THIS exact mount for point defense, never `mountId` alone,
+   *  which is ambiguous once a ship carries two of the same mount. */
+  mountKey: string;
   mountName: string;
   power: number;
   dmgPerHit: number;
@@ -63,6 +71,7 @@ export function rollMount(
   for (const d of dice) if (d === 6 || d >= hitOn) hits++;
   return {
     mountId: mount.id,
+    mountKey: mount.key ?? mount.id,
     mountName: mount.name,
     power: mount.power,
     dmgPerHit: mount.dmgPerHit,
@@ -135,9 +144,9 @@ export function resolvePolicyAllocation(profile: Ship2Profile, policy: ("guns" |
   for (const token of policy) {
     if (remaining <= 0) break;
     if (token === "guns") {
-      const next = profile.mounts.find((m) => !mounts.includes(m.id) && (!m.ammoLimited || (m.ammo ?? 0) > 0));
+      const next = profile.mounts.find((m) => !mounts.includes(m.key) && (!m.ammoLimited || (m.ammo ?? 0) > 0));
       if (next && next.power <= remaining) {
-        mounts.push(next.id);
+        mounts.push(next.key);
         remaining -= next.power;
       }
     } else if (token === "shields") {

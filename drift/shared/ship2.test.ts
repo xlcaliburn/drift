@@ -71,6 +71,34 @@ describe("deriveShip2Profile", () => {
     expect(p.mounts[0].dmgPerHit).toBe(1); // from the catalog, not the weapon's own damage string
   });
 
+  it("a single mount keys equal to its id — single-mount ships are unaffected by the key scheme", () => {
+    const p = deriveShip2Profile(ship({ weapons: [{ name: "Rifle", type: "kinetic", damage: "2d6" }] }), []);
+    expect(p.mounts[0].key).toBe("railgun");
+    expect(p.mounts[0].weaponIndex).toBe(0);
+  });
+
+  it("two of the same weapon type derive TWO distinct, independently keyed instances (HANDOFF_COMBAT_V2_3 Task A)", () => {
+    const p = deriveShip2Profile(
+      ship({
+        weapons: [
+          { name: "Port cannon", type: "kinetic", damage: "2d6" },
+          { name: "Starboard cannon", type: "kinetic", damage: "2d6" },
+        ],
+      }),
+      [],
+    );
+    expect(p.mounts).toHaveLength(2);
+    expect(p.mounts.map((m) => m.id)).toEqual(["railgun", "railgun"]);
+    expect(p.mounts.map((m) => m.key)).toEqual(["railgun", "railgun-2"]);
+    expect(p.mounts.map((m) => m.name)).toEqual(["Port cannon", "Starboard cannon"]);
+    expect(p.mounts.map((m) => m.weaponIndex)).toEqual([0, 1]);
+  });
+
+  it("a class-default virtual mount (empty weapons[]) has no weaponIndex", () => {
+    const p = deriveShip2Profile(ship(), []); // hauler, no weapons[]
+    expect(p.mounts[0].weaponIndex).toBeUndefined();
+  });
+
   it("hasPointDefense passes through from the ship row directly", () => {
     expect(deriveShip2Profile(ship({ hasPointDefense: true }), []).hasPointDefense).toBe(true);
   });
@@ -113,9 +141,9 @@ const profile = (over: Partial<Ship2Profile> = {}): Ship2Profile => ({
   hasPointDefense: false,
   gunnerBoost: false,
   mounts: [
-    { id: "railgun", name: "Railgun", power: 2, dice: 1, hitOn: 4, dmgPerHit: 3 },
-    { id: "beamLance", name: "Beam lance", power: 2, dice: 2, hitOn: 5, dmgPerHit: 2, overchargeHitOn: 4 },
-    { id: "missileRack", name: "Missile rack", power: 2, dice: 4, hitOn: 4, dmgPerHit: 1, ammoLimited: true, pdHitOn: 5, ammo: 0 },
+    { id: "railgun", key: "railgun", name: "Railgun", power: 2, dice: 1, hitOn: 4, dmgPerHit: 3 },
+    { id: "beamLance", key: "beamLance", name: "Beam lance", power: 2, dice: 2, hitOn: 5, dmgPerHit: 2, overchargeHitOn: 4 },
+    { id: "missileRack", key: "missileRack", name: "Missile rack", power: 2, dice: 4, hitOn: 4, dmgPerHit: 1, ammoLimited: true, pdHitOn: 5, ammo: 0 },
   ],
   ...over,
 });

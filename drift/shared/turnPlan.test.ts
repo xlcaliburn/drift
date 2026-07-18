@@ -146,9 +146,10 @@ describe("CombatActionSpec — the \"allocate\" type (ship2)", () => {
     }
   });
 
-  it("rejects an oversized mounts array (cap 4)", () => {
-    const r = AllocationSpec.safeParse({ mounts: ["a", "b", "c", "d", "e"], shields: 0, engines: 0 });
+  it("rejects an oversized mounts array (cap 6 — the largest class's mountSlots + headroom)", () => {
+    const r = AllocationSpec.safeParse({ mounts: ["a", "b", "c", "d", "e", "f", "g"], shields: 0, engines: 0 });
     expect(r.success).toBe(false);
+    expect(AllocationSpec.safeParse({ mounts: ["a", "b", "c", "d", "e", "f"], shields: 0, engines: 0 }).success).toBe(true);
   });
 
   it("rejects out-of-range shields/engines", () => {

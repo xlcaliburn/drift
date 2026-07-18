@@ -426,7 +426,7 @@ export default function PlayClient({
   const aliveShipEnemies = combat?.active ? combat.enemies.filter((e) => e.hp > 0) : [];
   const shipAllocPower =
     ship2Profile &&
-    shipAlloc.mounts.reduce((sum, id) => sum + (ship2Profile.mounts.find((m) => m.id === id)?.power ?? 0), 0) +
+    shipAlloc.mounts.reduce((sum, key) => sum + (ship2Profile.mounts.find((m) => m.key === key)?.power ?? 0), 0) +
       shipAlloc.shields +
       shipAlloc.engines +
       (shipAlloc.overcharge ? 1 : 0);
@@ -831,15 +831,15 @@ export default function PlayClient({
                 <div className="flex flex-wrap gap-1.5">
                   {ship2Profile.mounts.map((m) => {
                     const dry = !!m.ammoLimited && (m.ammo ?? 0) <= 0;
-                    const fired = shipAlloc.mounts.includes(m.id);
+                    const fired = shipAlloc.mounts.includes(m.key);
                     return (
                       <button
-                        key={m.id}
+                        key={m.key}
                         disabled={dry}
                         onClick={() =>
                           setShipAlloc((prev) => ({
                             ...prev,
-                            mounts: fired ? prev.mounts.filter((id) => id !== m.id) : [...prev.mounts, m.id],
+                            mounts: fired ? prev.mounts.filter((key) => key !== m.key) : [...prev.mounts, m.key],
                           }))
                         }
                         className={
