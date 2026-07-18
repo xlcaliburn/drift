@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { extractJsonObject, parseTurnPlan, repairTurnPlan, REPAIR_FALLBACK_NARRATION, MemberOrderSpec } from "./turnPlan";
+import { extractJsonObject, parseTurnPlan, repairTurnPlan, REPAIR_FALLBACK_NARRATION, MemberOrderSpec, CombatActionSpec, AllocationSpec } from "./turnPlan";
 
 describe("extractJsonObject", () => {
   it("parses a bare JSON object", () => {
@@ -125,6 +125,39 @@ describe("repairTurnPlan", () => {
     const p = repairTurnPlan(raw, { jsonOnly: true });
     expect(p.narration).toBe("You find scraps.");
     expect(p.choices.map((c) => c.label)).toEqual(["Move on"]);
+  });
+});
+
+// The turn route validates staged squad orders (HANDOFF_COMBAT_V2_1 Task C)
+// ship2's power allocation rides the existing combatAction envelope
+// (HANDOFF_COMBAT_V2_2.md Task C) — a new "allocate" type + bounded alloc.
+describe("CombatActionSpec — the \"allocate\" type (ship2)", () => {
+  it("accepts a well-formed allocate chip", () => {
+    const r = CombatActionSpec.safeParse({
+      type: "allocate",
+      alloc: { mounts: ["railgun", "beamLance"], shields: 1, engines: 1, overcharge: true, targetId: "e-1" },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("still accepts every pre-existing action type unchanged", () => {
+    for (const type of ["attack", "aim", "cover", "stim", "flee", "item", "switch"]) {
+      expect(CombatActionSpec.safeParse({ type }).success, type).toBe(true);
+    }
+  });
+
+  it("rejects an oversized mounts array (cap 4)", () => {
+    const r = AllocationSpec.safeParse({ mounts: ["a", "b", "c", "d", "e"], shields: 0, engines: 0 });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects out-of-range shields/engines", () => {
+    expect(AllocationSpec.safeParse({ mounts: [], shields: 7, engines: 0 }).success).toBe(false);
+    expect(AllocationSpec.safeParse({ mounts: [], shields: -1, engines: 0 }).success).toBe(false);
+  });
+
+  it("rejects an unknown action type", () => {
+    expect(CombatActionSpec.safeParse({ type: "nuke-everything" }).success).toBe(false);
   });
 });
 

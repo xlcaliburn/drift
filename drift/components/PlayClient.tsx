@@ -11,7 +11,7 @@ import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
 import type { Fact } from "@/shared/facts";
-import { combatActions, crewActionChips, type CombatState, type CombatAction } from "@/shared/combat";
+import { combatChipsFor, crewActionChips, type CombatState, type CombatAction } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
 import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
 import { type RiskTier } from "@/shared/risk";
@@ -61,6 +61,14 @@ export default function PlayClient({
   // Staged squad orders (HANDOFF_COMBAT_V2_1 Task C) — memberId → chosen action,
   // sent alongside the PC's own combat chip; cleared once a round is submitted.
   const [crewOrders, setCrewOrders] = useState<Record<string, CombatAction>>({});
+  // The ship2 allocation panel's staged power split (HANDOFF_COMBAT_V2_2.md
+  // Task C) — the fine-grained alternative to the one-tap preset chips.
+  const [shipAlloc, setShipAlloc] = useState<{ mounts: string[]; shields: number; engines: number; overcharge: boolean; targetId?: string }>({
+    mounts: [],
+    shields: 0,
+    engines: 0,
+    overcharge: false,
+  });
   const [npcRelations, setNpcRelations] = useState<NpcRelations>({});
   const [sceneCard, setSceneCard] = useState<SceneCard | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -145,7 +153,7 @@ export default function PlayClient({
           const burstReady = !!d.state.ship?.burstDriveReady;
           setChoices(
             d.combat.enemies
-              ? combatActions(
+              ? combatChipsFor(
                   d.combat,
                   combatPc ? usableConsumables(combatPc, d.combat.scale) : [],
                   burstReady,
@@ -178,6 +186,12 @@ export default function PlayClient({
   useEffect(() => {
     if (atBottom) chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat, choices, streamingText, atBottom]);
+
+  // The staged ship2 allocation is per-round — clear it whenever the round
+  // (or the fight itself) changes so a stale split never rides a new round.
+  useEffect(() => {
+    setShipAlloc({ mounts: [], shields: 0, engines: 0, overcharge: false });
+  }, [combat?.round, combat?.system]);
 
   // Load the player's own reports whenever the feedback modal opens (and after a
   // successful submit) so they can track each one's status.
@@ -404,6 +418,18 @@ export default function PlayClient({
           Object.fromEntries(standingCrew.map((c) => [c.id, usableConsumables(c, combat.scale)])),
         )
       : [];
+
+  // The ship2 allocation panel (HANDOFF_COMBAT_V2_2.md Task C) — the
+  // fine-grained alternative to the preset chips. Personal-scale / classic
+  // ship fights never populate `combat.ship2`, so the panel simply doesn't render.
+  const ship2Profile = combat?.active && combat.system === "ship2" ? combat.ship2?.player : undefined;
+  const aliveShipEnemies = combat?.active ? combat.enemies.filter((e) => e.hp > 0) : [];
+  const shipAllocPower =
+    ship2Profile &&
+    shipAlloc.mounts.reduce((sum, id) => sum + (ship2Profile.mounts.find((m) => m.id === id)?.power ?? 0), 0) +
+      shipAlloc.shields +
+      shipAlloc.engines +
+      (shipAlloc.overcharge ? 1 : 0);
 
   return (
     <div className="flex h-[100dvh] flex-col">
@@ -789,6 +815,124 @@ export default function PlayClient({
                     })}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* ship2 allocation panel (HANDOFF_COMBAT_V2_2.md Task C) — the
+                fine-grained alternative to the preset chips below: toggle
+                mounts, step shields/engines (client-side capped for UX; the
+                engine re-validates regardless), pick a target when more than
+                one enemy is alive, then commit the round. */}
+            {ship2Profile && !busy && (
+              <div className="mb-2 space-y-2 rounded-lg border border-edge bg-panel/60 px-3 py-2.5">
+                <div className="text-xs text-neutral-400">
+                  Reactor: {shipAllocPower ?? 0}/{ship2Profile.reactor} allocated
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {ship2Profile.mounts.map((m) => {
+                    const dry = !!m.ammoLimited && (m.ammo ?? 0) <= 0;
+                    const fired = shipAlloc.mounts.includes(m.id);
+                    return (
+                      <button
+                        key={m.id}
+                        disabled={dry}
+                        onClick={() =>
+                          setShipAlloc((prev) => ({
+                            ...prev,
+                            mounts: fired ? prev.mounts.filter((id) => id !== m.id) : [...prev.mounts, m.id],
+                          }))
+                        }
+                        className={
+                          "rounded-full border px-3 py-1.5 text-[13px] transition disabled:opacity-40 " +
+                          (fired
+                            ? "border-accent bg-accent/15 text-accent"
+                            : "border-edge bg-panel text-neutral-200 hover:border-accent hover:text-accent")
+                        }
+                        title={dry ? "Dry — no ammo" : `${m.power} power`}
+                      >
+                        {m.name} ({m.power}P){m.ammoLimited ? ` · ${m.ammo ?? 0} left` : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+                {ship2Profile.mounts.some((m) => m.overchargeHitOn !== undefined) && (
+                  <label className="flex items-center gap-1.5 text-xs text-neutral-300">
+                    <input
+                      type="checkbox"
+                      checked={shipAlloc.overcharge}
+                      onChange={(e) => setShipAlloc((prev) => ({ ...prev, overcharge: e.target.checked }))}
+                    />
+                    Overcharge (+1 power, easier to hit)
+                  </label>
+                )}
+                <div className="flex flex-wrap items-center gap-4 text-xs text-neutral-300">
+                  {ship2Profile.shieldCap > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span>Shields</span>
+                      <button
+                        onClick={() => setShipAlloc((prev) => ({ ...prev, shields: Math.max(0, prev.shields - 1) }))}
+                        className="rounded border border-edge px-2 hover:border-accent"
+                      >
+                        −
+                      </button>
+                      <span className="w-4 text-center">{shipAlloc.shields}</span>
+                      <button
+                        onClick={() =>
+                          setShipAlloc((prev) => ({ ...prev, shields: Math.min(ship2Profile.shieldCap, prev.shields + 1) }))
+                        }
+                        className="rounded border border-edge px-2 hover:border-accent"
+                      >
+                        +
+                      </button>
+                    </div>
+                  )}
+                  {ship2Profile.engineCap > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <span>Engines</span>
+                      <button
+                        onClick={() => setShipAlloc((prev) => ({ ...prev, engines: Math.max(0, prev.engines - 1) }))}
+                        className="rounded border border-edge px-2 hover:border-accent"
+                      >
+                        −
+                      </button>
+                      <span className="w-4 text-center">{shipAlloc.engines}</span>
+                      <button
+                        onClick={() =>
+                          setShipAlloc((prev) => ({ ...prev, engines: Math.min(ship2Profile.engineCap, prev.engines + 1) }))
+                        }
+                        className="rounded border border-edge px-2 hover:border-accent"
+                      >
+                        +
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {aliveShipEnemies.length > 1 && (
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="text-neutral-400">Target:</span>
+                    {aliveShipEnemies.map((e) => (
+                      <button
+                        key={e.id}
+                        onClick={() => setShipAlloc((prev) => ({ ...prev, targetId: e.id }))}
+                        className={
+                          "rounded-full border px-2.5 py-1 transition " +
+                          ((shipAlloc.targetId ?? aliveShipEnemies[0].id) === e.id
+                            ? "border-accent bg-accent/15 text-accent"
+                            : "border-edge bg-panel text-neutral-300 hover:border-accent hover:text-accent")
+                        }
+                      >
+                        {e.name} ({e.hp}/{e.maxHp})
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={() => send({ label: "Commit power", combatAction: { type: "allocate", alloc: shipAlloc } })}
+                  disabled={!hasApiKey}
+                  className="rounded-full border border-good/40 bg-good/10 px-4 py-1.5 text-[13px] font-medium text-good transition hover:border-good hover:bg-good/20 disabled:opacity-40"
+                >
+                  Commit power
+                </button>
               </div>
             )}
 

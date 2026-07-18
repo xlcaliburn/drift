@@ -6,7 +6,7 @@
  */
 import { USE_NEGATION_RE, type UsableConsumable } from "./items";
 import type { StatusEffect, DamageType, StatusKind } from "./status";
-import type { Allocation, Ship2Profile } from "./ship2";
+import { ship2Presets, type Allocation, type Ship2Profile } from "./ship2";
 
 export type CombatTier = "T1" | "T2" | "T3";
 
@@ -175,6 +175,27 @@ export function combatActions(
   actions.push(...itemChips);
   actions.push({ label: "Flee", combatAction: { type: "flee" } });
   return actions;
+}
+
+/**
+ * System-aware chip dispatcher (HANDOFF_COMBAT_V2_2.md Task C) — the ONE
+ * place every caller (combatTurn.ts, the turn route, PlayClient.tsx's
+ * on-load rebuild) asks for the PC's combat chips, so a new CombatSystem
+ * only needs a case here, never three call-site edits. Dispatches on
+ * `combat.system`, NOT through the llm/ CombatSystem registry — this module
+ * has no `llm/` import (PlayClient rebuilds chips client-side on reload).
+ */
+export function combatChipsFor(
+  combat: CombatState,
+  consumables: UsableConsumable[],
+  burstReady = false,
+  weapons: string[] = [],
+): { label: string; combatAction: CombatAction }[] {
+  if (combat.system === "ship2" && combat.ship2) {
+    const enemies = combat.enemies.filter((e) => e.hp > 0).map((e) => ({ id: e.id, name: e.name }));
+    return ship2Presets(combat.ship2.player, enemies, consumables, burstReady);
+  }
+  return combatActions(combat, consumables, burstReady, weapons);
 }
 
 export interface CrewChipGroup {

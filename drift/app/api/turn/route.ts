@@ -6,7 +6,7 @@ import { runDownedTurn } from "@/llm/downedTurn";
 import { runAppealTurn } from "@/llm/appealTurn";
 import { isAppeal, stripAppeal } from "@/shared/appeal";
 import { isSelfHarm } from "@/shared/selfHarm";
-import { combatActions, interpretCombatText } from "@/shared/combat";
+import { combatChipsFor, interpretCombatText } from "@/shared/combat";
 import { downedActions } from "@/shared/death";
 import { usableConsumables, outOfCombatItemChips, inferShoppingIntent, marketChips } from "@/shared/items";
 import { repairQuote } from "@/engine/market";
@@ -713,7 +713,7 @@ export async function POST(req: NextRequest) {
         const choices: ChoiceOption[] = pcDied
           ? []
           : resultCombat?.active
-            ? combatActions(
+            ? combatChipsFor(
                 resultCombat,
                 resultPc ? usableConsumables(resultPc, resultCombat.scale) : [],
                 burstReady,

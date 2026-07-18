@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { CampaignState } from "@/shared/schemas";
 import { liveRng, type RNG, type EngineEvent } from "@/engine";
-import { combatActions, type CombatState, type CombatAction, type CombatOutcome } from "@/shared/combat";
+import { combatChipsFor, type CombatState, type CombatAction, type CombatOutcome } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
 import { TurnRuntime } from "./engineBridge";
 import type { MemberOrder } from "./combat/types";
@@ -141,7 +141,7 @@ export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnR
   const narration = stripInlineMenu(raw.trim()) || status;
 
   const choices =
-    outcome === "continue" && nextCombat.active ? combatActions(nextCombat, consumables, burstReady, weaponNames) : endChoices(outcome);
+    outcome === "continue" && nextCombat.active ? combatChipsFor(nextCombat, consumables, burstReady, weaponNames) : endChoices(outcome);
 
   return {
     narration,

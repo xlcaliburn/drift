@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { interpretCombatText, type CombatState, type CombatEnemy } from "./combat";
+import { interpretCombatText, combatChipsFor, type CombatState, type CombatEnemy } from "./combat";
+import type { Ship2Profile } from "./ship2";
 
 const enemy = (over: Partial<CombatEnemy> = {}): CombatEnemy => ({
   id: "e-1", name: "Draven", tier: "T2", hp: 8, maxHp: 8, ac: 12, atk: 5, damage: "1d6",
@@ -51,5 +52,36 @@ describe("interpretCombatText — free text can't bypass combat", () => {
   it("skips a dead enemy and attacks a living one", () => {
     const c2 = combat([enemy({ id: "a", name: "Draven", hp: 0 }), enemy({ id: "b", name: "Cutter" })]);
     expect(interpretCombatText("open fire", c2, [])).toEqual({ type: "attack", enemyId: "b" });
+  });
+});
+
+describe("combatChipsFor — system-aware chip dispatch (HANDOFF_COMBAT_V2_2.md Task C)", () => {
+  it("dispatches to the classic ground/ship chips when there's no ship2 system", () => {
+    const c = combat([enemy()]);
+    const chips = combatChipsFor(c, []);
+    expect(chips.some((ch) => ch.combatAction.type === "attack")).toBe(true);
+  });
+
+  const ship2Profile: Ship2Profile = {
+    shipClass: "hauler", reactor: 3, engineCap: 1, shieldCap: 1, armor: 1, hasPointDefense: false, gunnerBoost: false,
+    mounts: [{ id: "railgun", name: "Railgun", power: 2, dice: 1, hitOn: 4, dmgPerHit: 3 }],
+  };
+  const ship2Combat = (enemies: CombatEnemy[]): CombatState => ({
+    ...combat(enemies),
+    scale: "ship",
+    system: "ship2",
+    ship2: { player: ship2Profile },
+  });
+
+  it("dispatches to ship2Presets when combat.system is ship2", () => {
+    const chips = combatChipsFor(ship2Combat([enemy()]), []);
+    expect(chips.some((ch) => ch.label.startsWith("Alpha strike"))).toBe(true);
+    expect(chips.every((ch) => ch.combatAction.type === "allocate" || ch.combatAction.type === "flee")).toBe(true);
+  });
+
+  it("falls back to classic when system says ship2 but the ship2 slice is missing (defensive)", () => {
+    const broken = { ...ship2Combat([enemy()]), ship2: undefined };
+    const chips = combatChipsFor(broken, []);
+    expect(chips.some((ch) => ch.combatAction.type === "attack")).toBe(true);
   });
 });
