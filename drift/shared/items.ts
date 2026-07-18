@@ -4,7 +4,7 @@
  * This module is pure data + selectors so both server (route/engine) and client
  * (PlayClient/Sidebar) compute the same inventory view.
  */
-import itemsJson from "@/content/items.json";
+import { items as itemsJson } from "@/content";
 import type { Character, CampaignState } from "./schemas";
 import type { DamageType, StatusKind } from "./status";
 import { marketStock, localRep, repPriceFactor } from "@/engine/market";

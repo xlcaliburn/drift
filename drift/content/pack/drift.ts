@@ -1,4 +1,13 @@
 import type { ContentPack } from "./types";
+// Mechanical tuning catalogs (Modularity M1 Task A) — relocated verbatim from
+// content/*.json into the pack; content/index.ts re-imports the SAME files
+// directly for its precisely-typed facade exports (see that file's comment).
+import economyJson from "./drift/economy.json";
+import weaponsJson from "./drift/weapons.json";
+import enemyTiersJson from "./drift/enemyTiers.json";
+import shipClassesJson from "./drift/shipClasses.json";
+import crewJson from "./drift/crew.json";
+import itemsJson from "./drift/items.json";
 
 /**
  * THE DRIFT — content pack v0. This is the CURRENT live world, ported verbatim
@@ -220,5 +229,14 @@ export const driftPack: ContentPack = {
 
   services: {
     bodyMod: "loc-rook", // Chrome's parlor — the respec/appearance service gate
+  },
+
+  catalogs: {
+    economy: economyJson,
+    weapons: weaponsJson,
+    enemyTiers: enemyTiersJson,
+    shipClasses: shipClassesJson,
+    crew: crewJson,
+    items: itemsJson,
   },
 };

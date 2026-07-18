@@ -64,6 +64,25 @@ export const PackNpc = z.object({
 });
 export type PackNpc = z.infer<typeof PackNpc>;
 
+/** Mechanical tuning catalogs (Modularity M1) — weapon/item/enemy-tier/ship-
+ *  class/crew/economy tables. The pack owns the DATA (values), engine/ owns the
+ *  MATH over it (a world reboot can retune numbers/flavor, never the shape the
+ *  engine reads). Deliberately LOOSE here — each catalog's real internal shape
+ *  is pinned by its own consumers' extensive test coverage (items/shop/combat/
+ *  crew tests), not by this schema; this only guarantees every catalog exists
+ *  and is a real object, so one can never silently go missing from a pack.
+ *  `content/index.ts` re-exports the SAME underlying JSON with its natural
+ *  precise type for consumers — this field is validation/completeness-only. */
+export const PackCatalogs = z.object({
+  economy: z.record(z.string(), z.unknown()),
+  weapons: z.record(z.string(), z.unknown()),
+  enemyTiers: z.record(z.string(), z.unknown()),
+  shipClasses: z.record(z.string(), z.unknown()),
+  crew: z.record(z.string(), z.unknown()),
+  items: z.record(z.string(), z.unknown()),
+});
+export type PackCatalogs = z.infer<typeof PackCatalogs>;
+
 export const ContentPack = z.object({
   universe: z.object({
     id: z.string().regex(/^uni-[a-z0-9-]+$/),
@@ -88,6 +107,7 @@ export const ContentPack = z.object({
     /** The body-modification / respec parlor's location id. */
     bodyMod: z.string(),
   }),
+  catalogs: PackCatalogs,
 });
 export type ContentPack = z.infer<typeof ContentPack>;
 

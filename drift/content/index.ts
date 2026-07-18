@@ -1,10 +1,20 @@
-import economyJson from "./economy.json";
-import weaponsJson from "./weapons.json";
+// Mechanical tuning catalogs now live PHYSICALLY inside the pack
+// (content/pack/drift/*.json — Modularity M1 Task A: canonLint scans loose
+// content/ for world data, so these can't sit here anymore). Imported directly
+// (not via `pack.catalogs`, which is deliberately loosely-typed for validation
+// only) so every consumer keeps its precise JSON-inferred type — zero call-site
+// churn outside this file plus the one direct JSON importer (shared/items.ts,
+// repointed to this facade below).
+import economyJson from "./pack/drift/economy.json";
+import weaponsJson from "./pack/drift/weapons.json";
+import shipClassesJson from "./pack/drift/shipClasses.json";
+import enemyTiersJson from "./pack/drift/enemyTiers.json";
+import crewJson from "./pack/drift/crew.json";
+import itemsJson from "./pack/drift/items.json";
+// RULES vocabulary (verb→skill map, damage-interaction matrix) — NOT world
+// flavor, stays global. See HANDOFF_MODULARITY_M1.md's out-of-scope note.
 import matrixJson from "./matrix.json";
-import shipClassesJson from "./shipClasses.json";
-import enemyTiersJson from "./enemyTiers.json";
 import skillsJson from "./skills.json";
-import crewJson from "./crew.json";
 
 export const economy = economyJson;
 export const weapons = weaponsJson;
@@ -13,6 +23,7 @@ export const shipClasses = shipClassesJson;
 export const enemyTiers = enemyTiersJson;
 export const skills = skillsJson;
 export const crew = crewJson;
+export const items = itemsJson;
 
 export type DamageType = "kinetic" | "energy" | "missile" | "ion";
 export type DefenseType = "armor" | "shields" | "evasion" | "pd";
