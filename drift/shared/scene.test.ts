@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isSceneMove, shortRole, toSecondPerson } from "./scene";
+import { isSceneMove, shortRole, toSecondPerson, carryScene, freshSceneCard } from "./scene";
 
 describe("isSceneMove — a move opens a new scene", () => {
   it("a station/location change is always a move", () => {
@@ -64,5 +64,23 @@ describe("toSecondPerson — relationship notes read as 'what you know'", () => 
   });
   it("leaves a normal note (no player reference) untouched, including its casing", () => {
     expect(toSecondPerson("met at the bar; she's a Sable courier")).toBe("met at the bar; she's a Sable courier");
+  });
+});
+
+describe("carryScene — scene turnover (HANDOFF_STORY_2 review)", () => {
+  it("a parked pendingPickup SURVIVES the turnover — never a silent loss", () => {
+    // The collision that exposed this: a chapter's FINAL travel objective
+    // completes on the arrival turn, which is also a scene boundary — the
+    // signature reward parked as pendingPickup and carryScene dropped it,
+    // leaving that turn's swap chips pointing at nothing.
+    const prev = { ...freshSceneCard(3, 40), place: "the docks", pendingPickup: { name: "Combat armor", itemId: "combatArmor" } };
+    const next = carryScene(prev, 55);
+    expect(next.pendingPickup).toEqual({ name: "Combat armor", itemId: "combatArmor" });
+    expect(next.seq).toBe(4);
+    expect(next.place).toBe("the docks");
+  });
+
+  it("no parked pickup → the new card carries none (undefined, not a stale object)", () => {
+    expect(carryScene(freshSceneCard(1, 0), 10).pendingPickup).toBeUndefined();
   });
 });

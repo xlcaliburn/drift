@@ -241,3 +241,34 @@ NPC-initiated contact; seasons/end-dates.
   `shared/jobsRuntime.ts` was too loose for a giver-is-npc job that never
   opens an arc (a sidequest) — tightened to `arcStage === "active"`, with a
   regression test.
+
+**Phase-3 review (Fable, 2026-07-18) — one real defect found and fixed
+forward, two deviations noted and accepted:**
+1. **DEFECT (fixed): a signature reward parked on a scene-closing turn was
+   silently lost.** `carryScene` rebuilt the scene card WITHOUT
+   `pendingPickup` — and a chapter whose FINAL objective is `travel`
+   completes on the arrival turn, which is ALSO a scene boundary
+   (`moved` → `sceneClosed` → `carryScene`). The reward parked at
+   route.ts:727, the swap chips were built from it at :806, and the
+   assembly at :960 replaced the card and dropped it — the item gone AND
+   the chips left pointing at nothing ("nothing to swap" on click).
+   Trap 5's exact silent-loss class, arriving through the scene lifecycle
+   instead of the grant path the trap named. The same hole pre-existed for
+   loot parked on a scene-closing turn (rare); the travel-finale reward
+   made it the NORMAL path. Fixed in `carryScene` itself
+   (`pendingPickup: prev.pendingPickup` + 2 regression tests, 1095 total) —
+   which also closes the pre-existing loot class; the explicit decline chip
+   remains the only sanctioned way to lose a parked item. CHECKS.md §7 row
+   added.
+2. **Accepted deviation: a sidequest triggering onto an already-full board
+   makes a 5th offer** rather than displacing a generated one (the spec's
+   "displaces" only truly happens when injection precedes a top-up with
+   free slots). Self-correcting within the 3-tenday expiry, and dropping a
+   generated offer the player may have already been pitched would be
+   weirder. Left as-is.
+3. **Accepted deviation: a storyline reward's pendingPickup overwrites an
+   already-parked item** (last-parked-wins) — but this is the EXISTING
+   semantic of the loot path (`runtimeEconomy.ts` does the same on a new
+   gain while one is parked), not new behavior. Consistent; left as-is.
+Tasks A and B shipped clean — the pack-only overlay, the leak-surface
+guarantees, and the reveal gating all held up under review.

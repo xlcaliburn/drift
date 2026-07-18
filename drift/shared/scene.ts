@@ -182,6 +182,15 @@ export function carryScene(prev: SceneCard, startTranscriptIdx: number): SceneCa
     // Dangers are scene-scoped: a new scene starts clear; the narrator re-states
     // any hazard that genuinely persists (overwrite semantics).
     dangers: [],
+    // A parked full-pack pickup SURVIVES the scene turnover (HANDOFF_STORY_2
+    // review) — dropping it here silently lost the item AND left that turn's
+    // swap chips pointing at nothing ("nothing to swap" on click). The common
+    // collision: a storyline chapter whose FINAL objective is travel completes
+    // on the arrival turn, which is ALSO a scene boundary — the signature
+    // reward parked and vanished in the same breath. The only sanctioned way
+    // to lose a parked item is the explicit decline chip (ITEMS.md slice B:
+    // never a silent loss).
+    pendingPickup: prev.pendingPickup,
     startTranscriptIdx,
   };
 }
