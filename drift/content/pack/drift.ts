@@ -15,6 +15,9 @@ import { driftExamples } from "./drift/examples";
 // NPC flavor pools (Modularity M1 Task C) — shared/npcFlavor.ts's generate*
 // functions now read from here; ⚠ order-sensitive, see that file's pools.
 import { driftNpcFlavor } from "./drift/npcFlavor";
+// World-flavored creation content (Modularity M1 Task D) — content/creation.ts
+// is a facade for these + the equal-footing attribute ruleset it keeps.
+import { driftCreation } from "./drift/creation";
 
 /**
  * THE DRIFT — content pack v0. This is the CURRENT live world, ported verbatim
@@ -241,6 +244,7 @@ export const driftPack: ContentPack = {
   names: driftNames,
   examples: driftExamples,
   npcFlavor: driftNpcFlavor,
+  creation: driftCreation,
 
   catalogs: {
     economy: economyJson,

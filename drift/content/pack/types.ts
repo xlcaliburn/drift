@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { UniqueSkill } from "@/shared/schemas";
+import { UniqueSkill, AttributeKey } from "@/shared/schemas";
 
 /**
  * THE CONTENT PACK SCHEMA — the single authored source of world truth. Everything
@@ -64,6 +64,74 @@ export const PackNpc = z.object({
   role: z.string().optional(),
 });
 export type PackNpc = z.infer<typeof PackNpc>;
+
+/** A creation-screen background's starting gear item. */
+export const PackGearItem = z.object({
+  name: z.string().min(1),
+  detail: z.string().optional(),
+  damage: z.string().optional(),
+  acBonus: z.number().int().optional(),
+});
+
+/** One of the ~16 creation backgrounds (Modularity M1 Task D). The EQUAL-
+ *  FOOTING math (every background nets the same +3 attribute budget) lives in
+ *  content/creation.ts as a RULESET invariant, not here — this schema only
+ *  carries the world-flavored CHOICES (which attributes, which gear, the hook
+ *  prose); content/creation.test.ts / engine/creation.test.ts already pin
+ *  built-character output byte-for-byte, so a bad move fails loudly. */
+export const PackBackground = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  primary: AttributeKey,
+  secondary: AttributeKey,
+  weakness: AttributeKey,
+  signatureSkill: z.string().min(1),
+  gear: z.array(PackGearItem).min(1),
+  hook: z.string().min(1),
+});
+export type PackBackground = z.infer<typeof PackBackground>;
+
+/** A labeled, described creation OPTION — ambitions and alignments share this
+ *  shape (id/label/description, no mechanical payload). */
+export const PackOption = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  description: z.string().min(1),
+});
+export type PackOption = z.infer<typeof PackOption>;
+
+/** A faction's PATRON — the safe-harbor mentor STARTER.md's free early-game
+ *  safety net plays as (mechanics are engine-owned; this is who they ARE). */
+export const PackPatron = z.object({
+  name: z.string().min(1),
+  role: z.string().min(1),
+  oneBreath: z.string().min(1),
+});
+export type PackPatron = z.infer<typeof PackPatron>;
+
+/** Faction-flavored NAMES for the identical starting sidearm/armor/tool every
+ *  recruit ships with — stats live in content/creation.ts's factionStarterGear
+ *  (engine-owned, identical for everyone); only the outfit's flavor differs. */
+export const PackStarterFlavor = z.object({
+  gun: z.string().min(1),
+  armor: z.string().min(1),
+  tool: z.string().min(1),
+});
+export type PackStarterFlavor = z.infer<typeof PackStarterFlavor>;
+
+/** World-flavored creation content (Modularity M1 Task D). Keyed maps
+ *  (patrons/starterGearFlavor) are validated referentially by validatePack
+ *  against `factions[].id` below — a Zod record can't enforce that itself. */
+export const PackCreation = z.object({
+  backgrounds: z.array(PackBackground).min(3),
+  alignments: z.array(PackOption).min(3),
+  ambitions: z.array(PackOption).min(3),
+  patrons: z.record(z.string(), PackPatron),
+  defaultPatron: PackPatron,
+  starterGearFlavor: z.record(z.string(), PackStarterFlavor),
+  defaultStarterGear: PackStarterFlavor,
+});
+export type PackCreation = z.infer<typeof PackCreation>;
 
 /** Free-text name pools a NEW character or NPC can draw from (Modularity M1
  *  Task B) — `suggestName()` combines given+surname, or picks a mononym; the
@@ -149,6 +217,7 @@ export const ContentPack = z.object({
   names: PackNames,
   examples: PackExamples,
   npcFlavor: PackNpcFlavor,
+  creation: PackCreation,
   /** Job-generation flavor pools (QUESTS.md `fill()` placeholders). */
   jobFlavor: z.object({
     cargo: z.array(z.string()).min(3),
@@ -193,5 +262,11 @@ export function validatePack(pack: ContentPack): string[] {
       problems.push(`npc ${n.id}: name collides with a faction name (${n.name})`);
   }
   if (!locIds.has(pack.services.bodyMod)) problems.push(`services.bodyMod: unknown location ${pack.services.bodyMod}`);
+  for (const fid of Object.keys(pack.creation.patrons)) {
+    if (!facIds.has(fid)) problems.push(`creation.patrons: unknown faction ${fid}`);
+  }
+  for (const fid of Object.keys(pack.creation.starterGearFlavor)) {
+    if (!facIds.has(fid)) problems.push(`creation.starterGearFlavor: unknown faction ${fid}`);
+  }
   return problems;
 }

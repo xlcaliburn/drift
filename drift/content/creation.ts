@@ -1,9 +1,19 @@
 import type { AttributeKey } from "@/shared/schemas";
+import { pack } from "@/content/pack";
 
 /**
  * Character-creation content: how questionnaire answers map to a starting sheet.
  * Tuned for EQUAL FOOTING — every background grants the same net attribute
  * points (+3) and comparable gear; answers change your shape, not your power.
+ *
+ * World-flavored data (backgrounds, alignments, ambitions, patron templates,
+ * faction starter-gear flavor) now lives in the pack
+ * (content/pack/drift/creation.ts — Modularity M1 Task D); this file is the
+ * RULESET: the equal-footing attribute math, focus→attribute/skill wiring, and
+ * the mechanics functions that read the pack's data (patronFor,
+ * factionStarterGear). content/creation.test.ts pins the world-flavored data;
+ * engine/creation.test.ts pins the built-character output that proves the
+ * ruleset math is unaffected.
  */
 
 export type Bias =
@@ -147,275 +157,14 @@ export const biasSkills: Record<Bias, { name: string; level: number }[]> = focus
   {} as Record<Bias, { name: string; level: number }[]>,
 );
 
-export interface BackgroundDef {
-  id: string;
-  label: string;
-  primary: AttributeKey; // +3
-  secondary: AttributeKey; // +1
-  weakness: AttributeKey; // -1
-  signatureSkill: string; // +1 level
-  gear: { name: string; detail?: string; damage?: string; acBonus?: number }[];
-  hook: string;
-}
+// ── World-flavored creation content (content/pack/drift/creation.ts) ─────────
 
-export const backgrounds: BackgroundDef[] = [
-  {
-    id: "ex-military",
-    label: "Ex-military contractor",
-    primary: "reflex",
-    secondary: "might",
-    weakness: "presence",
-    signatureSkill: "smallArms",
-    gear: [
-      { name: "Sidearm", damage: "1d8" },
-      { name: "Combat rifle", damage: "2d6" },
-      { name: "Ballistic vest", detail: "+2 AC", acBonus: 2 },
-    ],
-    hook: "You mustered out of a war nobody won, with skills that only pay in the wrong places.",
-  },
-  {
-    id: "dock-rat",
-    label: "Dock rat",
-    primary: "reflex",
-    secondary: "intellect",
-    weakness: "presence",
-    signatureSkill: "streetwise",
-    gear: [
-      { name: "Multitool" },
-      { name: "Cracked datapad" },
-      { name: "Sidearm", damage: "1d8" },
-    ],
-    hook: "Raised half-feral on the dock levels; you know every vent and every debt.",
-  },
-  {
-    id: "corporate-insider",
-    label: "Corporate insider",
-    primary: "intellect",
-    secondary: "presence",
-    weakness: "might",
-    signatureSkill: "negotiation",
-    gear: [
-      { name: "Encrypted datapad", detail: "clean corporate contacts" },
-      { name: "Fine jacket", detail: "+1 AC", acBonus: 1 },
-      { name: "Credchip" },
-    ],
-    hook: "You left with more than you were supposed to — and someone noticed.",
-  },
-  {
-    id: "salvager",
-    label: "Wreck-field salvager",
-    primary: "intellect",
-    secondary: "might",
-    weakness: "presence",
-    signatureSkill: "scavenging",
-    gear: [
-      { name: "Cutting tool", damage: "1d6" },
-      { name: "Sealed vac suit", detail: "vacuum-rated" },
-      { name: "Salvage scanner" },
-    ],
-    hook: "You've pulled value and bodies out of dead ships. Some of them talked back.",
-  },
-  {
-    id: "fixer",
-    label: "Station fixer",
-    primary: "presence",
-    secondary: "intellect",
-    weakness: "might",
-    signatureSkill: "streetwise",
-    gear: [
-      { name: "Sidearm", damage: "1d8" },
-      { name: "Little black book", detail: "favors owed and owing" },
-      { name: "Credchip" },
-    ],
-    hook: "You make problems disappear for a cut. The favors are stacking up.",
-  },
-  {
-    id: "void-marine",
-    label: "Void marine",
-    primary: "might",
-    secondary: "vitality",
-    weakness: "intellect",
-    signatureSkill: "melee",
-    gear: [
-      { name: "Riot gun", damage: "2d6" },
-      { name: "Combat knife", damage: "1d6" },
-      { name: "Heavy plate", detail: "+2 AC", acBonus: 2 },
-    ],
-    hook: "Boarding actions and breach-and-clears were your trade. The war ended; the reflexes didn't.",
-  },
-  {
-    id: "long-hauler",
-    label: "Long-haul crewer",
-    primary: "vitality",
-    secondary: "perception",
-    weakness: "presence",
-    signatureSkill: "navigation",
-    gear: [
-      { name: "Sealed vac suit", detail: "vacuum-rated" },
-      { name: "Route ledger", detail: "clean lanes and quiet ports" },
-      { name: "Sidearm", damage: "1d8" },
-    ],
-    hook: "Years in the black on someone else's hull taught you patience — and every trick to survive it.",
-  },
-  {
-    id: "scout-surveyor",
-    label: "Deep-range scout",
-    primary: "perception",
-    secondary: "reflex",
-    weakness: "might",
-    signatureSkill: "survival",
-    gear: [
-      { name: "Marksman carbine", damage: "2d6" },
-      { name: "Scout armor", detail: "+1 AC", acBonus: 1 },
-      { name: "Recon optics & survival kit" },
-    ],
-    hook: "You went out ahead of everyone, into places with no name yet. Something out there still owes you answers.",
-  },
-  {
-    id: "smuggler-pilot",
-    label: "Smuggler pilot",
-    primary: "reflex",
-    secondary: "perception",
-    weakness: "presence",
-    signatureSkill: "piloting",
-    gear: [
-      { name: "Sidearm", damage: "1d8" },
-      { name: "Doctored transponder", detail: "spoofs a clean registry" },
-      { name: "Hidden hold", detail: "a compartment the scanners miss" },
-    ],
-    hook: "You've run cargo nobody logs through gaps nobody charts. One run went wrong, and the wrong people remember your hull.",
-  },
-  {
-    id: "station-mechanic",
-    label: "Station mechanic",
-    primary: "intellect",
-    secondary: "might",
-    weakness: "presence",
-    signatureSkill: "mechanics",
-    gear: [
-      { name: "Heavy wrench", damage: "1d6" },
-      { name: "Field toolkit", detail: "jury-rig almost anything" },
-      { name: "Patched coveralls", detail: "+1 AC", acBonus: 1 },
-    ],
-    hook: "You kept other people's ships flying for scale wages and no thanks. You know exactly how easily any of them comes apart.",
-  },
-  {
-    id: "slicer",
-    label: "Black-ice slicer",
-    primary: "intellect",
-    secondary: "reflex",
-    weakness: "might",
-    signatureSkill: "electronics",
-    gear: [
-      { name: "Breaker deck", detail: "cracks hostile systems" },
-      { name: "Holdout pistol", damage: "1d6" },
-      { name: "Spoofed credentials", detail: "good until someone checks" },
-    ],
-    hook: "You went too deep into a system that was guarded for a reason. You got out with a fortune's worth of secrets and a bounty to match.",
-  },
-  {
-    id: "grifter",
-    label: "Grifter",
-    primary: "presence",
-    secondary: "reflex",
-    weakness: "might",
-    signatureSkill: "deception",
-    gear: [
-      { name: "Forged IDs", detail: "a name for every occasion" },
-      { name: "Fine clothes", detail: "+1 AC (nothing's cheap)", acBonus: 1 },
-      { name: "Holdout pistol", damage: "1d6" },
-    ],
-    hook: "You've been six different people this year, and one of them owes a debt that could get all six killed.",
-  },
-  {
-    id: "enforcer",
-    label: "Syndicate enforcer",
-    primary: "might",
-    secondary: "presence",
-    weakness: "intellect",
-    signatureSkill: "intimidation",
-    gear: [
-      { name: "Shock baton", damage: "1d8" },
-      { name: "Armored coat", detail: "+2 AC", acBonus: 2 },
-      { name: "A name that opens doors", detail: "and closes throats" },
-    ],
-    hook: "You collected debts and settled scores for people who never got their own hands dirty. Then you walked — and a debt of your own came due.",
-  },
-  {
-    id: "void-diver",
-    label: "Void diver",
-    primary: "reflex",
-    secondary: "vitality",
-    weakness: "presence",
-    signatureSkill: "zeroG",
-    gear: [
-      { name: "Hardened vac suit", detail: "+1 AC, rated for the deep", acBonus: 1 },
-      { name: "Maglock boots" },
-      { name: "Cutting torch", damage: "1d6" },
-    ],
-    hook: "You work where there's no up, no air, and no second chances — hull breaches, dead drifts, the wrecks nobody else will enter.",
-  },
-  {
-    id: "bounty-tracker",
-    label: "Bounty tracker",
-    primary: "perception",
-    secondary: "might",
-    weakness: "presence",
-    signatureSkill: "perception",
-    gear: [
-      { name: "Hunting rifle", damage: "2d6" },
-      { name: "Stun cuffs", detail: "bring 'em in breathing (usually)" },
-      { name: "Tracker kit", detail: "signatures, scents, silences" },
-    ],
-    hook: "You find people who don't want finding. The last mark you brought in named a name — and now that name is looking for you.",
-  },
-  {
-    id: "cat-burglar",
-    label: "Cat burglar",
-    primary: "reflex",
-    secondary: "intellect",
-    weakness: "might",
-    signatureSkill: "stealth",
-    gear: [
-      { name: "Grapnel line", detail: "up, over, gone" },
-      { name: "Lockpick set", detail: "mechanical and otherwise" },
-      { name: "Silenced pistol", damage: "1d6" },
-    ],
-    hook: "You take what's guarded and leave no trace — except once, you did. Someone has the recording, and they want a favor.",
-  },
-];
+export type BackgroundDef = (typeof pack.creation.backgrounds)[number];
+export const backgrounds = pack.creation.backgrounds;
 
-export interface OptionDef {
-  id: string;
-  label: string;
-  description: string;
-}
-
-export const alignments: OptionDef[] = [
-  { id: "ruthless", label: "Ruthless", description: "Whatever it takes. Rivals learn to fear you; allies keep one eye open." },
-  { id: "pragmatic", label: "Pragmatic", description: "The job comes first. You bend, but you don't break your word." },
-  { id: "principled", label: "Principled", description: "A code you won't cross. It costs you, and it earns rare trust." },
-  { id: "loyal", label: "Loyal", description: "Crew is family. You'd burn a fortune before you'd sell out your own." },
-  { id: "slick", label: "Slick", description: "Words before weapons, angles before either. Everyone's a mark; nobody's an enemy — yet." },
-  { id: "ghost", label: "Ghost", description: "Stay small, stay quiet, leave no name behind. The lanes never see you coming." },
-  { id: "loud", label: "Loud", description: "Reputation is currency. Every job is a story, and you're the headline." },
-  { id: "merciful", label: "Merciful", description: "You'll fight, but you never finish the fallen. Kindness in a hard place — some read it as weakness." },
-  { id: "reckless", label: "Reckless", description: "Act first, reckon later — hesitation gets people killed. You'd rather burn bright than play it safe." },
-  { id: "calculating", label: "Calculating", description: "Every move is three moves deep. You don't gamble; you wait for the odds to bend your way." },
-  { id: "greedy", label: "Greedy", description: "There's no such thing as enough. The next score is always the one worth the risk." },
-  { id: "vengeful", label: "Vengeful", description: "You keep a ledger of every wrong, and you always collect. Cross you once and you'll spend years making it right." },
-  { id: "cynical", label: "Cynical", description: "Everyone's working an angle, and you've stopped pretending otherwise. Trust is a cost you rarely pay." },
-  { id: "zealous", label: "Zealous", description: "You believe in something bigger than the paycheck, and you'll bleed for it. Doubt is for people with nothing to fight for." },
-];
-
-export const ambitions: OptionDef[] = [
-  { id: "wealth", label: "Wealth", description: "Enough credits to never take orders again." },
-  { id: "command", label: "Command", description: "Your own faction, your own name on the door." },
-  { id: "freedom", label: "Freedom", description: "No masters, no debts, no leash." },
-  { id: "revenge", label: "Revenge", description: "Someone owes a debt in blood or ruin." },
-  { id: "cause", label: "A cause", description: "The lanes could be fairer. You mean to make them." },
-  { id: "belonging", label: "Belonging", description: "A crew that stays. A place that's yours." },
-];
+export type OptionDef = (typeof pack.creation.alignments)[number];
+export const alignments = pack.creation.alignments;
+export const ambitions = pack.creation.ambitions;
 
 /** Base attribute spread before background is applied (equal for everyone). */
 export const attributeBaseline: Record<AttributeKey, number> = {
@@ -427,32 +176,11 @@ export const attributeBaseline: Record<AttributeKey, number> = {
   presence: 0,
 };
 
-/**
- * Starting loadout FLAVOR by faction (names only). Every recruit ships with the
- * SAME statline — a sidearm (1d8), light armor (+1 AC), and a utility tool — so no
- * build ever starts gunless or under-equipped; only the outfit's flavor differs by
- * faction (the user's "same stat-wise, different outfit" rule). Stats live in
- * `factionStarterGear`, not here, so they can't drift apart.
- */
-const FACTION_STARTER_FLAVOR: Record<string, { gun: string; armor: string; tool: string }> = {
-  "f-crown": { gun: "Crown service pistol", armor: "Crown-issue vest", tool: "Crown ledger-chit" },
-  "f-sable": { gun: "Back-alley snub pistol", armor: "Reinforced jacket", tool: "Burner comm" },
-  "f-undertow": { gun: "Collector's sidearm", armor: "Enforcer's padded coat", tool: "Debt ledger" },
-  "f-wreckers": { gun: "Salvaged slugthrower", armor: "Scrap-plate harness", tool: "Cutting torch" },
-  "f-free": { gun: "Worn sidearm", armor: "Patched flak jacket", tool: "Multitool" },
-  "f-reclaimers": { gun: "Reclaimer bolt pistol", armor: "Salvager's vac-vest", tool: "Salvage scanner" },
-};
-const DEFAULT_STARTER = { gun: "Sidearm", armor: "Padded jacket", tool: "Multitool" };
-
 /** Where each faction plants a new recruit — the patron lives here too. Authored
  *  on the content pack's factions (`homeLocationId`); re-exported for importers. */
 export { FACTION_HOME } from "@/content/pack";
 
-export interface PatronDef {
-  name: string;
-  role: string;
-  oneBreath: string;
-}
+export type PatronDef = (typeof pack.creation.defaultPatron);
 
 /**
  * The faction PATRON — a safe-harbor mentor who keeps a green recruit alive while
@@ -460,47 +188,19 @@ export interface PatronDef {
  * credits when broke, and hands out safe starter work. Flavor per faction; the
  * mechanics (the free safety net) are engine-owned and cut off at net worth ¢600.
  */
-export const FACTION_PATRON: Record<string, PatronDef> = {
-  "f-crown": {
-    name: "Quartermaster Vane",
-    role: "Crown recruit-handler",
-    oneBreath: "The Hollow Crown's recruit-handler on Meridian — gruff, fair, keeps green contractors alive long enough to be useful. Patches you up and points you at safe work until you're on your feet.",
-  },
-  "f-sable": {
-    name: "Handler Sereda",
-    role: "Sable Chain handler",
-    oneBreath: "A Sable Chain handler on Coldharbor's staging docks — cold but invested in her recruits; keeps you patched, armed, and pointed at the Chain's easy money until you prove out.",
-  },
-  "f-undertow": {
-    name: "Collector Roan",
-    role: "Undertow desk-boss",
-    oneBreath: "The Undertow's desk-boss at the outpost — grim but loyal to his own; keeps new collectors alive and fed, and starts them on small, safe debts to work.",
-  },
-  "f-wreckers": {
-    name: "Boneyard Ma",
-    role: "Wrecker den-mother",
-    oneBreath: "The Nest's den-mother — the closest thing the Wreckers have to law; patches up the young raiders, shares the pot, and sends them on the safer salvage until they've got teeth.",
-  },
-  "f-free": {
-    name: "Old Pell",
-    role: "Free Drift fixer",
-    oneBreath: "A Free Drift fixer at Halcyon freeport, all mutual-aid and no-questions — spots a struggling independent a meal, a mend, and a milk run until they can stand on their own.",
-  },
-  "f-reclaimers": {
-    name: "Archivist Sund",
-    role: "Reclaimer steward",
-    oneBreath: "A Reclaimer collective steward on Rook — patient, careful; keeps new salvagers whole and starts them on safe derelict work while they learn what the wrecks hold.",
-  },
-};
-const DEFAULT_PATRON: PatronDef = {
-  name: "The Harbor-keeper",
-  role: "dockside fixer",
-  oneBreath: "A dockside fixer who looks after green newcomers — a berth, a mend, a few creds, and a safe first job until they can stand on their own.",
-};
+export const FACTION_PATRON: Record<string, PatronDef> = pack.creation.patrons;
 
 export function patronFor(factionId?: string): PatronDef {
-  return FACTION_PATRON[factionId ?? ""] ?? DEFAULT_PATRON;
+  return FACTION_PATRON[factionId ?? ""] ?? pack.creation.defaultPatron;
 }
+
+/**
+ * Starting loadout FLAVOR by faction (names only). Every recruit ships with the
+ * SAME statline — a sidearm (1d8), light armor (+1 AC), and a utility tool — so no
+ * build ever starts gunless or under-equipped; only the outfit's flavor differs by
+ * faction (the user's "same stat-wise, different outfit" rule). Stats are hardcoded
+ * below (itemId/damage/acBonus), not in the pack, so they can't drift apart.
+ */
 
 /** The standardized starting gear for a faction — identical stats for everyone
  *  (a sidearm, +1 armor, a tool), faction-flavored names. Catalog ids attach the
@@ -508,7 +208,7 @@ export function patronFor(factionId?: string): PatronDef {
 export function factionStarterGear(
   factionId?: string,
 ): { name: string; itemId?: string; damage?: string; acBonus?: number; detail?: string }[] {
-  const f = FACTION_STARTER_FLAVOR[factionId ?? ""] ?? DEFAULT_STARTER;
+  const f = pack.creation.starterGearFlavor[factionId ?? ""] ?? pack.creation.defaultStarterGear;
   return [
     { name: f.gun, itemId: "sidearm", damage: "1d8", detail: "faction-issue sidearm" },
     { name: f.armor, itemId: "paddedJacket", acBonus: 1, detail: "+1 AC" },
