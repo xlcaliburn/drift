@@ -17,6 +17,8 @@ Rule of thumb: **the LLM never does math; the engine never writes prose.**
 
 Everything in the save file that is a table — the Quick Reference Card, the interaction matrix, enemy tiers, ship classes, crit rules, the economy costs, the level-up formula — becomes code and data. Everything that is *voice* — the world primer, cast descriptions, DM style rules — becomes a system prompt.
 
+**The content boundary** (Modularity M1, 2026-07-18) draws that line one level deeper: `drift/content/pack/` is the complete definition of a WORLD — mechanical tuning (items/weapons/enemy tiers/economy), the canonical cast and places, and every world-flavored pool the narrator draws from (names, NPC personality/voice/appearance, creation backgrounds, onboarding prose). Everything else in `drift/content/` is a pure facade over it (mechanics + re-exports), enforced by `canonLint.test.ts` (no canon id or literal world data outside the pack) and `pack.test.ts` (referential integrity + per-category completeness). The goal: **one core engine, swappable worlds** — a new story/setting/cast (even a different combat feel, later) is authoring a new pack, never a refactor. `skills.json`/`matrix.json` stay global — they're RULES vocabulary (the verb→skill map, the damage-interaction matrix), not world flavor.
+
 ## 2. How a turn flows
 
 1. Player types an action.

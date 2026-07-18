@@ -39,12 +39,13 @@ npx vitest run                 # ~834 model-free tests, no keys needed
 ## What's left to build (rough order)
 
 0. **Modularity roadmap** (core engine, swappable worlds): **M1 content
-   boundary — `HANDOFF_MODULARITY_M1.md`, READY TO IMPLEMENT** (catalogs/
-   names/flavor pools/creation data/openings into the pack + canonLint
-   extension). Then M2 lexicon (tenday/¢ words → pack), M3 prompt voice split,
-   M4 runtime pack selection (`WorldContent` threading + `universes.pack_id`),
-   M5 combat-system interface (only with a concrete second system), and the
-   second test-pack in CI as the modularity proof.
+   boundary SHIPPED** (2026-07-18, `HANDOFF_MODULARITY_M1.md` — catalogs/
+   names/flavor pools/creation data/openings all moved into the pack;
+   `content/` is now a pure facade; canonLint + pack.test.ts extended to
+   enforce it). LEFT: M2 lexicon (tenday/¢ words → pack), M3 prompt voice
+   split, M4 runtime pack selection (`WorldContent` threading +
+   `universes.pack_id`), M5 combat-system interface (only with a concrete
+   second system), and the second test-pack in CI as the modularity proof.
 1. **Shared-world runtime** (`MULTIPLAYER.md`): dossiers (§1), cross-campaign
    reads (§3), and the relationship ledger (§2) are SHIPPED. LEFT: the
    break-away-from-faction trigger (§4), seasons with fixed end dates + the

@@ -15,13 +15,24 @@ Every roll returns a full auditable breakdown (`d20(14) +8 = 22 vs DC 15 → suc
 
 - `drift/engine/` — the rules engine + tests (256 vitest, no API key needed)
 - `drift/content/pack/` — **the CONTENT PACK: the single authored source of world
-  truth** (universe primer, factions w/ alignment+home+color, locations w/ map
-  positions+named lanes, canonical cast, job flavor, service placements).
-  Rebooting the world = author a new pack file, swap one line in `pack/index.ts`.
-  `pack.test.ts` validates referential integrity; `canonLint.test.ts` FAILS CI if
-  a canon id is hardcoded anywhere outside `content/` — never bypass it by
-  exempting a file; import from `@/content/pack` instead. (`scripts/seedData.ts`
-  is now a thin re-export.)
+  truth, complete** (Modularity M1, 2026-07-18): universe primer, factions
+  w/ alignment+home+color, locations w/ map positions+named lanes, canonical
+  cast, job flavor, service placements — PLUS mechanical catalogs (items/
+  weapons/enemyTiers/shipClasses/crew/economy), name pools, the creation
+  gallery (backgrounds/alignments/ambitions/patrons/starter-gear flavor), NPC
+  flavor pools (quirk/appearance/voice/backstory — ⚠ order-sensitive, never
+  reorder/resize), and player-facing onboarding prose (briefs/openings).
+  `skills.json`/`matrix.json` (verb→skill map, damage matrix) stay global —
+  RULES vocabulary, not world flavor. Rebooting the world = author a new pack
+  file, swap one line in `pack/index.ts`. Every other `content/*.ts` file
+  (`creation.ts`, `examples.ts`, `briefs.ts`, `openings.ts`, `index.ts`) is now
+  a PURE FACADE — mechanics + re-exports only, zero literal world data.
+  `pack.test.ts` validates referential integrity + per-category completeness;
+  `canonLint.test.ts` FAILS CI if a canon id is hardcoded anywhere outside
+  `content/pack/` (it scans loose `content/` too, not just engine/shared/llm/
+  etc.) AND if `content/index.ts` grows an inline object/array literal — never
+  bypass either by exempting a file; move the data into the pack instead.
+  (`scripts/seedData.ts` is a thin re-export.)
 - `drift/shared/schemas.ts` — Zod game state, single source of truth
 - `drift/shared/multiplayer.ts` — dossier / ledger / season schemas (not yet wired —
   shared NPCs are wired via the `npcs` table, but dossiers/ledgers/seasons aren't)
@@ -207,11 +218,11 @@ Don't add prose rules for things the engine can enforce.
   kept as the WORKED EXAMPLE of the workflow: each task carries shipped-
   annotations describing what the implementer decided and what the closing
   review caught.
-- `HANDOFF_MODULARITY_M1.md` — **READY TO IMPLEMENT**: finish the content
-  boundary (catalogs/names/npcFlavor pools/creation data/openings → the pack;
-  facade re-exports; canonLint extension). First slice of the modularity
-  roadmap (M2 lexicon → M3 voice → M4 runtime pack selection → M5 combat
-  interface). The trap: deterministic pools are order-sensitive — pin first.
+- `HANDOFF_MODULARITY_M1.md` — the content-boundary spec, FULLY SHIPPED
+  (2026-07-18: catalogs/names/npcFlavor pools/creation data/openings all moved
+  into the pack; facade re-exports; canonLint + pack.test.ts extended).
+  First slice of the modularity roadmap — M2 lexicon → M3 voice split → M4
+  runtime pack selection → M5 combat interface are next, tracked in STATUS.md.
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
 - `STATUS.md` — **THE single backlog** (what's left, in order, updated at every

@@ -1,5 +1,13 @@
 # HANDOFF — Modularity M1: finish the content boundary
 
+> **✅ FULLY SHIPPED 2026-07-18** (implemented same-day by the session that
+> wrote this handoff — no cross-session review pass was needed; each task's
+> pin-first discipline WAS the review). Tasks A–F all landed, one commit each.
+> Final: `npx vitest run` **862 passing** (+28 new pin/shape tests over the
+> ~834 baseline), `tsc` clean, `contextSlice.golden` byte-identical throughout,
+> canonLint green with its Task F extension. Kept intact as a second worked
+> example of the WORKFLOW.md process, alongside `HANDOFF_NPC_CANON.md`.
+
 *Strategy phase output (Fable, 2026-07-18). Process, non-negotiables, house
 mechanics, and the review checklist: `WORKFLOW.md` — read it first, then this
 doc fully, before writing code. Designs here are DECIDED; implement, don't
@@ -63,7 +71,17 @@ WORKFLOW.md house mechanics.)
 
 ---
 
-## Task A — catalogs → `pack.catalogs`
+## Task A — catalogs → `pack.catalogs` ✅ SHIPPED
+
+*As specced, with one implementation decision: `content/index.ts` does NOT
+route its re-exports through `pack.catalogs` (which is deliberately
+loosely-typed — `z.record(string, unknown)` — for validation only). Instead
+it imports the same relocated JSON files directly, so every consumer keeps
+its precise JSON-inferred type instead of collapsing to `Record<string,
+unknown>`. `items.json` (not previously in the `@/content` barrel — it was a
+direct import in `shared/items.ts`) got folded into the facade too, so ALL
+six catalogs now flow through one place, consistently. 843 tests pass at
+this task's close, golden untouched.*
 
 **What moves:** `content/items.json`, `weapons.json`, `enemyTiers.json`,
 `shipClasses.json`, `crew.json`, `economy.json` (world tuning: payout bands,
@@ -84,7 +102,15 @@ suite before and after; also `contextSlice.golden` must be byte-identical
 **Done when:** suite green, golden untouched, no `../items.json`-style imports
 left outside `content/`.
 
-## Task B — name pools + creation examples → `pack.names` / `pack.examples`
+## Task B — name pools + creation examples → `pack.names` / `pack.examples` ✅ SHIPPED
+
+*Extended beyond the literal enumeration: `content/examples.ts` also held
+`exampleLosses`/`exampleTies`/`exampleTells` (the optional creation flavor
+prompts), consumed identically by CreateWizard — moved them too, since
+leaving them behind would have defeated Task F's clean scan. Pin test added
+to `content/examples.test.ts` (didn't exist before): exact `suggestName()`
+outputs for 6 seeds + `sample()` picks for all four galleries, confirmed
+green pre- and post-move. 843 tests pass at this task's close.*
 
 **What moves:** `content/examples.ts` — `GIVEN_NAMES`, `SURNAMES`, `MONONYMS`
 (→ `pack.names`), and the example signature skills + example moral codes
@@ -98,7 +124,16 @@ generation + the creation UI both consume this).
 **Done when:** pins green pre and post, `generateCastName` (shared/quests.ts)
 output unchanged for a fixed rng seed (existing quests tests cover this).
 
-## Task C — npcFlavor pools → `pack.npcFlavor` ⚠ order-sensitive
+## Task C — npcFlavor pools → `pack.npcFlavor` ⚠ order-sensitive ✅ SHIPPED
+
+*As specced. Found that `AGES`/`VOICES` (age band + speech pattern) already
+existed in npcFlavor.ts from an EARLIER handoff (HANDOFF_NPC_CANON Task C) —
+this task's pool list was already complete without change. Pin test added to
+the existing `shared/npcFlavor.test.ts`: exact quirk/appearance/voice/
+backstory strings for 4 REAL live-data ids (`npc-broker`,
+`npc-patron-camp-vess`, `npc-gen-ren-fixer-30`, `npc-ilyana`), captured from
+the code and confirmed green before AND after the move — the trap this task
+was written to guard against never materialized. 847 tests pass at close.*
 
 **What moves:** ALL pools in `shared/npcFlavor.ts` — `DEMEANORS`, `TELLS`,
 `DRIVES`, `HOOKS`, `ORIGINS`, `BUILDS`, `FACES`, `MARKS`, `VOICES`, `AGES` —
@@ -117,7 +152,18 @@ live campaigns' render-time fallbacks.
 **Done when:** pins green post-move, golden untouched (fixture NPC lines embed
 quirk/appearance text).
 
-## Task D — creation world content → `pack.creation`
+## Task D — creation world content → `pack.creation` ✅ SHIPPED
+
+*Extended beyond the literal list: `FACTION_STARTER_FLAVOR` + `DEFAULT_STARTER`
+(faction-flavored starting-gear NAMES) moved too — same coupling class as the
+patron templates this task named explicitly (faction ids + flavored prose),
+just not spelled out by name. The starter-gear STAT line (sidearm/
+paddedJacket ids, damage, acBonus) stayed hardcoded in `factionStarterGear()`
+since it's ruleset, not flavor. New pin test `content/creation.test.ts`
+(engine/creation.test.ts's existing byte-pins don't cover ambition/alignment
+prose or patron text) — confirmed green pre/post. `validatePack` gained
+referential checks (patrons/starterGearFlavor keys must be real faction ids).
+850 tests pass at close.*
 
 **What moves from `content/creation.ts`:** `backgrounds` (labels, descriptions,
 starting GEAR lists), `ambitions`, `alignments` (the 14 descriptions),
@@ -134,7 +180,20 @@ re-export (facade rule applies inside `content/` too).
 **Done when:** creation tests green unmodified, canon ids in creation data now
 live inside the pack.
 
-## Task E — openings + briefs → `pack.openings` / `pack.briefs`
+## Task E — openings + briefs → `pack.openings` / `pack.briefs` ✅ SHIPPED
+
+*As specced. One type-precision decision: `LoanerDef` is derived as
+`NonNullable<(typeof pack.openings.factions)[number]["loaner"]>` rather than
+a naive `[...]["loaner"]` — the pack's `loaner` field is `.optional()` (some
+factions, e.g. Wreckers, give no ship), so the naive derivation would have
+widened `LoanerDef` to `PackLoaner | undefined` and silently loosened
+`buildLoanerShip`'s parameter type in `lib/newCampaign.ts`. `GeneratedOpening`
+stayed a hand-authored interface in `content/openings.ts`, not pack data — a
+per-call LLM output shape, not world canon. No existing tests covered this
+data at all; added `content/briefs.test.ts` + `content/openings.test.ts`
+(exact prose, a full `openingFor("f-crown")` record incl. loaner + seed
+leads, and the Wreckers' intentional no-loaner case). `validatePack` gained
+referential checks for both. 856 tests pass at close.*
 
 **What moves:** `content/openings.ts`, `content/briefs.ts` (world prose with
 canon ids; consumed by `shared/recap.ts`, `llm/creationFinalize.ts`,
@@ -143,7 +202,18 @@ untouched.
 
 **Done when:** suite green; `recap` tests (if any pin opening text) untouched.
 
-## Task F — enforcement + docs close-out
+## Task F — enforcement + docs close-out ✅ SHIPPED
+
+*As specced. canonLint's `SCANNED_DIRS` gained `"content"` with a
+`content/pack/` exemption; a second test scans `content/index.ts` for any
+plain-assignment object/array literal (`= {`/`= [`, excluding `as {…}` casts
+and `=>`/`==`) — both passed clean on the FIRST run, confirming Tasks A–E
+left zero residue. `pack.test.ts` gained 5 new completeness checks (every
+faction has a patron/starter-gear/brief/opening; all 6 catalogs non-empty;
+name pools + gallery non-empty; every npcFlavor pool ≥6; every background
+grants gear). Docs: ARCHITECTURE.md's "content boundary" paragraph, CLAUDE.md's
+pack bullet, STATUS.md's M1-shipped line, this annotation pass. 862 tests
+pass at final close (+28 over the ~834 baseline this handoff started from).*
 
 1. **canonLint extension**: add loose `content/` files (everything under
    `content/` EXCEPT `content/pack/**`) to the scanned set — after Tasks A–E

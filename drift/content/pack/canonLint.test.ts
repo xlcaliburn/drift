@@ -18,8 +18,13 @@ import { pack } from "./index";
  */
 
 const ROOT = join(__dirname, "..", "..");
-const SCANNED_DIRS = ["engine", "shared", "llm", "lib", "app", "components", "scripts"];
-const EXEMPT = [/\.test\.tsx?$/, /__fixtures__/, /__snapshots__/, /\.golden\./];
+// "content" scans LOOSE content/ (Modularity M1 Task F) — everything OUTSIDE
+// content/pack/ must now be a pure facade (mechanics + re-exports), since the
+// pack IS where canon ids belong. content/pack/** is exempt below, along with
+// skills.json/matrix.json's TS neighbors (there are none — JSON isn't scanned;
+// they're RULES vocabulary, not world flavor, and stay global on purpose).
+const SCANNED_DIRS = ["engine", "shared", "llm", "lib", "app", "components", "scripts", "content"];
+const EXEMPT = [/\.test\.tsx?$/, /__fixtures__/, /__snapshots__/, /\.golden\./, /^content\/pack\//];
 
 const CANON_IDS = [
   pack.universe.id,
@@ -59,5 +64,15 @@ describe("canon lint — world ids never leak outside content/", () => {
       }
     }
     expect(offenders, `canon ids hardcoded outside content/pack:\n${offenders.join("\n")}`).toEqual([]);
+  });
+
+  it("content/index.ts is a pure facade — imports, re-exports, and mechanics only, no world-data literals", () => {
+    // A plain assignment (not `==`/`===`/`=>`) starting an object/array literal
+    // would mean loose world data crept back into the barrel (Modularity M1
+    // Task F). `as {…}` type casts and `Object.entries(x)` calls don't match —
+    // only `= {`/`= [` literal assignment does.
+    const code = stripComments(readFileSync(join(ROOT, "content", "index.ts"), "utf-8"));
+    const literalAssignment = /(?<![=!<>])=(?!=|>)\s*[{[]/;
+    expect(literalAssignment.test(code), "content/index.ts has an inline object/array literal — move the data into content/pack/").toBe(false);
   });
 });

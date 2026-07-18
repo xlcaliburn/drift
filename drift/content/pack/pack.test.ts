@@ -46,3 +46,42 @@ describe("content pack — schema + referential integrity (the world seam)", () 
     expect(pack.locations.some((l) => l.id === DEFAULT_HOME_LOCATION)).toBe(true);
   });
 });
+
+describe("content pack — Modularity M1 category completeness (Task F)", () => {
+  it("every faction has a patron, starter-gear flavor, a brief, and an opening", () => {
+    for (const f of pack.factions) {
+      expect(pack.creation.patrons[f.id], `patron for ${f.id}`).toBeTruthy();
+      expect(pack.creation.starterGearFlavor[f.id], `starter gear for ${f.id}`).toBeTruthy();
+      expect(pack.briefs.factions.some((b) => b.factionId === f.id), `brief for ${f.id}`).toBe(true);
+      expect(pack.openings.factions.some((o) => o.factionId === f.id), `opening for ${f.id}`).toBe(true);
+    }
+  });
+
+  it("mechanical catalogs are all present and non-empty", () => {
+    for (const key of ["economy", "weapons", "enemyTiers", "shipClasses", "crew", "items"] as const) {
+      expect(Object.keys(pack.catalogs[key]).length, `catalogs.${key}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("name pools and the creation gallery are non-empty", () => {
+    expect(pack.names.given.length).toBeGreaterThan(0);
+    expect(pack.names.surnames.length).toBeGreaterThan(0);
+    expect(pack.names.mononyms.length).toBeGreaterThan(0);
+    expect(pack.examples.skills.length).toBeGreaterThan(0);
+    expect(pack.examples.moralCodes.length).toBeGreaterThan(0);
+    expect(pack.examples.losses.length).toBeGreaterThan(0);
+    expect(pack.examples.ties.length).toBeGreaterThan(0);
+    expect(pack.examples.tells.length).toBeGreaterThan(0);
+  });
+
+  it("every npcFlavor pool meets its minimum arity (⚠ never shrink below this — order-sensitive, see types.ts)", () => {
+    for (const key of ["demeanors", "tells", "drives", "hooks", "builds", "faces", "marks", "ages", "voices", "origins"] as const) {
+      expect(pack.npcFlavor[key].length, `npcFlavor.${key}`).toBeGreaterThanOrEqual(6);
+    }
+  });
+
+  it("creation backgrounds are non-empty and every one grants gear", () => {
+    expect(pack.creation.backgrounds.length).toBeGreaterThan(0);
+    for (const b of pack.creation.backgrounds) expect(b.gear.length, `gear for ${b.id}`).toBeGreaterThan(0);
+  });
+});
