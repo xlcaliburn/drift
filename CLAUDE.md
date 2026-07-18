@@ -243,7 +243,10 @@ Don't add prose rules for things the engine can enforce.
   statlines, an allocation panel + preset chips; no Ship schema change — the
   profile derives from the existing row at fight start). `startShipCombat`
   now always produces a ship2 fight; the old d20 ship engine survives only
-  for a fight already mid-flight at deploy.
+  for a fight already mid-flight at deploy. `HANDOFF_COMBAT_V2_3.md` —
+  **READY TO IMPLEMENT**: ship customization (slot caps + outfitting catalog,
+  buy-install/strip-sell through the market machinery, existing-columns-only)
+  + the multi-mount instance-key fix.
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
 - `STATUS.md` — **THE single backlog** (what's left, in order, updated at every

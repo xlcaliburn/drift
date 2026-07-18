@@ -126,6 +126,14 @@ evasiveAcBonus) and frozen into `combat.ship2` for that fight's duration.
 
 ### Customization (the Eclipse joy)
 
+*Specced: `HANDOFF_COMBAT_V2_3.md` (2026-07-18, READY TO IMPLEMENT) — slot
+caps + an outfitting catalog in the ship2 pack module, buy-installs/strip-
+sells through the existing market machinery (rep pricing, engine haggle, tier
+gating), writing into the EXISTING Ship columns so slice 2's derivation is
+the payoff (no schema change, no migration). Includes the multi-mount
+instance-key fix slice 2's review flagged. Where this section and the handoff
+disagree, the handoff wins.*
+
 Ships get **slots** (per shipClass: mounts + system slots). The market sells
 mounts/systems (pack catalogs — weapons.json already sketches types); dock
 services install them. Loadout IS the build game; net-worth scaling gates the
@@ -157,7 +165,8 @@ built so either strategy can win, and the ally comments on the choice).
 1. ✅ **Squad orders (ground)** — SHIPPED (HANDOFF_COMBAT_V2_1.md).
 2. ✅ **CombatSystem seam + ship v2 core** (power, profiles, shields/evasion/
    armor, heat) behind the ship scale — SHIPPED (HANDOFF_COMBAT_V2_2.md).
-3. **Customization** (slots + market + dock install). Next up.
+3. **Customization** (slots + market + dock install). Specced —
+   `HANDOFF_COMBAT_V2_3.md`, READY TO IMPLEMENT.
 4. **Charge banking + called shots** (small, after the core proves fun).
 5. **Prologue integration** (with STORY.md).
 

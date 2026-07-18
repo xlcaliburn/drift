@@ -50,8 +50,12 @@ npx vitest run                 # ~961 model-free tests, no keys needed
    counterplay, simultaneous-reveal rounds, point defense, escalating heat,
    an allocation panel + 4 preset chips); the old d20 ship engine survives
    only for a fight already mid-flight at deploy. LEFT:
-   - **COMBAT_V2.md Part B slices 3-4** — customization (slots + market +
-     dock install), charge banking, called shots. Not yet specced as a handoff.
+   - **COMBAT_V2.md Part B slice 3** — customization: **specced,
+     `HANDOFF_COMBAT_V2_3.md` (READY TO IMPLEMENT)** — slot caps + outfitting
+     catalog in the ship2 pack, buy-install/strip-sell via the existing
+     market machinery, zero schema change (writes the existing Ship columns
+     slice 2 already derives from), plus the multi-mount instance-key fix.
+     Slice 4 (charge banking + called shots) still unspecced behind it.
    - **STORY.md** — the authored campaign layer: a 3-act main questline as
      pack data (engine-owned triggers/objectives/beats/choice-facts), authored
      sidequests placed beside the procedural board, rich pack-cast backstories
