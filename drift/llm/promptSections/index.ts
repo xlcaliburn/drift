@@ -11,9 +11,11 @@ import { activeJobs, offeredJobs } from "./quests";
 import { npcTiers } from "./npcTiers";
 import { establishedFacts } from "./facts";
 import { backstoryPressure } from "./backstoryPressure";
+import { activeChapter } from "./activeChapter";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
 import type { Fact } from "@/shared/facts";
+import type { StorylineState } from "@/shared/storyline";
 
 /**
  * The per-turn context slice, composed from ordered SECTIONS. The order IS the
@@ -30,7 +32,7 @@ const SECTIONS: (Section | "")[] = [
   "",
   npcs, npcTiers,
   "",
-  cameos, threads, establishedFacts, activeJobs, offeredJobs,
+  cameos, threads, establishedFacts, activeJobs, offeredJobs, activeChapter,
   "",
   worldStatus,
 ];
@@ -55,10 +57,13 @@ export function buildContextSlice(
   jobs?: Job[],
   /** The owner's relationship ledger (MULTIPLAYER.md §2) — gates cross-player cameos. */
   ledger?: PlayerLedger,
+  /** The authored main-questline progress (STORY.md) — feeds the activeChapter
+   *  section; dormant while the live pack ships zero chapters. */
+  storyline?: StorylineState,
 ): string {
   const loc = state.locations.find((l) => l.id === state.campaign.currentLocationId);
   const { npcs, threads } = retrieved ?? retrieveEntities(state, playerText, focusIds);
   const pc = state.characters.find((c) => c.kind === "pc");
-  const ctx: SectionCtx = { state, playerText, focusIds, jsonMode, npcs, threads, memory, otherDossiers, pc, loc, jobs, ledger };
+  const ctx: SectionCtx = { state, playerText, focusIds, jsonMode, npcs, threads, memory, otherDossiers, pc, loc, jobs, ledger, storyline };
   return SECTIONS.flatMap((s) => (s === "" ? [""] : s(ctx))).join("\n");
 }

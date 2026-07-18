@@ -6,6 +6,7 @@ import { buildNewCampaignState } from "@/lib/newCampaign";
 import { getSession, setSession, persistSession, hasSupabase } from "@/lib/state";
 import { buildOpeningHistory } from "@/shared/recap";
 import { freshSceneCard } from "@/shared/scene";
+import { freshStorylineState } from "@/shared/storyline";
 import { requireApprovedUser, isDevUser } from "@/lib/auth";
 import { getServiceClient, countAliveCampaigns } from "@/db/queries";
 import { recordAiCall } from "@/lib/audit";
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
     jobs: [], // the board seeds on first load (QUESTS.md)
     playerLedger: {}, // no cross-player contacts met yet (MULTIPLAYER.md §2)
     facts: [], // the durable facts ledger starts empty (CONTINUITY v2)
+    storyline: freshStorylineState(), // dormant — the live pack ships zero chapters
   };
   setSession(campaignId, session0);
   await persistSession(campaignId, session0);

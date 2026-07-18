@@ -159,6 +159,11 @@ export const ChoiceOption = z.object({
   /** Set on an engine-generated "Hire <name>" crew chip (CREW.md): the npc id to
    *  sign on. The engine builds the member from the tier/role tables. */
   recruitNpc: optionalNullable(z.string()),
+  /** Set on an engine-generated chapter-choice chip (STORY.md, HANDOFF_STORY_1.md
+   *  Task C): the active chapter's choicePoint id + the option picked. The engine
+   *  records the fact + completes the chapter deterministically — never a
+   *  model-authored pick. */
+  storyChoice: optionalNullable(z.object({ chapterId: z.string(), optionId: z.string() })),
 });
 export type ChoiceOption = z.infer<typeof ChoiceOption>;
 

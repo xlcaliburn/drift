@@ -649,7 +649,10 @@ export function turnSignals(
   return { currentLocationId, combatResolvedAlive, successfulSkills, presentNpcIds: new Set(presentNpcIds) };
 }
 
-function objectiveMet(obj: Objective, s: TurnSignals): boolean {
+/** Exported so shared/storyline.ts (HANDOFF_STORY_1 Task C) can drive authored
+ *  chapter objectives off the SAME completion rules as procedural jobs — one
+ *  definition of "what counts as done", never two. */
+export function objectiveMet(obj: Objective, s: TurnSignals): boolean {
   switch (obj.kind) {
     case "travel":
     case "deliver":

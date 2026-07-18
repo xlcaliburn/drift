@@ -4,6 +4,7 @@ import type { Dossier } from "@/shared/multiplayer";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
 import type { Fact } from "@/shared/facts";
+import type { StorylineState } from "@/shared/storyline";
 
 /**
  * Shared input for every context section. The broadly-used derivations (pc, loc,
@@ -31,6 +32,9 @@ export interface SectionCtx {
   /** The owner's relationship ledger (MULTIPLAYER.md §2) — gates cross-player cameos
    *  to what this character actually knows. */
   ledger?: PlayerLedger;
+  /** The authored main-questline progress (STORY.md) — the activeChapter
+   *  section reads it; dormant while the live pack ships zero chapters. */
+  storyline?: StorylineState;
   // ── derived once in buildSectionCtx ──
   pc?: CampaignState["characters"][number];
   loc?: CampaignState["locations"][number];

@@ -29,6 +29,7 @@ import type { Dossier } from "@/shared/multiplayer";
 import type { Fact } from "@/shared/facts";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
+import type { StorylineState } from "@/shared/storyline";
 import { stripInlineMenu } from "@/shared/narration";
 import { graduatedTutorialThisTurn, inTutorial, TUTORIAL_CHOICE_COUNT } from "@/shared/tutorial";
 
@@ -95,6 +96,9 @@ export interface JsonTurnInput {
   jobs?: Job[];
   /** The owner's relationship ledger (MULTIPLAYER.md §2) — gates cross-player cameos. */
   ledger?: PlayerLedger;
+  /** The authored main-questline progress (STORY.md) — the activeChapter prompt
+   *  section reads it; dormant while the live pack ships zero chapters. */
+  storyline?: StorylineState;
   model?: string;
   rng?: RNG;
   apiKey?: string;
@@ -696,6 +700,7 @@ export async function runJsonTurn(input: JsonTurnInput): Promise<JsonTurnResult>
     input.otherDossiers,
     input.jobs,
     input.ledger,
+    input.storyline,
   );
   const messages: Anthropic.MessageParam[] = [
     ...sanitizeHistory(input.history),

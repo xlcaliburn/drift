@@ -38,8 +38,10 @@ export interface JobsTurnResult {
 }
 
 /** Bump a campaign's standing with a faction, creating the row if it's the first
- *  time. Clamped to the schema's -5..5 band. */
-function applyRep(rep: FactionRep[], campaignId: string, factionId: string, delta: number): FactionRep[] {
+ *  time. Clamped to the schema's -5..5 band. Exported so shared/storylineRuntime.ts
+ *  (HANDOFF_STORY_1 Task C) pays chapter rewards through the SAME rep-clamp rule
+ *  as job rewards — one definition, never two. */
+export function applyRep(rep: FactionRep[], campaignId: string, factionId: string, delta: number): FactionRep[] {
   const clamp = (n: number) => Math.max(-5, Math.min(5, n));
   const existing = rep.find((r) => r.factionId === factionId && r.campaignId === campaignId);
   if (existing) {

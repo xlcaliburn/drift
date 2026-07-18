@@ -24,6 +24,7 @@ import type { Job } from "@/shared/quests";
 import type { Dossier } from "@/shared/multiplayer";
 import type { PlayerLedger } from "@/shared/ledger";
 import type { Fact } from "@/shared/facts";
+import { freshStorylineState, type StorylineState } from "@/shared/storyline";
 
 /**
  * Row mapping: DB columns are snake_case, app types are camelCase. We convert
@@ -202,6 +203,10 @@ export interface CampaignRuntime {
   playerLedger: PlayerLedger;
   /** The FACTS LEDGER (CONTINUITY.md v2) — durable standing facts. */
   facts: Fact[];
+  /** The authored main-questline progress (STORY.md, HANDOFF_STORY_1.md Task C)
+   *  — chapter/beat/choice POINTERS only, never pack content. A session slice
+   *  like jobs/npcRelations. */
+  storyline: StorylineState;
   updatedAt?: string;
 }
 
@@ -212,7 +217,7 @@ export async function loadCampaignRuntime(
 ): Promise<CampaignRuntime | null> {
   const { data, error } = await db
     .from("campaign_runtime")
-    .select("transcript,history,log,focus_ids,ticked_this_scene,combat,npcs,scene_card,npc_relations,last_choices,jobs,player_ledger,facts,updated_at")
+    .select("transcript,history,log,focus_ids,ticked_this_scene,combat,npcs,scene_card,npc_relations,last_choices,jobs,player_ledger,facts,storyline,updated_at")
     .eq("campaign_id", campaignId)
     .maybeSingle();
   if (error || !data) return null;
@@ -230,6 +235,7 @@ export async function loadCampaignRuntime(
     jobs: (data.jobs as Job[]) ?? [],
     playerLedger: (data.player_ledger as PlayerLedger) ?? {},
     facts: (data.facts as Fact[]) ?? [],
+    storyline: (data.storyline as StorylineState) ?? freshStorylineState(),
     updatedAt: data.updated_at ? String(data.updated_at) : undefined,
   };
 }
@@ -258,7 +264,7 @@ export async function saveCampaignRuntime(
   campaignId: string,
   rt: Pick<
     CampaignRuntime,
-    "transcript" | "history" | "log" | "focusIds" | "tickedThisScene" | "combat" | "npcs" | "sceneCard" | "npcRelations" | "lastChoices" | "jobs" | "playerLedger" | "facts"
+    "transcript" | "history" | "log" | "focusIds" | "tickedThisScene" | "combat" | "npcs" | "sceneCard" | "npcRelations" | "lastChoices" | "jobs" | "playerLedger" | "facts" | "storyline"
   >,
   opts: { expectedUpdatedAt?: string } = {},
 ): Promise<{ conflict: boolean; updatedAt: string }> {
@@ -278,6 +284,7 @@ export async function saveCampaignRuntime(
     jobs: rt.jobs,
     player_ledger: rt.playerLedger,
     facts: rt.facts,
+    storyline: rt.storyline,
     updated_at: updatedAt,
   };
 

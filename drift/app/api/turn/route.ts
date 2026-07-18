@@ -14,8 +14,12 @@ import { repairQuote } from "@/engine/market";
 import { patronHelp } from "@/shared/netWorth";
 import { advanceLedger } from "@/shared/ledger";
 import type { Dossier } from "@/shared/multiplayer";
-import { acceptJob, abandonJob, generatePersonalJob, inferJobAccept, grantJobCargo, consumeJobCargo, materializeJobCast } from "@/shared/quests";
+import { acceptJob, abandonJob, generatePersonalJob, inferJobAccept, grantJobCargo, consumeJobCargo, materializeJobCast, turnSignals } from "@/shared/quests";
 import { resolveJobsTurn } from "@/shared/jobsRuntime";
+import { nextBeat, recordChoice } from "@/shared/storyline";
+import { resolveStorylineTurn } from "@/shared/storylineRuntime";
+import { applyFactUpdates } from "@/shared/facts";
+import { pack } from "@/content/pack";
 import { personalJobAvailable, TRUST_THRESHOLD } from "@/shared/scene";
 import { liveRng } from "@/engine/rng";
 import { advanceTendays, tendaysForSceneClose } from "@/engine/time";
@@ -208,6 +212,14 @@ export async function POST(req: NextRequest) {
     typeof body.acceptPersonalJob === "string" && body.acceptPersonalJob ? body.acceptPersonalJob : undefined;
   // A clicked "Hire <name>" crew chip (CREW.md): the npc id to sign on.
   const recruitNpcId = typeof body.recruitNpc === "string" && body.recruitNpc ? body.recruitNpc : undefined;
+  // A clicked chapter-choice chip (STORY.md, HANDOFF_STORY_1.md Task C): the active
+  // chapter's choicePoint id + the option picked — the engine records the fact.
+  const storyChoicePick =
+    body.storyChoice && typeof body.storyChoice === "object" &&
+    typeof (body.storyChoice as { chapterId?: unknown }).chapterId === "string" &&
+    typeof (body.storyChoice as { optionId?: unknown }).optionId === "string"
+      ? (body.storyChoice as { chapterId: string; optionId: string })
+      : undefined;
   // A clicked full-pack swap chip: the gear to drop, or "__decline__" to leave it.
   const preSwap = Boolean(body.swapDecline)
     ? "__decline__"
@@ -279,6 +291,11 @@ export async function POST(req: NextRequest) {
         sceneCard: structuredClone(session.sceneCard),
         npcRelations: structuredClone(session.npcRelations),
         npcs: session.state.npcs,
+        // storyline (HANDOFF_STORY_1.md Task C trap 4): never mutated in place
+        // before the turn succeeds, so this is belt-and-suspenders — but a
+        // beat delivered-but-never-narrated is exactly the double-payout class
+        // this snapshot pattern exists to stop.
+        storyline: session.storyline,
       };
       // Pre-turn whereabouts, for scene-move detection after the turn. A move to a
       // new place/location is a scene boundary (CONTINUITY): the scene turns over.
@@ -552,6 +569,7 @@ export async function POST(req: NextRequest) {
                 otherDossiers,
                 jobs: session.jobs ?? [],
                 ledger: session.playerLedger ?? {},
+                storyline: session.storyline,
                 model: cinematic ? "claude-sonnet-5" : undefined,
               });
             })();
@@ -659,6 +677,38 @@ export async function POST(req: NextRequest) {
         // Fold any personal-arc resolution back onto the live relations (mutated in
         // place by the turn) so the deepened bond persists + rides the done payload.
         session.npcRelations = jobsRes.npcRelations;
+
+        // ── STORY.md / HANDOFF_STORY_1.md Task C — the authored main questline.
+        //    A clicked chapter-choice chip records its fact FIRST (so the same-
+        //    turn objective/chapter-completion check below sees it). The beat fed
+        //    to the narrator this turn was computed from session.storyline/
+        //    session.state.npcs — both still untouched here — so recomputing it
+        //    now with the SAME inputs yields the identical beat to mark delivered.
+        //    Everything stays in LOCAL variables until the final session assembly
+        //    (trap 4): a turn that throws before then leaves session.storyline
+        //    exactly as it was, so a failed turn can never burn a beat or a choice.
+        let storylineWorking = session.storyline;
+        let factsWorking = session.facts ?? [];
+        if (storyChoicePick) {
+          const choiceRes = recordChoice(pack.storyline, storylineWorking, storyChoicePick.chapterId, storyChoicePick.optionId);
+          storylineWorking = choiceRes.storyline;
+          if (choiceRes.fact) {
+            factsWorking = applyFactUpdates(factsWorking, [{ text: choiceRes.fact }], result.state.campaign.tendaysElapsed);
+          }
+        }
+        const preTurnBeat = nextBeat(pack.storyline, session.storyline, session.state.npcs, session.state.campaign.tendaysElapsed ?? 0);
+        const storylineSignals = turnSignals(result.state.campaign.currentLocationId, result.events, combatResolvedAlive, session.sceneCard.presentNpcIds);
+        const storylineRes = resolveStorylineTurn({
+          content: pack.storyline,
+          storyline: storylineWorking,
+          state: result.state,
+          npcRelations: session.npcRelations,
+          facts: factsWorking,
+          signals: storylineSignals,
+          deliveredBeat: preTurnBeat ?? undefined,
+        });
+        result.state = storylineRes.state; // credits + faction rep for any chapter paid out
+        result.events = [...result.events, ...storylineRes.events];
 
         // ── ENGINE-OWNED TIME (engine/time.ts): a station hop, or every Nth scene
         //    close in place, advances the tenday clock — deterministic, never model-
@@ -796,6 +846,25 @@ export async function POST(req: NextRequest) {
                     const offer = recruitOffer(result.state, session.npcRelations, session.sceneCard.presentNpcIds);
                     return offer ? [{ label: offer.label, recruitNpc: offer.npcId } as ChoiceOption] : [];
                   })(),
+                  // STORY.md / HANDOFF_STORY_1.md Task C — the active chapter's
+                  // choicePoint, once every objective is done and no pick has
+                  // landed yet. The engine records the fact + completes the
+                  // chapter deterministically; the model never authors the pick.
+                  ...(() => {
+                    const activeId = Object.keys(storylineRes.storyline.chapters).find(
+                      (id) => storylineRes.storyline.chapters[id].status === "active",
+                    );
+                    if (!activeId) return [] as ChoiceOption[];
+                    const progress = storylineRes.storyline.chapters[activeId];
+                    if (progress.choiceOptionId) return [] as ChoiceOption[];
+                    const chapter = pack.storyline.chapters.find((c) => c.id === activeId);
+                    if (!chapter?.choicePoint) return [] as ChoiceOption[];
+                    const done = new Set(progress.objectivesDone);
+                    if (!chapter.objectives.every((o) => done.has(o.id))) return [] as ChoiceOption[];
+                    return chapter.choicePoint.options.map(
+                      (o): ChoiceOption => ({ label: o.label, storyChoice: { chapterId: activeId, optionId: o.id } }),
+                    );
+                  })(),
                   // Then the model's choices — or free next moves if it gave none
                   // (incl. right after a scene ends) so there's never a dead end.
                   ...(normalized.length === 0
@@ -806,7 +875,7 @@ export async function POST(req: NextRequest) {
         // Engine display lines (dice/ticks/damage/payment/combat/time) — the handlers
         // return them pre-prefixed; they become system transcript lines so a
         // refresh shows the same mechanics seen live.
-        const engineLineTexts = [...(result.engineLines ?? []), ...locLines, ...jobsRes.lines, ...timeLines];
+        const engineLineTexts = [...(result.engineLines ?? []), ...locLines, ...jobsRes.lines, ...storylineRes.lines, ...timeLines];
         const engineLines = engineLineTexts.map((text) => ({ role: "system" as const, text }));
 
         const transcriptAdds = [
@@ -877,6 +946,11 @@ export async function POST(req: NextRequest) {
           lastChoices: choices,
           // The job board after this turn's advance/payout/top-up (QUESTS.md).
           jobs: jobsRes.jobs,
+          // The main-questline progress after this turn's trigger/advance/beat
+          // (STORY.md, HANDOFF_STORY_1.md Task C) — only ever committed HERE,
+          // never mutated on session.storyline directly (trap 4).
+          storyline: storylineRes.storyline,
+          facts: factsWorking,
           // Relationship ledger (MULTIPLAYER.md §2): promote to firsthand any reachable
           // cross-player character the GM actually brought into this scene (here-now +
           // named in the narration), so the cameo gate + Rolodex remember they've met.
@@ -977,6 +1051,7 @@ export async function POST(req: NextRequest) {
           jobs: updatedSession.jobs,
           playerLedger: updatedSession.playerLedger,
           facts: updatedSession.facts,
+          storyline: updatedSession.storyline,
           tutorialGraduated: result.tutorialGraduated,
           model: result.model,
           usage: result.usage,
@@ -988,6 +1063,7 @@ export async function POST(req: NextRequest) {
         session.sceneCard = memorySnapshot.sceneCard;
         session.npcRelations = memorySnapshot.npcRelations;
         session.state.npcs = memorySnapshot.npcs;
+        session.storyline = memorySnapshot.storyline;
         setSession(campaignId, session);
         const retryable = err instanceof TurnGenerationError;
         send({

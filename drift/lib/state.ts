@@ -14,6 +14,7 @@ import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
 import type { Fact } from "@/shared/facts";
+import { freshStorylineState, type StorylineState } from "@/shared/storyline";
 import type { Dossier } from "@/shared/multiplayer";
 import type { CampaignRuntime } from "@/db/queries";
 
@@ -66,6 +67,10 @@ export interface SessionData {
   /** The FACTS LEDGER (CONTINUITY.md v2) — durable standing facts (deal terms,
    *  appointments, bans, debts), engine-capped + deduped. */
   facts: Fact[];
+  /** The authored main-questline progress (STORY.md, HANDOFF_STORY_1.md Task C)
+   *  — chapter/beat/choice POINTERS only, never pack content (dormant while
+   *  the live pack ships zero chapters). */
+  storyline: StorylineState;
   /** The `campaign_runtime` row's `updated_at` AS LAST SEEN by this session —
    *  the optimistic-concurrency baseline `persistSession` compares against on
    *  write (CHECKS.md §0 "campaign_runtime CAS"). Undefined for a session that
@@ -158,6 +163,11 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               jobs: (runtime.jobs ?? []).map((j) => ({ ...j, cast: j.cast ?? [] })),
               playerLedger: runtime.playerLedger ?? {},
               facts: runtime.facts ?? [],
+              // storyline loads as RAW jsonb (no Zod parse) — a legacy row (pre-
+              // migration default, or simply never touched) carries `{}`, which
+              // has no `chapters` map. Normalize to a fresh state rather than
+              // let every `storyline.chapters[...]` read crash the turn.
+              storyline: runtime.storyline?.chapters ? runtime.storyline : freshStorylineState(),
               // CAS baseline (CHECKS.md §0): the version of campaign_runtime this
               // session was loaded from — persistSession compares against it.
               runtimeUpdatedAt: runtime.updatedAt,
@@ -178,6 +188,7 @@ export async function getSession(campaignId: string): Promise<SessionData | null
               jobs: [],
               playerLedger: {},
               facts: [],
+              storyline: freshStorylineState(),
               // No prior runtime row (legacy pre-M7 campaign) — first save is a
               // plain upsert (persistSession passes no expectedUpdatedAt).
               runtimeUpdatedAt: undefined,
@@ -277,6 +288,7 @@ export async function persistSession(campaignId: string, session: SessionData): 
       jobs: session.jobs ?? [],
       playerLedger: session.playerLedger ?? {},
       facts,
+      storyline: session.storyline ?? freshStorylineState(),
     });
 
     let result = await saveCampaignRuntime(db, campaignId, runtimePayload(), {

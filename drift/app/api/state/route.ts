@@ -4,6 +4,7 @@ import { requireApprovedUser, canAccessCampaign } from "@/lib/auth";
 import { refreshBoard } from "@/shared/quests";
 import { liveRng } from "@/engine/rng";
 import { revalidateChoices } from "@/shared/choices";
+import { freshStorylineState } from "@/shared/storyline";
 
 export const runtime = "nodejs";
 
@@ -67,6 +68,10 @@ export async function GET(req: NextRequest) {
     jobs: session.jobs ?? [],
     playerLedger: session.playerLedger ?? {},
     facts: session.facts ?? [],
+    // The main-questline progress (STORY.md, HANDOFF_STORY_1.md Task C) — the
+    // Story tab cross-references pack.storyline.chapters (bundled client-side,
+    // same pattern as MapTab/RemakeEditor) for titles/objectives.
+    storyline: session.storyline ?? freshStorylineState(),
   });
 }
 
