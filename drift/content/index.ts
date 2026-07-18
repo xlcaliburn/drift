@@ -11,6 +11,10 @@ import shipClassesJson from "./pack/drift/shipClasses.json";
 import enemyTiersJson from "./pack/drift/enemyTiers.json";
 import crewJson from "./pack/drift/crew.json";
 import itemsJson from "./pack/drift/items.json";
+// Ship2 CombatSystem statlines — a typed .ts module, not raw JSON (see that
+// file's comment); imported directly here for the same reason the other
+// catalogs are (precise types, zero call-site churn outside this facade).
+import { driftShip2 } from "./pack/drift/ship2";
 // RULES vocabulary (verb→skill map, damage-interaction matrix) — NOT world
 // flavor, stays global. See HANDOFF_MODULARITY_M1.md's out-of-scope note.
 import matrixJson from "./matrix.json";
@@ -24,6 +28,7 @@ export const enemyTiers = enemyTiersJson;
 export const skills = skillsJson;
 export const crew = crewJson;
 export const items = itemsJson;
+export const ship2 = driftShip2;
 
 export type DamageType = "kinetic" | "energy" | "missile" | "ion";
 export type DefenseType = "armor" | "shields" | "evasion" | "pd";

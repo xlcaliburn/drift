@@ -85,3 +85,25 @@ describe("content pack — Modularity M1 category completeness (Task F)", () => 
     for (const b of pack.creation.backgrounds) expect(b.gear.length, `gear for ${b.id}`).toBeGreaterThan(0);
   });
 });
+
+describe("content pack — ship2 CombatSystem completeness (HANDOFF_COMBAT_V2_2.md)", () => {
+  it("every shipClass has a ship2 statline, and every owned mount resolves", () => {
+    const knownShipClasses = (pack.catalogs.shipClasses as { classes: Record<string, unknown> }).classes;
+    for (const classId of Object.keys(knownShipClasses)) {
+      const cls = pack.ship2.classes[classId];
+      expect(cls, `ship2 statline for ${classId}`).toBeTruthy();
+      expect(cls.mounts.length, `${classId} owns at least one mount`).toBeGreaterThan(0);
+      for (const mountId of cls.mounts) {
+        expect(pack.ship2.mounts[mountId], `${classId} mount ${mountId}`).toBeTruthy();
+      }
+    }
+  });
+
+  it("every policy token is a real allocation weight", () => {
+    for (const [classId, cls] of Object.entries(pack.ship2.classes)) {
+      for (const token of cls.policy) {
+        expect(["guns", "shields", "engines"], `${classId} policy token ${token}`).toContain(token);
+      }
+    }
+  });
+});

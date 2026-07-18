@@ -248,6 +248,44 @@ export type PackNpcFlavor = z.infer<typeof PackNpcFlavor>;
  *  and is a real object, so one can never silently go missing from a pack.
  *  `content/index.ts` re-exports the SAME underlying JSON with its natural
  *  precise type for consumers — this field is validation/completeness-only. */
+/** A ship2 weapon mount's dice profile (COMBAT_V2.md Part B, HANDOFF_COMBAT_V2_2.md
+ *  — the Eclipse-style "1 reliable die vs 6 swingy dice" tradeoff). `overchargeHitOn`
+ *  is the lowered hit-on when +1 power is diverted to that mount (beam lance only
+ *  this slice); `ammoLimited` mounts are subject to the defender's point-defense
+ *  roll-down (`pdHitOn`) before armor/shields ever see the hit. */
+export const PackShip2Mount = z.object({
+  name: z.string().min(1),
+  dice: z.number().int().min(1),
+  hitOn: z.number().int().min(1).max(6),
+  dmgPerHit: z.number().int().min(1),
+  power: z.number().int().min(1),
+  overchargeHitOn: z.number().int().min(1).max(6).optional(),
+  ammoLimited: z.boolean().optional(),
+  pdHitOn: z.number().int().min(1).max(6).optional(),
+});
+export type PackShip2Mount = z.infer<typeof PackShip2Mount>;
+
+/** A shipClass's ship2 statline — reused for BOTH the player's derived profile
+ *  (shared/ship2.ts's `deriveShip2Profile`) and enemy spawns. `mounts` is
+ *  priority-ordered (the enemy's "guns" policy token funds the first unfunded
+ *  one); `policy` is the enemy's deterministic allocation weights, resolved
+ *  token-by-token until the reactor is spent or the list is exhausted. */
+export const PackShip2Class = z.object({
+  reactor: z.number().int().min(1),
+  engineCap: z.number().int().min(0),
+  shieldCap: z.number().int().min(0),
+  armor: z.number().int().min(0),
+  mounts: z.array(z.string().min(1)).min(1),
+  policy: z.array(z.enum(["guns", "shields", "engines"])).min(1),
+});
+export type PackShip2Class = z.infer<typeof PackShip2Class>;
+
+export const PackShip2 = z.object({
+  mounts: z.record(z.string(), PackShip2Mount),
+  classes: z.record(z.string(), PackShip2Class),
+});
+export type PackShip2 = z.infer<typeof PackShip2>;
+
 export const PackCatalogs = z.object({
   economy: z.record(z.string(), z.unknown()),
   weapons: z.record(z.string(), z.unknown()),
@@ -289,6 +327,10 @@ export const ContentPack = z.object({
     bodyMod: z.string(),
   }),
   catalogs: PackCatalogs,
+  /** The ship2 CombatSystem's statlines (HANDOFF_COMBAT_V2_2.md) — separate
+   *  from `catalogs` (which is deliberately loose) because it needs REAL
+   *  referential validation: every class's `mounts`/`policy` must resolve. */
+  ship2: PackShip2,
 });
 export type ContentPack = z.infer<typeof ContentPack>;
 
@@ -321,6 +363,19 @@ export function validatePack(pack: ContentPack): string[] {
       problems.push(`npc ${n.id}: name collides with a faction name (${n.name})`);
   }
   if (!locIds.has(pack.services.bodyMod)) problems.push(`services.bodyMod: unknown location ${pack.services.bodyMod}`);
+  // ship2 (HANDOFF_COMBAT_V2_2.md): every class's owned mounts must resolve,
+  // and every shipClass the OLD catalog knows about needs a ship2 statline too
+  // (a new class added to catalogs.shipClasses without one would silently
+  // fall back to nothing at fight start).
+  for (const [classId, cls] of Object.entries(pack.ship2.classes)) {
+    for (const mountId of cls.mounts) {
+      if (!pack.ship2.mounts[mountId]) problems.push(`ship2.classes.${classId}: unknown mount ${mountId}`);
+    }
+  }
+  const knownShipClasses = (pack.catalogs.shipClasses as { classes?: Record<string, unknown> }).classes ?? {};
+  for (const classId of Object.keys(knownShipClasses)) {
+    if (!pack.ship2.classes[classId]) problems.push(`ship2.classes: missing a ship2 statline for shipClass ${classId}`);
+  }
   for (const fid of Object.keys(pack.creation.patrons)) {
     if (!facIds.has(fid)) problems.push(`creation.patrons: unknown faction ${fid}`);
   }

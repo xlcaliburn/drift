@@ -59,14 +59,29 @@ export const DangerSpec = z.object({
 });
 export type DangerSpec = z.infer<typeof DangerSpec>;
 
+/** A ship2 power allocation (HANDOFF_COMBAT_V2_2.md) — carried by an
+ *  "allocate" CombatActionSpec. Bounded but NOT trusted as final: the engine
+ *  re-validates against the live profile (shared/ship2.ts's
+ *  validateAllocation) before anything resolves. */
+export const AllocationSpec = z.object({
+  mounts: z.array(z.string()).max(4),
+  shields: z.number().int().min(0).max(6),
+  engines: z.number().int().min(0).max(6),
+  overcharge: optionalNullable(z.boolean()),
+  targetId: optionalNullable(z.string()),
+  itemId: optionalNullable(z.string()),
+});
+
 /** A combat action carried by an engine-generated combat choice. */
 export const CombatActionSpec = z.object({
-  type: z.enum(["attack", "aim", "cover", "stim", "flee", "item", "switch"]),
+  type: z.enum(["attack", "aim", "cover", "stim", "flee", "item", "switch", "allocate"]),
   enemyId: optionalNullable(z.string()),
   /** For type "item": catalog id of the consumable to use. */
   itemId: optionalNullable(z.string()),
   /** For type "switch": the gear name of the weapon to draw. */
   weaponName: optionalNullable(z.string()),
+  /** For type "allocate": this round's ship2 power allocation. */
+  alloc: optionalNullable(AllocationSpec),
 });
 
 /** A squad order carried by a crew-member combat chip (HANDOFF_COMBAT_V2_1

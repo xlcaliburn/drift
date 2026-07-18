@@ -22,6 +22,10 @@ import { driftCreation } from "./drift/creation";
 // content/openings.ts are pure facades for these.
 import { driftBriefs } from "./drift/briefs";
 import { driftOpenings } from "./drift/openings";
+// Ship2 CombatSystem statlines (HANDOFF_COMBAT_V2_2.md Task A) — a typed .ts
+// module (not raw JSON) so `policy` narrows to its real literal union; needs
+// real referential validation like creation/briefs/openings/npcFlavor.
+import { driftShip2 } from "./drift/ship2";
 
 /**
  * THE DRIFT — content pack v0. This is the CURRENT live world, ported verbatim
@@ -260,4 +264,6 @@ export const driftPack: ContentPack = {
     crew: crewJson,
     items: itemsJson,
   },
+
+  ship2: driftShip2,
 };

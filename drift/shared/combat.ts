@@ -6,6 +6,7 @@
  */
 import { USE_NEGATION_RE, type UsableConsumable } from "./items";
 import type { StatusEffect, DamageType, StatusKind } from "./status";
+import type { Allocation } from "./ship2";
 
 export type CombatTier = "T1" | "T2" | "T3";
 
@@ -73,7 +74,7 @@ export interface CombatState {
   system?: CombatSystemId;
 }
 
-export type CombatActionType = "attack" | "aim" | "cover" | "stim" | "flee" | "item" | "switch";
+export type CombatActionType = "attack" | "aim" | "cover" | "stim" | "flee" | "item" | "switch" | "allocate";
 export interface CombatAction {
   type: CombatActionType;
   enemyId?: string;
@@ -81,6 +82,10 @@ export interface CombatAction {
   itemId?: string;
   /** For type "switch": the gear name of the weapon to draw. */
   weaponName?: string;
+  /** For type "allocate" (ship2 — HANDOFF_COMBAT_V2_2.md): this round's power
+   *  allocation. The engine re-validates it against the live profile
+   *  (validateAllocation) — never trusts this payload as-is. */
+  alloc?: Allocation;
 }
 
 /** Which combat skill a weapon rolls to hit with — a blade/baton is melee (might),
