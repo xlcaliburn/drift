@@ -8,6 +8,10 @@ import enemyTiersJson from "./drift/enemyTiers.json";
 import shipClassesJson from "./drift/shipClasses.json";
 import crewJson from "./drift/crew.json";
 import itemsJson from "./drift/items.json";
+// Name pools + creation gallery (Modularity M1 Task B) — content/examples.ts
+// is now a pure facade re-exporting these + its mechanics (suggestName/sample).
+import { driftNames } from "./drift/names";
+import { driftExamples } from "./drift/examples";
 
 /**
  * THE DRIFT — content pack v0. This is the CURRENT live world, ported verbatim
@@ -230,6 +234,9 @@ export const driftPack: ContentPack = {
   services: {
     bodyMod: "loc-rook", // Chrome's parlor — the respec/appearance service gate
   },
+
+  names: driftNames,
+  examples: driftExamples,
 
   catalogs: {
     economy: economyJson,

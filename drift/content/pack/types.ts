@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { UniqueSkill } from "@/shared/schemas";
 
 /**
  * THE CONTENT PACK SCHEMA — the single authored source of world truth. Everything
@@ -64,6 +65,34 @@ export const PackNpc = z.object({
 });
 export type PackNpc = z.infer<typeof PackNpc>;
 
+/** Free-text name pools a NEW character or NPC can draw from (Modularity M1
+ *  Task B) — `suggestName()` combines given+surname, or picks a mononym; the
+ *  SAME pool backs quest cast-manifest generation (`shared/quests.ts`), so a
+ *  world reboot renames both the player's creation-screen suggestions and every
+ *  generated NPC in one place. */
+export const PackNames = z.object({
+  given: z.array(z.string().min(1)).min(6),
+  surnames: z.array(z.string().min(1)).min(6),
+  /** Spacers who go by one handle instead of given+surname. */
+  mononyms: z.array(z.string().min(1)).min(3),
+});
+export type PackNames = z.infer<typeof PackNames>;
+
+/** Creation-screen inspiration gallery — hand-authored so the wizard never
+ *  spends tokens generating throwaway suggestions. Lane-flavored PROSE, not
+ *  mechanics (the balance caps `exampleSkills` respects are engine-enforced
+ *  elsewhere, not by this data). */
+export const PackExamples = z.object({
+  skills: z.array(z.object({ blurb: z.string().min(1), skill: UniqueSkill })).min(3),
+  moralCodes: z.array(z.string().min(1)).min(3),
+  /** A defining loss/scar, a debt/tie, and a recognizable tell — the optional
+   *  creation flavor prompts (blank → the finalize pass invents one). */
+  losses: z.array(z.string().min(1)).min(3),
+  ties: z.array(z.string().min(1)).min(3),
+  tells: z.array(z.string().min(1)).min(3),
+});
+export type PackExamples = z.infer<typeof PackExamples>;
+
 /** Mechanical tuning catalogs (Modularity M1) — weapon/item/enemy-tier/ship-
  *  class/crew/economy tables. The pack owns the DATA (values), engine/ owns the
  *  MATH over it (a world reboot can retune numbers/flavor, never the shape the
@@ -96,6 +125,8 @@ export const ContentPack = z.object({
   factions: z.array(PackFaction).min(1),
   locations: z.array(PackLocation).min(1),
   cast: z.array(PackNpc),
+  names: PackNames,
+  examples: PackExamples,
   /** Job-generation flavor pools (QUESTS.md `fill()` placeholders). */
   jobFlavor: z.object({
     cargo: z.array(z.string()).min(3),
