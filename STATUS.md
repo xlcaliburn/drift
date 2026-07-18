@@ -30,7 +30,7 @@ npm install
 cp .env.example .env.local     # DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY; + Supabase vars for auth
 npm run dev                    # http://localhost:3000
 npx tsc --noEmit               # fast typecheck (never touches .next)
-npx vitest run                 # ~961 model-free tests, no keys needed
+npx vitest run                 # ~1012 model-free tests, no keys needed
 ```
 
 - **Keyless mode** (no Supabase vars): no login, stub dev admin, nothing persists.
@@ -43,19 +43,21 @@ npx vitest run                 # ~961 model-free tests, no keys needed
 
 0. **Space-campaign depth** (owner priority 2026-07-18, from playtest
    feedback): **HANDOFF_COMBAT_V2_1.md** (lexicon seed, the M5 CombatSystem
-   seam, squad orders) **and HANDOFF_COMBAT_V2_2.md** (the ship2 power/dice
-   core) are both fully SHIPPED (2026-07-18) — see COMBAT_V2.md Parts A+B for
-   the shipped-notes. `startShipCombat` now always produces a ship2 fight
-   (power allocation, all four dice-profile mounts, shields/evasion/armor
-   counterplay, simultaneous-reveal rounds, point defense, escalating heat,
-   an allocation panel + 4 preset chips); the old d20 ship engine survives
-   only for a fight already mid-flight at deploy. LEFT:
-   - **COMBAT_V2.md Part B slice 3** — customization: **specced,
-     `HANDOFF_COMBAT_V2_3.md` (READY TO IMPLEMENT)** — slot caps + outfitting
-     catalog in the ship2 pack, buy-install/strip-sell via the existing
-     market machinery, zero schema change (writes the existing Ship columns
-     slice 2 already derives from), plus the multi-mount instance-key fix.
-     Slice 4 (charge banking + called shots) still unspecced behind it.
+   seam, squad orders), **HANDOFF_COMBAT_V2_2.md** (the ship2 power/dice
+   core), and **HANDOFF_COMBAT_V2_3.md** (ship customization) are all fully
+   SHIPPED (2026-07-18) — see COMBAT_V2.md Parts A+B for the shipped-notes.
+   `startShipCombat` now always produces a ship2 fight (power allocation, all
+   four dice-profile mounts, shields/evasion/armor counterplay, simultaneous-
+   reveal rounds, point defense, escalating heat, an allocation panel + 4
+   preset chips, mount-instance keys so two of the same mount both fire); the
+   old d20 ship engine survives only for a fight already mid-flight at
+   deploy. A ship can be OUTFITTED at any docked market (4 mount items, 5
+   system items, tier-gated, priced through the same rep/haggle machinery as
+   the item shop) — buy installs in one step, sell strips at 40%, writing the
+   EXISTING Ship columns slice 2 already derives from (no schema change).
+   LEFT:
+   - **COMBAT_V2.md Part B slice 4** — charge banking + called shots. Small,
+     after the core proves fun in play; not yet specced as a handoff.
    - **STORY.md** — the authored campaign layer: a 3-act main questline as
      pack data (engine-owned triggers/objectives/beats/choice-facts), authored
      sidequests placed beside the procedural board, rich pack-cast backstories

@@ -126,13 +126,32 @@ evasiveAcBonus) and frozen into `combat.ship2` for that fight's duration.
 
 ### Customization (the Eclipse joy)
 
-*Specced: `HANDOFF_COMBAT_V2_3.md` (2026-07-18, READY TO IMPLEMENT) — slot
-caps + an outfitting catalog in the ship2 pack module, buy-installs/strip-
-sells through the existing market machinery (rep pricing, engine haggle, tier
-gating), writing into the EXISTING Ship columns so slice 2's derivation is
-the payoff (no schema change, no migration). Includes the multi-mount
-instance-key fix slice 2's review flagged. Where this section and the handoff
-disagree, the handoff wins.*
+*Specced: `HANDOFF_COMBAT_V2_3.md` (2026-07-18) — slot caps + an outfitting
+catalog in the ship2 pack module, buy-installs/strip-sells through the
+existing market machinery (rep pricing, engine haggle, tier gating), writing
+into the EXISTING Ship columns so slice 2's derivation is the payoff (no
+schema change, no migration). Includes the multi-mount instance-key fix
+slice 2's review flagged. Where this section and the handoff disagree, the
+handoff wins.*
+
+**✅ SHIPPED (2026-07-18):** buy = install in one step at a docked market
+(4 mount items, 5 system items — priced, tier-gated); sell = strip at the
+flat 40%. `shipyardStock`/`shipyardChips` (shared/ship2.ts) are the ONE truth
+table for tier/slot/already-fitted, read by both the chip layer and the
+`buyShipItem`/`sellShipItem` runtime (llm/runtimeEconomy.ts) — a crafted or
+stale chip is re-validated against the live ship every time, never trusted.
+A ship's first mount purchase materializes its virtual class-default guns
+into real `weapons[]` entries first, so buying can never silently delete the
+stock loadout the player has been firing. Two deliberate scope calls, both
+notable: **a burst drive is a one-shot** — using it in a fight sets
+`burstDriveReady: false`, which FREES its system slot (not just spends a
+charge); re-buying re-arms it, there's no persistent recharge this slice.
+**Net worth is UNCHANGED** — installed hardware doesn't raise the threat
+band `shared/netWorth.ts` gates against; folding it in would mean retuning
+COMBAT.md §1's bands, which is out of scope here and deferred to whenever
+that system gets revisited. `components/sidebar/ShipTab.tsx` shows a
+read-only Loadout block (mounts with their ship2 dice profile + ammo, fitted
+systems, used/cap slot counts); the shipyard chips are the interaction.
 
 Ships get **slots** (per shipClass: mounts + system slots). The market sells
 mounts/systems (pack catalogs — weapons.json already sketches types); dock
@@ -165,8 +184,8 @@ built so either strategy can win, and the ally comments on the choice).
 1. ✅ **Squad orders (ground)** — SHIPPED (HANDOFF_COMBAT_V2_1.md).
 2. ✅ **CombatSystem seam + ship v2 core** (power, profiles, shields/evasion/
    armor, heat) behind the ship scale — SHIPPED (HANDOFF_COMBAT_V2_2.md).
-3. **Customization** (slots + market + dock install). Specced —
-   `HANDOFF_COMBAT_V2_3.md`, READY TO IMPLEMENT.
+3. ✅ **Customization** (slots + market + dock install) — SHIPPED
+   (HANDOFF_COMBAT_V2_3.md).
 4. **Charge banking + called shots** (small, after the core proves fun).
 5. **Prologue integration** (with STORY.md).
 

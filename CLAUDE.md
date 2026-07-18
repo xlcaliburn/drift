@@ -230,23 +230,24 @@ Don't add prose rules for things the engine can enforce.
   authored sidequests, rich cast backstories with authored reveals, and the
   tutorial rebuilt as an authored prologue. Build order inside; nothing built.
 - `COMBAT_V2.md` — **DESIGN (owner priority, decisions RESOLVED), Parts A+B
-  core both SHIPPED (2026-07-18)**: squad control (order every party member,
-  temporary allies — Part A) + Eclipse-style ship combat (power allocation,
-  dice-profile mounts, shields/evasion/armor counterplay, escalating heat —
-  Part B's core). Customization slots + charge banking/called shots (Part B's
-  remaining slices) are still design-only. `HANDOFF_COMBAT_V2_1.md` and
-  `HANDOFF_COMBAT_V2_2.md` are both **FULLY SHIPPED**: the lexicon seed, the
+  core + customization all SHIPPED (2026-07-18)**: squad control (order every
+  party member, temporary allies — Part A) + Eclipse-style ship combat (power
+  allocation, dice-profile mounts, shields/evasion/armor counterplay,
+  escalating heat — Part B's core) + ship customization (slots, an
+  outfitting catalog, buy-install/strip-sell through the market machinery).
+  Charge banking/called shots (Part B's last slice) still design-only.
+  `HANDOFF_COMBAT_V2_1.md`, `HANDOFF_COMBAT_V2_2.md`, and
+  `HANDOFF_COMBAT_V2_3.md` are all **FULLY SHIPPED**: the lexicon seed, the
   M5 CombatSystem seam (extraction, not speculation — now proven by a REAL
   second system), squad orders (attack a chosen target / self-heal per crew
-  member; un-ordered members auto-act), and ship2 (power allocation + all
-  four dice-profile mounts, simultaneous-reveal rounds, pack-catalog
-  statlines, an allocation panel + preset chips; no Ship schema change — the
-  profile derives from the existing row at fight start). `startShipCombat`
-  now always produces a ship2 fight; the old d20 ship engine survives only
-  for a fight already mid-flight at deploy. `HANDOFF_COMBAT_V2_3.md` —
-  **READY TO IMPLEMENT**: ship customization (slot caps + outfitting catalog,
-  buy-install/strip-sell through the market machinery, existing-columns-only)
-  + the multi-mount instance-key fix.
+  member; un-ordered members auto-act), ship2 (power allocation + all four
+  dice-profile mounts, simultaneous-reveal rounds, pack-catalog statlines, an
+  allocation panel + preset chips, mount-instance keys so a ship carrying two
+  of the same mount fires both), and outfitting (mount/system items, tier
+  gating, slot accounting, stock-loadout materialization — all writing
+  EXISTING `Ship` columns, no schema change anywhere across all three
+  handoffs). `startShipCombat` now always produces a ship2 fight; the old d20
+  ship engine survives only for a fight already mid-flight at deploy.
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
 - `STATUS.md` — **THE single backlog** (what's left, in order, updated at every

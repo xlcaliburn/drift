@@ -2,6 +2,7 @@
 
 import type { CampaignState } from "@/shared/schemas";
 import { shipIsOwned } from "@/shared/recap";
+import { deriveShip2Profile, shipMountSlots, shipSystemSlots } from "@/shared/ship2";
 import { Bar } from "./ui";
 
 export function ShipTab({ state }: { state: CampaignState }) {
@@ -9,6 +10,19 @@ export function ShipTab({ state }: { state: CampaignState }) {
   if (!s) return <p className="text-neutral-500">No ship — grounded until you earn a hull of your own.</p>;
   const missiles = s.weapons.find((w) => w.type === "missile")?.ammo ?? 0;
   const owned = shipIsOwned(state);
+  // Loadout (HANDOFF_COMBAT_V2_3.md Task D) — the ship2 profile this ship
+  // would actually fight with, plus slot accounting. Read-only: the shipyard
+  // chips (from the shopping-intent block) are the interaction.
+  const profile = deriveShip2Profile(s, []);
+  const mountSlots = shipMountSlots(s);
+  const systemSlots = shipSystemSlots(s);
+  const fittedSystems = [
+    s.damageReduction > 0 ? `Hull plating (+${s.damageReduction} DR)` : null,
+    s.evasiveAcBonus > 0 ? `Vector thrusters (+${s.evasiveAcBonus} evasive)` : null,
+    s.hasShield ? "Shield emitter" : null,
+    s.hasPointDefense ? "Point-defense grid" : null,
+    s.burstDriveReady ? "Burst drive (armed)" : null,
+  ].filter((x): x is string => !!x);
   return (
     <div className="space-y-3">
       <div className="rounded border border-edge p-2">
@@ -34,12 +48,25 @@ export function ShipTab({ state }: { state: CampaignState }) {
           <div>Missiles: {missiles}</div>
         </div>
         <div className="mt-2 border-t border-edge pt-2 text-neutral-500">
-          {s.weapons.map((w) => (
-            <div key={w.name}>
-              {w.name} — {w.type} {w.damage}
-              {w.count ? ` ×${w.count}` : ""}
+          <div className="mb-1 flex justify-between text-neutral-400">
+            <span>Loadout</span>
+            <span>
+              {mountSlots.used}/{mountSlots.cap} mounts · {systemSlots.used}/{systemSlots.cap} systems
+            </span>
+          </div>
+          {profile.mounts.map((m) => (
+            <div key={m.key}>
+              {m.name} — {m.dice}d6≥{m.hitOn}, {m.dmgPerHit} dmg, {m.power}P
+              {m.ammoLimited ? ` · ${m.ammo ?? 0} ammo left` : ""}
             </div>
           ))}
+          {fittedSystems.length > 0 && (
+            <div className="mt-1 space-y-0.5">
+              {fittedSystems.map((sys) => (
+                <div key={sys}>{sys}</div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

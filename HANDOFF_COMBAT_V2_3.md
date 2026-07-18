@@ -118,7 +118,17 @@ Rules:
 
 ---
 
-## Task A — mount-instance keys (the multi-mount fix)
+## Task A — mount-instance keys (the multi-mount fix) ✅ SHIPPED
+
+*Implementation decisions: `Ship2MountProfile` (engine/ship2.ts) and
+`MountFireResult` also gained an optional `key`/`mountKey` field so the
+CALLER (runtimeCombat.ts) can re-find the exact fired instance for the
+point-defense pass — the pure functions themselves still take one mount
+object at a time and never look anything up by id/key internally, so
+existing engine-level tests needed no changes (key falls back to id when
+unset). `weaponIndex` is undefined for a class-default virtual mount (no
+`weapons[]` entry backs it yet); Task C's `sellShipItem` materializes stock
+first so a "never-bought stock gun" can still be sold. 9 new tests.*
 
 `Ship2MountInstance` gains `key: string`, unique per ship — the profile id
 plus an ordinal for repeats (`"railgun"`, `"railgun-2"`), assigned in
@@ -143,6 +153,17 @@ fires BOTH in one allocation (damage ≈ 2× one); ammo decrement hits only the
 fired rack when two missile racks are carried; existing suite green (single-
 mount ships behave identically — keys equal ids there).
 
+## Task B — the outfitting catalog + pure helpers ✅ SHIPPED
+
+*Implementation decisions: system items store `field` + an optional
+`numericValue` (not a raw `value: number|boolean` union) — the three
+boolean fields (hasShield/hasPointDefense/burstDriveReady) always set to
+`true` on purchase regardless of `numericValue`, which only matters for the
+two numeric fields (damageReduction/evasiveAcBonus). `shipyardStock`
+deliberately does NOT filter by affordability (credits) — that split stays
+with the chip layer (Task C), matching how `marketChips` already divides
+the same concern. 20 new tests.*
+
 ## Task B — the outfitting catalog + pure helpers
 
 1. Pack (`content/pack/drift/ship2.ts` + `PackShip2` zod in
@@ -161,6 +182,18 @@ mount ships behave identically — keys equal ids there).
    - `shipyardStock(state)` → `{ mounts: […], systems: […] }` with per-item
      `{ id, name, price, canBuy, reason? }` — tier/slot/already-fitted logic
      lives HERE so the chips layer and the runtime share one truth.
+
+## Task C — buy/sell runtime + protocol + chips ✅ SHIPPED
+
+*Implementation decisions: `buyShipItem` materializes the stock loadout
+ONLY for a mount purchase, not a system purchase — a system buy never
+touches `weapons[]`, so materializing early would be an unnecessary write
+with no purpose (review-caught during self-testing: the first draft
+materialized unconditionally). A scout (mountSlots 1, exactly 1 default
+mount) is therefore ALREADY at capacity from its own stock gun the moment
+`shipMountSlots` counts a virtual default as "used" — buying anything on
+one requires selling the stock gun first; this is Task B's own rule working
+as designed, not a bug. 22 new tests.*
 
 ## Task C — buy/sell runtime + protocol + chips
 
@@ -187,7 +220,22 @@ mount ships behave identically — keys equal ids there).
    materializes stock; haggle + rep pricing applied; chips reflect
    `canBuy`/`reason`; zod round-trip of the two ChoiceOption fields.
 
-## Task D — loadout display + docs
+## Task D — loadout display + docs ✅ SHIPPED
+
+*Implementation note: `ShipTab.tsx`'s old raw `weapons[].map(...)` listing
+was REPLACED by the new Loadout block (it showed the same weapons, just
+without ship2's dice profile or slot accounting) rather than kept alongside
+it — avoids a duplicate weapon listing. The HP/AC/shield/burst summary lines
+above it are untouched. Verified: dev server boots and the homepage loads
+with zero console errors; a full character-creation click-through to a real
+ShipTab render wasn't run, matching Task C's own verification note (the
+setup cost is disproportionate to a read-only display already backed by
+shared/ship2.ts's extensive test coverage). Docs updated: COMBAT_V2.md
+(Customization shipped-note + build-order items 3 marked done), CHECKS.md
+(a new §0 row for the shipyard's tier/slot/already-fitted re-validation),
+STATUS.md/CLAUDE.md (backlog + docs map, all three ship2 handoffs now marked
+fully shipped). **1012 tests pass total, `tsc` clean, golden byte-identical
+— HANDOFF_COMBAT_V2_3.md is closed.***
 
 1. `components/sidebar/ShipTab.tsx`: a Loadout block — mounts (name, profile
    label, ammo where limited) and systems (fitted list), each with
