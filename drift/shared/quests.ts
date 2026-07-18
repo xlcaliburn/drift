@@ -36,6 +36,7 @@ export const ObjectiveKind = z.enum([
   "investigate", // a successful perception/streetwise/electronics roll
   "persuade", // a successful negotiation/diplomacy roll
   "sabotage", // a successful mechanics/electronics roll
+  "report", // share a scene with a named NPC (QUESTS.md 1b — authored content only)
 ]);
 export type ObjectiveKind = z.infer<typeof ObjectiveKind>;
 
@@ -50,6 +51,8 @@ export const Objective = z.object({
   enemyTier: z.enum(["T1", "T2", "T3"]).optional(),
   /** investigate/persuade/sabotage — any success on one of these skills completes it. */
   requiredSkills: z.array(z.string()).optional(),
+  /** report — the NPC id the player must share a scene with. */
+  npcId: z.string().optional(),
 });
 export type Objective = z.infer<typeof Objective>;
 
@@ -629,6 +632,9 @@ export interface TurnSignals {
   combatResolvedAlive?: boolean;
   /** Skills that rolled a SUCCESS this turn (from EngineEvents). */
   successfulSkills: Set<string>;
+  /** NPC ids sharing the CURRENT scene (QUESTS.md 1b `report` objective) — the
+   *  same presence truth the People panel uses (sceneCard.presentNpcIds). */
+  presentNpcIds: Set<string>;
 }
 
 /** Build the signals a job tracker needs from the turn's raw outputs. */
@@ -636,10 +642,11 @@ export function turnSignals(
   currentLocationId: string | undefined,
   events: EngineEvent[],
   combatResolvedAlive: boolean,
+  presentNpcIds: string[] = [],
 ): TurnSignals {
   const successfulSkills = new Set<string>();
   for (const e of events) if (e.type === "roll" && e.outcome === "success") successfulSkills.add(e.skill);
-  return { currentLocationId, combatResolvedAlive, successfulSkills };
+  return { currentLocationId, combatResolvedAlive, successfulSkills, presentNpcIds: new Set(presentNpcIds) };
 }
 
 function objectiveMet(obj: Objective, s: TurnSignals): boolean {
@@ -647,6 +654,8 @@ function objectiveMet(obj: Objective, s: TurnSignals): boolean {
     case "travel":
     case "deliver":
       return !!obj.locationId && s.currentLocationId === obj.locationId;
+    case "report":
+      return !!obj.npcId && s.presentNpcIds.has(obj.npcId);
     case "eliminate":
     case "survive":
       return !!s.combatResolvedAlive;

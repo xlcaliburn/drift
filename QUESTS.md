@@ -51,7 +51,8 @@ economy ramp wouldn't allow.
   mostly sanctioned work, a Sable runner more smuggling; off-lean work still appears.
 - **Hybrid completion, Phase 1a = auto-detect only.** The engine detects completion
   from state alone (arrival, combat outcome, a matching skill success). The
-  model-signalled "report back" step lands in 1b.
+  `report` step (share a scene with a named NPC — SHIPPED 1b, see below) is
+  ALSO engine-detected, never narrator-flagged.
 - **Board sourced from panel + NPC.** `giver` is `"board"` for now; NPC-given jobs
   come in 1b.
 - **Flat faction rep first.** A job that carries a faction pays `repDelta` on
@@ -124,9 +125,14 @@ outcomes → low false-positive; the live `threads:[]` path stays primary.
 
 ## What's LEFT (Phase 1b+)
 
-- **Model-signalled steps** — a `report`/`deliver-to-NPC` objective the narrator can
-  flag done (hybrid completion's second half), for beats the engine can't see in
-  state.
+- ~~**Model-signalled steps**~~ — SHIPPED 2026-07-18 (HANDOFF_STORY_1.md Task
+  A, for STORY.md's authored content): a `report` objective kind, completed
+  when the target NPC id is in `TurnSignals.presentNpcIds` (the SAME
+  engine-owned presence truth the People panel uses — sceneCard.presentNpcIds
+  threaded through `resolveJobsTurn`). Deliberately ENGINE-VERIFIED, not
+  narrator-flagged: sharing a scene is real signal, a model's self-report
+  isn't. The procedural GENERATOR still never emits `report` (no target NPC
+  to point at) — it exists for authored jobs/chapters that name one.
 - ~~**Inventory-tracked cargo**~~ — SHIPPED 2026-07-16: delivery jobs stamp `cargo`;
   on accept it becomes a jobId-tagged gear item (slot-free — hauled, not packed;
   unsellable), and the ENGINE consumes it with a 📦 line when the deliver objective

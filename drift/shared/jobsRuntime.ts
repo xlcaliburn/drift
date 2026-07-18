@@ -62,12 +62,15 @@ export function resolveJobsTurn(input: {
   combatResolvedAlive: boolean;
   rng: RNG;
   npcRelations?: NpcRelations;
+  /** NPCs present in the CURRENT scene — feeds the `report` objective kind
+   *  (QUESTS.md 1b). Defaults to none for callers that don't track presence. */
+  presentNpcIds?: string[];
 }): JobsTurnResult {
   const { events, combatResolvedAlive, rng } = input;
   let state = input.state;
   let npcRelations = input.npcRelations ?? {};
   const tenday = state.campaign.tendaysElapsed ?? 0;
-  const signals = turnSignals(state.campaign.currentLocationId, events, combatResolvedAlive);
+  const signals = turnSignals(state.campaign.currentLocationId, events, combatResolvedAlive, input.presentNpcIds);
 
   const progress = advanceJobs(input.jobs, signals);
   const lines = [...progress.lines];

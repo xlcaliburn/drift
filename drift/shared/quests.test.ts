@@ -254,6 +254,13 @@ describe("board lifecycle", () => {
   });
 });
 
+describe("turnSignals — presence carries through (QUESTS.md 1b)", () => {
+  it("defaults to an empty presence set when omitted, else wraps the given ids", () => {
+    expect(turnSignals("loc-a", [], false).presentNpcIds).toEqual(new Set());
+    expect(turnSignals("loc-a", [], false, ["npc-a", "npc-b"]).presentNpcIds).toEqual(new Set(["npc-a", "npc-b"]));
+  });
+});
+
 describe("advanceJobs — engine-owned completion detection", () => {
   const travelJob: Job = {
     id: "j1", title: "Courier run", blurb: "", giver: "board", playstyle: "commerce", archetype: "courier", tier: "T1",
@@ -290,6 +297,49 @@ describe("advanceJobs — engine-owned completion detection", () => {
     expect(afterTravel.jobs[0].status).toBe("active");
     const afterKill = advanceJobs(afterTravel.jobs, turnSignals("loc-c", [], true));
     expect(afterKill.jobs[0].status).toBe("complete");
+  });
+
+  it("report — completes on SHARING A SCENE with the target NPC, never otherwise", () => {
+    const meetJob: Job = active({
+      id: "j4", title: "Word from the fixer", blurb: "", giver: "board", playstyle: "intrigue", archetype: "courier", tier: "T1",
+      objectives: [{ id: "o1", kind: "report", summary: "Find Ledger and hear them out", done: false, npcId: "npc-ledger" }],
+      cast: [], reward: { tier: "T1" }, status: "offered", createdTenday: 0,
+    });
+    expect(advanceJobs([meetJob], turnSignals(undefined, [], false, [])).completed).toHaveLength(0);
+    expect(advanceJobs([meetJob], turnSignals(undefined, [], false, ["npc-someone-else"])).completed).toHaveLength(0);
+    expect(advanceJobs([meetJob], turnSignals(undefined, [], false, ["npc-ledger"])).completed).toHaveLength(1);
+  });
+
+  it("advances a MIXED travel → report → persuade job one step at a time, in order", () => {
+    const mixed: Job = active({
+      id: "j5", title: "The go-between", blurb: "", giver: "board", playstyle: "intrigue", archetype: "courier", tier: "T1",
+      objectives: [
+        { id: "o1", kind: "travel", summary: "Reach Rook", done: false, locationId: "loc-b" },
+        { id: "o2", kind: "report", summary: "Find the contact", done: false, npcId: "npc-ledger" },
+        { id: "o3", kind: "persuade", summary: "Talk them into it", done: false, requiredSkills: ["negotiation"] },
+      ],
+      cast: [], reward: { tier: "T1" }, status: "active", createdTenday: 0,
+    });
+    // Report/persuade signals present but travel not yet met — nothing advances.
+    const step0 = advanceJobs([mixed], turnSignals("loc-a", [roll("negotiation", "success")], false, ["npc-ledger"]));
+    expect(step0.jobs[0].objectives.every((o) => !o.done)).toBe(true);
+
+    const afterTravel = advanceJobs([mixed], turnSignals("loc-b", [], false));
+    expect(afterTravel.jobs[0].objectives[0].done).toBe(true);
+    expect(afterTravel.jobs[0].objectives[1].done).toBe(false);
+
+    // Arriving alone doesn't satisfy report — the NPC must actually be present.
+    const notYet = advanceJobs(afterTravel.jobs, turnSignals("loc-b", [], false, []));
+    expect(notYet.jobs[0].objectives[1].done).toBe(false);
+
+    const afterReport = advanceJobs(afterTravel.jobs, turnSignals("loc-b", [], false, ["npc-ledger"]));
+    expect(afterReport.jobs[0].objectives[1].done).toBe(true);
+    expect(afterReport.jobs[0].objectives[2].done).toBe(false);
+    expect(afterReport.jobs[0].status).toBe("active");
+
+    const afterPersuade = advanceJobs(afterReport.jobs, turnSignals("loc-b", [roll("negotiation", "success")], false));
+    expect(afterPersuade.jobs[0].status).toBe("complete");
+    expect(afterPersuade.completed).toHaveLength(1);
   });
 
   it("completes a roll-gated objective on a matching skill success only", () => {
