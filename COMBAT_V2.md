@@ -49,6 +49,14 @@ specials like engineer overcharge) is follow-up work, not done here.
 
 ## Part B — ship combat: POWER + DICE (the Eclipse core, digital-native)
 
+*Specced: `HANDOFF_COMBAT_V2_2.md` (2026-07-18) is the decision-final
+implementation spec for the core — statline/mount tables, simultaneous-reveal
+resolution rules, the no-migration player-ship derivation, and the corrected
+counter-triangle (the "spray beats shields / evasion beats spray" line below
+was mechanically inconsistent; the handoff fixes it to armor-beats-spray /
+shields-beat-punch / evasion-beats-precision with a natural-6-always-hits
+floor). Where this section and the handoff disagree, the handoff wins.*
+
 Scrap the d20-attack reskin for ship scale. A ship fight becomes an
 ENERGY-ALLOCATION duel:
 

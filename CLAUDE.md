@@ -233,8 +233,11 @@ Don't add prose rules for things the engine can enforce.
   counterplay, customization slots — Part B still design). `HANDOFF_COMBAT_V2_1.md`
   is **FULLY SHIPPED**: the lexicon seed, the M5 CombatSystem seam (extraction,
   not speculation), and squad orders (attack a chosen target / self-heal per
-  crew member; un-ordered members auto-act). Ship core (Part B) is slice 2, not
-  yet specced as its own handoff.
+  crew member; un-ordered members auto-act). `HANDOFF_COMBAT_V2_2.md` —
+  **READY TO IMPLEMENT**: the ship2 CombatSystem core (power allocation +
+  dice-profile mounts, simultaneous reveal, pack-catalog statlines, the
+  allocation panel + preset chips; no Ship schema change — the profile is
+  derived at fight start).
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
 - `STATUS.md` — **THE single backlog** (what's left, in order, updated at every

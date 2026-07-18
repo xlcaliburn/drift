@@ -46,9 +46,12 @@ npx vitest run                 # ~877 model-free tests, no keys needed
    through a `SYSTEMS` registry), and squad orders (order every standing
    crew/ally member to attack a chosen target or self-heal; an un-ordered
    member keeps auto-acting — COMBAT_V2.md Part A). LEFT:
-   - **COMBAT_V2.md Part B** — Eclipse-style ship combat (power allocation,
-     dice profiles, shields/evasion/armor counterplay, ship customization
-     slots) as the "ship2" `CombatSystem`. Not yet specced as its own handoff.
+   - **COMBAT_V2.md Part B** — Eclipse-style ship combat as the "ship2"
+     `CombatSystem`. **Specced: `HANDOFF_COMBAT_V2_2.md` (READY TO
+     IMPLEMENT)** — power allocation + dice-profile mounts + simultaneous
+     reveal + heat, pack-catalog statlines, allocation panel + preset chips,
+     no Ship schema change. Customization slots (slice 3) and charge banking /
+     called shots (slice 4) stay behind it.
    - **STORY.md** — the authored campaign layer: a 3-act main questline as
      pack data (engine-owned triggers/objectives/beats/choice-facts), authored
      sidequests placed beside the procedural board, rich pack-cast backstories
