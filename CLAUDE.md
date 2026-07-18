@@ -225,15 +225,23 @@ Don't add prose rules for things the engine can enforce.
   into the pack; facade re-exports; canonLint + pack.test.ts extended).
   First slice of the modularity roadmap — M2 lexicon → M3 voice split → M4
   runtime pack selection → M5 combat interface are next, tracked in STATUS.md.
-- `STORY.md` — **DESIGN (owner priority), NOW ACTIVE**: the authored campaign
-  layer — a 3-act main questline as pack data (engine-owned triggers/beats/
-  choice-facts), authored sidequests, rich cast backstories with authored
-  reveals, and the tutorial rebuilt as an authored prologue.
-  `HANDOFF_STORY_1.md` — **READY TO IMPLEMENT**: the `report` objective +
-  the storyline machinery with a test-only stub (live pack ships dormant);
-  hot-editable content is a design goal (progress = id pointers, content
-  read live from the pack). Decisions locked: retrofit live campaigns,
-  patient pacing, Fable drafts content / owner edits.
+- `STORY.md` — the authored campaign layer — a 3-act main questline as pack
+  data (engine-owned triggers/beats/choice-facts), authored sidequests, rich
+  cast backstories with authored reveals, and the tutorial rebuilt as an
+  authored prologue. `HANDOFF_STORY_1.md` is **FULLY SHIPPED (2026-07-18)**:
+  the `report` objective (QUESTS.md 1b) + the complete storyline MACHINERY —
+  `content/pack/types.ts`'s `PackStoryline` schema, `shared/storyline.ts`
+  (pure trigger/advance/beat engine) + `shared/storylineRuntime.ts` (payout
+  bridge), migration 031 + `lib/state.ts` normalization + turn-failure
+  rollback safety, route wiring (a `storyChoice` chip), the byte-identical
+  `activeChapter` prompt section, the Story tab's "Season" block, and
+  `STORY_AUTHORING.md` (the owner-facing format guide) — proven against a
+  TEST-ONLY 2-chapter stub. **The live pack ships an empty storyline
+  (dormant)** — hot-editability is the whole point: a campaign persists only
+  id pointers, so content shipped later applies live, even mid-campaign, to
+  every existing campaign (retrofit via state-predicate triggers, patient
+  pacing via the nudge cadence). NEXT (not yet started): the season-one
+  content pass (Fable drafts, owner edits per `STORY_AUTHORING.md`).
 - `COMBAT_V2.md` — **DESIGN (owner priority, decisions RESOLVED), Parts A+B
   core + customization all SHIPPED (2026-07-18)**: squad control (order every
   party member, temporary allies — Part A) + Eclipse-style ship combat (power

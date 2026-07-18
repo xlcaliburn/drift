@@ -1,10 +1,10 @@
 # HANDOFF — Story slice 1: the `report` objective + the storyline machinery
 
-*Strategy phase output (Fable, 2026-07-18). Read `WORKFLOW.md` first, then this
-doc fully. Design source: `STORY.md` (decisions RESOLVED + four owner calls
-made 2026-07-18, baked in below). This slice is MACHINERY proven with a
-test-only stub — the season-one script (content) and the prologue are the next
-two slices and are NOT built here.*
+*Strategy phase output (Fable, 2026-07-18). **FULLY SHIPPED 2026-07-18** — all
+four tasks annotated below. Design source: `STORY.md` (decisions RESOLVED +
+four owner calls made 2026-07-18, baked in below). This slice is MACHINERY
+proven with a test-only stub — the season-one script (content) and the
+prologue are the next two slices and are NOT built here.*
 
 ## Owner decisions this slice implements (locked)
 
@@ -61,7 +61,7 @@ two slices and are NOT built here.*
 
 ---
 
-## Task A — the `report` objective kind (QUESTS 1b)
+## Task A — the `report` objective kind (QUESTS 1b) — ✅ SHIPPED 2026-07-18
 
 The one missing objective primitive everything authored needs: "talk to X".
 
@@ -81,7 +81,11 @@ The one missing objective primitive everything authored needs: "talk to X".
 **Tests:** report met on presence / not met when absent; a job mixing
 travel→report→persuade advances in order; turnSignals carries presence.
 
-## Task B — the pack storyline schema (types only, live pack stays empty)
+**Shipped as specced.** `objectiveMet` was left private in this task and
+exported in Task C once `shared/storyline.ts` needed to reuse it — the exact
+same completion rule, never a second implementation.
+
+## Task B — the pack storyline schema (types only, live pack stays empty) — ✅ SHIPPED 2026-07-18
 
 `content/pack/types.ts` (+ export via `content/pack/drift/storyline.ts`,
 a typed `.ts` module like ship2/creation — same reasoning):
@@ -131,7 +135,12 @@ cast member has a `fallbackDirective`; exactly ≤1 choicePoint per chapter.
 gains the completeness checks (running against the empty live pack AND the
 schema-level rules via a fixture).
 
-## Task C — the storyline engine + runtime slice + context
+**Shipped as specced**, plus one addition: `pack.test.ts` also PINS
+`PackStoryObjective`'s duplicated `kind` enum against `shared/quests.ts`'s
+real `ObjectiveKind` (comparing the sorted literal sets) — the doc comment on
+the schema promised this check; it's now a real test, not just a promise.
+
+## Task C — the storyline engine + runtime slice + context — ✅ SHIPPED 2026-07-18
 
 1. **`shared/storyline.ts`** (pure, model-free, the heart):
    - `StorylineState = { chapters: Record<chapterId, { status: "active"|"complete"; objectivesDone: string[]; deliveredBeatIds: string[]; choiceOptionId?: string; openedAtTenday: number; lastNudgeTenday?: number }> }`
@@ -180,7 +189,41 @@ schema-level rules via a fixture).
    (delivered marking only on success — testable at the storyline.ts level
    by making marking an explicit call); golden byte-identical.
 
-## Task D — Story tab + the authoring guide + close-out
+**Shipped as specced**, with the design gaps resolved as follows:
+- **`shared/storylineRuntime.ts`** is a NEW file (not named in the spec) —
+  the thin payout bridge mirroring `shared/jobsRuntime.ts` 1:1 (pays
+  credits/rep, calls `markBeatDelivered`). Kept separate from
+  `shared/storyline.ts` for the same reason quests/jobsRuntime are separate:
+  the engine stays model-free and DB/state-free; the bridge is where
+  side-effects (reward application) live.
+- **An extra orphan-drop pass** was added inside `evaluateTriggers` (not just
+  `advanceStoryline`) — a chapter dropped from the pack while ACTIVE is
+  pruned with a log line the moment triggers are next evaluated, freeing the
+  slate for whatever opens next; a COMPLETE chapter's record survives even if
+  later removed from the pack, since a future `requiresChapterId` may still
+  need to resolve it.
+- **`activeChapter.ts` imports `pack` directly** (not threaded as a param)
+  from `@/content/pack` — the same convention `economy.ts`/`npcTiers.ts` use
+  for pack-authored content; only the RUNTIME pointers (`StorylineState`)
+  ride `SectionCtx`.
+- **Rollback**: `resolveStorylineTurn` is only ever called with LOCAL
+  variables (never mutating `session.storyline` in place), so it's
+  rollback-safe by construction — the same pattern `jobsRuntime`/`jobsBoard`
+  already uses. `session.storyline` was ALSO added to the route's
+  `memorySnapshot`/catch-restore anyway, matching the trap's literal ask and
+  giving defense in depth against a future refactor that breaks the
+  local-variable discipline.
+- **`storyChoice`**: a `ChoiceOption` field `{ chapterId, optionId }` (zod
+  object, not two separate string fields) — forwarded generically through
+  `PlayClient.tsx`'s existing `{ ...action }` chip-click spread, no new
+  client wiring needed to SEND it. The chip itself is generated in
+  `route.ts` once every objective is done and no pick has landed, one chip
+  per option, each carrying its own `optionId`.
+- Migration 031 applied to project `mgsogqnrpvoblqxkfgge` and reconciled
+  (030 was the prior head, matching the repo); live check confirmed all 18
+  `campaign_runtime` rows carry `storyline = '{}'` — fully dormant.
+
+## Task D — Story tab + the authoring guide + close-out — ✅ SHIPPED 2026-07-18
 
 1. `components/sidebar/StoryTab.tsx`: a "Season" block above the character
    traits — act/chapter title, objective checklist (done/pending), the
@@ -196,6 +239,25 @@ schema-level rules via a fixture).
    CHECKS.md rows (storyline load normalization §0; beat-delivery rollback
    §0; report-objective presence detection under the quests family);
    annotate THIS handoff per WORKFLOW.md Phase 2.
+
+**Shipped as specced.** The Story tab's "Season" block lives in
+`components/sidebar/StoryTab.tsx` as `StorySeason` (a new export alongside
+the existing `StoryDetail`/`StoryThreads`/`FactsMemory`), rendered in
+`DetailsModal.tsx` above `StoryDetail`, threaded from `PlayClient.tsx` the
+same way `jobs`/`facts` already ride `/api/state` + the turn "done" payload
++ the SSE event stream. It cross-references `pack.storyline.chapters`
+client-side (bundled, same pattern `MapTab`/`RemakeEditor` already use for
+pack data) against the server-owned `StorylineState` pointers — never
+decides progression itself. Hidden entirely (`return null`) whenever no
+chapter has any progress record yet, which is every campaign this slice. A
+📖 chip-kind entry was added to `components/chipKinds.ts` for the
+`storyChoice` chip. Manual verification: `npx tsc --noEmit` + the full
+`npx vitest run` suite (105 files / 1049 tests) both clean; the dev server
+boots and the home page loads with zero console/server errors. A full
+signed-in browser walkthrough of the Story tab wasn't possible in this
+environment (Google OAuth is configured, no test credentials available) —
+acceptable given the feature is inert everywhere until content ships (there
+is nothing for `StorySeason` to render yet on any real campaign).
 
 ## Explicitly OUT of scope
 

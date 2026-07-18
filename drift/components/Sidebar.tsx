@@ -8,6 +8,7 @@ import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
 import type { Fact } from "@/shared/facts";
+import type { StorylineState } from "@/shared/storyline";
 import { StatusTab } from "./sidebar/StatusTab";
 import { TraitsTab } from "./sidebar/TraitsTab";
 import { MapTab } from "./sidebar/MapTab";
@@ -31,6 +32,7 @@ export default function Sidebar({
   jobs = [],
   playerLedger = {},
   facts = [],
+  storyline,
   onFlagFact,
   onJobAction,
   onRefresh,
@@ -51,6 +53,10 @@ export default function Sidebar({
   /** The durable facts ledger (CONTINUITY.md v2) — feeds "The game remembers"
    *  in the Story tab. */
   facts?: Fact[];
+  /** The main-questline progress (STORY.md, HANDOFF_STORY_1.md Task C) — feeds
+   *  the Story tab's "Season" block. Undefined while the live pack ships zero
+   *  chapters, same as an empty state — the block stays hidden either way. */
+  storyline?: StorylineState;
   /** Flag a remembered fact as wrong — opens the feedback modal prefilled. */
   onFlagFact?: (text: string) => void;
   /** Accept/abandon a job: fires a turn carrying the chip. Undefined while busy. */
@@ -115,6 +121,7 @@ export default function Sidebar({
           sceneCard={sceneCard}
           playerLedger={playerLedger}
           facts={facts}
+          storyline={storyline}
           onFlagFact={onFlagFact}
           initialTab={detailsTab}
           onRefresh={onRefresh}

@@ -48,6 +48,11 @@ export const CHIP_KINDS: ChipKind[] = [
     icon: "🤝",
     tip: "Sign them onto your crew — they fight beside you and draw a wage every tenday. Berths are limited by your hull.",
   },
+  {
+    match: (c) => !!c.storyChoice,
+    icon: "📖",
+    tip: "Your main-story choice — the engine records it and moves the chapter forward. Can't be undone.",
+  },
 ];
 
 /** The engine-chip kind a choice belongs to, or undefined for a plain narrative

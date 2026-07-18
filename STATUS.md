@@ -30,7 +30,7 @@ npm install
 cp .env.example .env.local     # DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY; + Supabase vars for auth
 npm run dev                    # http://localhost:3000
 npx tsc --noEmit               # fast typecheck (never touches .next)
-npx vitest run                 # ~1012 model-free tests, no keys needed
+npx vitest run                 # ~1049 model-free tests, no keys needed
 ```
 
 - **Keyless mode** (no Supabase vars): no login, stub dev admin, nothing persists.
@@ -58,16 +58,21 @@ npx vitest run                 # ~1012 model-free tests, no keys needed
    LEFT:
    - **COMBAT_V2.md Part B slice 4** — charge banking + called shots. Small,
      after the core proves fun in play; not yet specced as a handoff.
-   - **STORY.md** — the authored campaign layer, NOW THE ACTIVE EFFORT:
-     **`HANDOFF_STORY_1.md` (READY TO IMPLEMENT)** — the `report` objective
-     (QUESTS 1b) + the storyline machinery (pack schema, runtime slice +
-     migration 031, trigger/advance engine, activeChapter section, Story tab,
-     `STORY_AUTHORING.md`), proven with a test-only 2-chapter stub; the live
-     pack ships dormant. Then: the season-one content pass (Fable drafts,
-     owner edits — hot-editable pack data), then the PROLOGUE (tutorial as
-     authored Chapter 0 showcasing both combat systems with a temporary
-     ally). Owner decisions locked: retrofit live campaigns (state-predicate
-     triggers), patient pacing (the story surfaces and waits).
+   - **STORY.md** — the authored campaign layer. **`HANDOFF_STORY_1.md` is
+     FULLY SHIPPED (2026-07-18)**: the `report` objective (QUESTS 1b) + the
+     full storyline machinery — pack schema (`PackStoryline` et al.), the
+     pure engine (`shared/storyline.ts`), the payout bridge
+     (`shared/storylineRuntime.ts`), migration 031 + load normalization +
+     turn-failure rollback safety, route wiring (trigger→advance→pay→mark-
+     delivered, a `storyChoice` chip), the byte-identical `activeChapter`
+     prompt section, the Story tab's "Season" block, and
+     `STORY_AUTHORING.md` (the owner-facing format guide) — proven against a
+     TEST-ONLY 2-chapter stub; **the live pack ships an empty storyline
+     (dormant)** until content lands. NEXT: the season-one content pass
+     (Fable drafts the actual 9 chapters, owner edits per
+     `STORY_AUTHORING.md` — hot-editable pack data, no code), then the
+     PROLOGUE (tutorial as authored Chapter 0 showcasing both combat systems
+     with a temporary ally). NOT YET STARTED.
    - Squad orders' own follow-up: aim/cover/switch + role specials
      (engineer overcharge etc.) for crew, deferred this slice (COMBAT_V2.md's
      shipped-note). Ship2's crew passives are similarly all-always-on, not

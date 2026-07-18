@@ -5,13 +5,14 @@ import type { CampaignState } from "@/shared/schemas";
 import type { NpcRelations, SceneCard } from "@/shared/scene";
 import type { PlayerLedger } from "@/shared/ledger";
 import type { Fact } from "@/shared/facts";
+import type { StorylineState } from "@/shared/storyline";
 import { SheetSection } from "./ui";
 import { PeopleView } from "./PeopleTab";
 import { RolodexTab } from "./RolodexTab";
 import { FactionsDetail } from "./FactionsTab";
 import { ShipTab } from "./ShipTab";
 import { EquipmentDetail, ItemsDetail } from "./GearTabs";
-import { StoryDetail, StoryThreads, FactsMemory } from "./StoryTab";
+import { StorySeason, StoryDetail, StoryThreads, FactsMemory } from "./StoryTab";
 import { AimEditor } from "./AimEditor";
 import { RemakeEditor } from "./RemakeEditor";
 
@@ -29,6 +30,7 @@ export function DetailsModal({
   sceneCard,
   playerLedger = {},
   facts = [],
+  storyline,
   onFlagFact,
   initialTab = "equipment",
   onRefresh,
@@ -42,6 +44,9 @@ export function DetailsModal({
   playerLedger?: PlayerLedger;
   /** The durable facts ledger (CONTINUITY.md v2) — feeds "The game remembers". */
   facts?: Fact[];
+  /** The main-questline progress (STORY.md, HANDOFF_STORY_1.md Task C) — feeds
+   *  the Story tab's "Season" block, hidden entirely with no active chapter. */
+  storyline?: StorylineState;
   /** Flag a remembered fact as wrong — opens the feedback modal prefilled. */
   onFlagFact?: (text: string) => void;
   initialTab?: DetailsTab;
@@ -107,6 +112,7 @@ export function DetailsModal({
               <>
                 <AimEditor campaignId={state.campaign.id} initial={state.campaign.directive ?? ""} onSaved={onRefresh} />
                 <RemakeEditor state={state} character={c} onSaved={onRefresh} />
+                <StorySeason state={state} storyline={storyline} />
                 <StoryDetail character={c} />
                 <StoryThreads state={state} />
                 <FactsMemory facts={facts} onFlag={onFlagFact} />

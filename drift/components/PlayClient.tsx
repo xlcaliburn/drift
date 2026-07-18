@@ -11,6 +11,7 @@ import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
 import type { Fact } from "@/shared/facts";
+import { freshStorylineState, type StorylineState } from "@/shared/storyline";
 import { combatChipsFor, crewActionChips, type CombatState, type CombatAction } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
 import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
@@ -74,6 +75,7 @@ export default function PlayClient({
   const [jobs, setJobs] = useState<Job[]>([]);
   const [playerLedger, setPlayerLedger] = useState<PlayerLedger>({});
   const [facts, setFacts] = useState<Fact[]>([]);
+  const [storyline, setStoryline] = useState<StorylineState>(freshStorylineState());
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   // Terminal state — the PC has died; the story is over and input is locked.
@@ -131,6 +133,7 @@ export default function PlayClient({
         if (d.jobs) setJobs(d.jobs);
         if (d.playerLedger) setPlayerLedger(d.playerLedger);
         if (d.facts) setFacts(d.facts);
+        if (d.storyline) setStoryline(d.storyline);
 
         // The opening recap + starter choices are derived from stored state — free.
         const recap: ChatEntry = { role: "recap", text: buildOpeningRecap(d.state) };
@@ -218,6 +221,7 @@ export default function PlayClient({
       if (d.jobs) setJobs(d.jobs);
       if (d.playerLedger) setPlayerLedger(d.playerLedger);
       if (d.facts) setFacts(d.facts);
+      if (d.storyline) setStoryline(d.storyline);
     } catch {
       /* keep the current view on a transient failure */
     }
@@ -295,6 +299,7 @@ export default function PlayClient({
             jobs?: Job[];
             playerLedger?: PlayerLedger;
             facts?: Fact[];
+            storyline?: StorylineState;
             tutorialGraduated?: boolean;
           };
           try {
@@ -324,6 +329,7 @@ export default function PlayClient({
             if (evt.jobs) setJobs(evt.jobs);
             if (evt.playerLedger) setPlayerLedger(evt.playerLedger);
             if (evt.facts) setFacts(evt.facts);
+            if (evt.storyline) setStoryline(evt.storyline);
             if (evt.dead) {
               // The character has died — end the story: lock input, drop choices,
               // and show a final beat instead of the scene-end line.
@@ -1080,6 +1086,7 @@ export default function PlayClient({
             jobs={jobs}
             playerLedger={playerLedger}
             facts={facts}
+            storyline={storyline}
             onFlagFact={flagFact}
             onJobAction={busy ? undefined : (c) => send(c)}
             onRefresh={refreshState}

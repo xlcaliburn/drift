@@ -87,15 +87,27 @@ chapter that showcases both combat systems (COMBAT_V2.md):
 
 ## Build order (each slice = one handoff)
 
-1. **QUESTS 1b `report` objective** (small, unblocks everything authored) —
-   **specced into `HANDOFF_STORY_1.md` (READY TO IMPLEMENT)** together with:
-2. **Storyline machinery** — schemas, runtime slice, trigger/advance engine,
-   activeChapter section, Story tab. Proven with a TEST-ONLY 2-chapter stub;
-   the live pack ships an empty storyline (dormant) until content lands.
-   Also delivers `STORY_AUTHORING.md`, the owner-facing format guide.
+1. ~~**QUESTS 1b `report` objective**~~ — SHIPPED 2026-07-18 (`HANDOFF_STORY_1.md`
+   Task A): `ObjectiveKind` gained `report`, completed when the target NPC id is
+   in `TurnSignals.presentNpcIds` — engine-verified presence, never a model
+   self-report.
+2. ~~**Storyline machinery**~~ — SHIPPED 2026-07-18 (`HANDOFF_STORY_1.md` Tasks
+   B–D, fully annotated): the pack schema (`PackStoryline` et al.,
+   `content/pack/drift/storyline.ts`), the pure engine (`shared/storyline.ts` —
+   `evaluateTriggers`/`advanceStoryline`/`nextBeat`/`recordChoice`), the payout
+   bridge (`shared/storylineRuntime.ts`), migration 031 + `lib/state.ts`
+   normalization + turn-failure rollback safety, route wiring (trigger→advance→
+   pay→mark-delivered, a `storyChoice` chip), the `activeChapter` prompt
+   section (byte-identical golden — renders nothing while dormant), and the
+   Story tab's "Season" block. Proven against a TEST-ONLY 2-chapter stub
+   (`shared/storyline.test.ts`); **the live pack ships an empty storyline
+   (dormant) until content lands** — every field of the machinery is exercised,
+   but zero chapters are armed on any real campaign. `STORY_AUTHORING.md`
+   (the owner-facing format guide) shipped alongside it.
 3. **Authored content pass** — the actual season-one script (Fable drafts
    the full 9 chapters + ~12 sidequests + cast depth grounded in existing
-   canon; owner edits the pack files directly). Content, not code.
+   canon; owner edits the pack files directly, per `STORY_AUTHORING.md`).
+   Content, not code. NOT YET STARTED.
 4. **Prologue** — COMBAT_V2 has landed, so this is unblocked; it rides after
    the content slice (Chapter 0 is content too).
 

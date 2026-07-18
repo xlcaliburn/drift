@@ -2,7 +2,75 @@
 
 import type { CampaignState } from "@/shared/schemas";
 import type { Fact } from "@/shared/facts";
+import type { StorylineState } from "@/shared/storyline";
+import { pack } from "@/content/pack";
 import { SheetSection, TraitRow, sigLine, bgLabel, cap } from "./ui";
+
+/**
+ * "Season" — the main-questline progress (STORY.md, HANDOFF_STORY_1.md Task D).
+ * Cross-references pack.storyline.chapters (bundled client-side, same pattern as
+ * MapTab/RemakeEditor) against the SERVER-owned progress pointers — never
+ * decides progression itself, only displays what the engine already tracked.
+ * Hidden entirely while nothing has opened yet (true for every campaign this
+ * slice: the live pack ships zero chapters).
+ */
+export function StorySeason({ state, storyline }: { state: CampaignState; storyline?: StorylineState }) {
+  const chapterIds = storyline ? Object.keys(storyline.chapters) : [];
+  if (!chapterIds.length) return null;
+
+  const activeId = chapterIds.find((id) => storyline!.chapters[id].status === "active");
+  const active = activeId ? pack.storyline.chapters.find((c) => c.id === activeId) : undefined;
+  const activeProgress = activeId ? storyline!.chapters[activeId] : undefined;
+  const completedTitles = chapterIds
+    .filter((id) => storyline!.chapters[id].status === "complete")
+    .map((id) => pack.storyline.chapters.find((c) => c.id === id)?.title ?? id);
+
+  return (
+    <SheetSection label="Season">
+      {active && activeProgress && (
+        <div className="space-y-1.5">
+          <div className="text-neutral-200">
+            Act {active.act} — <span className="font-semibold">{active.title}</span>
+          </div>
+          <div className="space-y-0.5">
+            {active.objectives.map((o) => (
+              <div key={o.id} className="flex items-start gap-1.5 text-[12px]">
+                <span className={activeProgress.objectivesDone.includes(o.id) ? "text-good" : "text-neutral-600"}>
+                  {activeProgress.objectivesDone.includes(o.id) ? "✓" : "○"}
+                </span>
+                <span
+                  className={
+                    activeProgress.objectivesDone.includes(o.id)
+                      ? "text-neutral-500 line-through decoration-neutral-700"
+                      : "text-neutral-300"
+                  }
+                >
+                  {o.summary}
+                </span>
+              </div>
+            ))}
+          </div>
+          {active.choicePoint && (
+            <p className="text-[12px] text-neutral-500">
+              {activeProgress.choiceOptionId
+                ? `Chose: ${active.choicePoint.options.find((o) => o.id === activeProgress.choiceOptionId)?.label ?? activeProgress.choiceOptionId}`
+                : "A choice awaits."}
+            </p>
+          )}
+        </div>
+      )}
+      {completedTitles.length > 0 && (
+        <div className="mt-1.5 space-y-0.5">
+          {completedTitles.map((title, i) => (
+            <div key={i} className="text-[12px] text-neutral-500 line-through decoration-neutral-700">
+              {title}
+            </div>
+          ))}
+        </div>
+      )}
+    </SheetSection>
+  );
+}
 
 /** Story tab — traits, signature, moral line, voice, backstory. */
 export function StoryDetail({ character: c }: { character: CampaignState["characters"][number] }) {
