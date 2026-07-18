@@ -110,3 +110,73 @@ describe("crew fight beside the PC (CREW.md §4)", () => {
     expect(r.combat.active).toBe(false);
   });
 });
+
+describe("squad orders (HANDOFF_COMBAT_V2_1 Task C)", () => {
+  it("an ordered crew member attacks THEIR chosen target, not just the front enemy", () => {
+    const rt = new TurnRuntime(state([crew("Bruno", "muscle")]), maxRng);
+    const e1 = enemy({ id: "e-1", name: "Gunhand", hp: 60 });
+    const e2 = enemy({ id: "e-2", name: "Chaser", hp: 60 });
+    const r = rt.resolveCombatRound(combatWith([e1, e2]), [
+      { memberId: "pc-1", action: { type: "cover" } },
+      { memberId: "crew-bruno", action: { type: "attack", enemyId: "e-2" } },
+    ]);
+    const front = r.combat.enemies.find((e) => e.id === "e-1")!;
+    const chosen = r.combat.enemies.find((e) => e.id === "e-2")!;
+    expect(front.hp).toBe(60); // untouched — the PC took cover, Bruno was ordered elsewhere
+    expect(chosen.hp).toBeLessThan(60);
+    expect(r.lines.find((l) => l.startsWith("🧑‍🚀 Crew —"))).toMatch(/Bruno hits Chaser/);
+  });
+
+  it("an ordered crew member self-uses a held stim", () => {
+    // minRng (not maxRng): a maxRng enemy volley would always crit-hit Vex right
+    // after her heal, muddying the assertion — this test is about the heal itself.
+    const hurt = crew("Vex", "gunner", 5, { gear: [{ name: "Stim", itemId: "stim", qty: 1 }] } as Partial<Character>);
+    const rt = new TurnRuntime(state([hurt]), minRng);
+    const r = rt.resolveCombatRound(combatWith([enemy({ hp: 999 })]), [
+      { memberId: "pc-1", action: { type: "cover" } },
+      { memberId: "crew-vex", action: { type: "stim" } },
+    ]);
+    const vex = rt.state.characters.find((c) => c.name === "Vex")!;
+    expect(vex.hp).toBe(8); // 5 + min(1d6+2)=3
+    expect(r.lines.find((l) => l.startsWith("🧑‍🚀 Crew —"))).toMatch(/Vex uses Stim/);
+    expect(vex.gear.some((g) => g.itemId === "stim" && (g.qty ?? 1) > 0)).toBe(false); // consumed
+  });
+
+  it("a patient-less medic acts on an order instead of holding position", () => {
+    const rt = new TurnRuntime(state([crew("Kessa", "medic")]), maxRng);
+    const r = rt.resolveCombatRound(combatWith([enemy({ hp: 60 })]), [
+      { memberId: "pc-1", action: { type: "cover" } },
+      { memberId: "crew-kessa", action: { type: "attack", enemyId: "e-1" } },
+    ]);
+    expect(r.lines.find((l) => l.startsWith("🧑‍🚀 Crew —"))).toMatch(/Kessa hits Gunhand/);
+  });
+
+  it("an un-ordered member keeps auto-acting alongside an ordered one (mixed round)", () => {
+    const rt = new TurnRuntime(state([crew("Bruno", "muscle"), crew("Vex", "gunner")]), maxRng);
+    const e1 = enemy({ id: "e-1", name: "Gunhand", hp: 60 });
+    const e2 = enemy({ id: "e-2", name: "Chaser", hp: 60 });
+    const r = rt.resolveCombatRound(combatWith([e1, e2]), [
+      { memberId: "pc-1", action: { type: "cover" } },
+      { memberId: "crew-vex", action: { type: "attack", enemyId: "e-2" } },
+      // Bruno gets no order — his old auto-act (front enemy) still fires.
+    ]);
+    const front = r.combat.enemies.find((e) => e.id === "e-1")!;
+    const chosen = r.combat.enemies.find((e) => e.id === "e-2")!;
+    expect(front.hp).toBeLessThan(60); // Bruno's auto-act hit the front enemy
+    expect(chosen.hp).toBeLessThan(60); // Vex's order hit her chosen target
+    const crewLine = r.lines.find((l) => l.startsWith("🧑‍🚀 Crew —"))!;
+    expect(crewLine).toMatch(/Bruno hits Gunhand/);
+    expect(crewLine).toMatch(/Vex hits Chaser/);
+  });
+
+  it("a solo PC round with no crew orders is unchanged whether called with [] or omitted", () => {
+    const rt1 = new TurnRuntime(state([]), maxRng);
+    const withEmpty = rt1.resolveCombatRound(combatWith([enemy({ hp: 60 })]), [
+      { memberId: "pc-1", action: { type: "attack", enemyId: "e-1" } },
+    ]);
+    const rt2 = new TurnRuntime(state([]), maxRng);
+    const withSingle = rt2.resolveCombatRound(combatWith([enemy({ hp: 60 })]), { type: "attack", enemyId: "e-1" });
+    expect(withEmpty.lines).toEqual(withSingle.lines);
+    expect(withEmpty.combat.enemies[0].hp).toBe(withSingle.combat.enemies[0].hp);
+  });
+});

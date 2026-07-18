@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { extractJsonObject, parseTurnPlan, repairTurnPlan, REPAIR_FALLBACK_NARRATION } from "./turnPlan";
+import { z } from "zod";
+import { extractJsonObject, parseTurnPlan, repairTurnPlan, REPAIR_FALLBACK_NARRATION, MemberOrderSpec } from "./turnPlan";
 
 describe("extractJsonObject", () => {
   it("parses a bare JSON object", () => {
@@ -124,5 +125,43 @@ describe("repairTurnPlan", () => {
     const p = repairTurnPlan(raw, { jsonOnly: true });
     expect(p.narration).toBe("You find scraps.");
     expect(p.choices.map((c) => c.label)).toEqual(["Move on"]);
+  });
+});
+
+// The turn route validates staged squad orders (HANDOFF_COMBAT_V2_1 Task C)
+// with exactly this shape — an array of MemberOrderSpec, capped at 6, dropped
+// WHOLE (not partially) on any malformed entry.
+describe("MemberOrderSpec — route-level squad-order validation", () => {
+  const RouteOrders = z.array(MemberOrderSpec).max(6);
+
+  it("accepts a well-formed array of member orders", () => {
+    const r = RouteOrders.safeParse([
+      { memberId: "crew-1", action: { type: "attack", enemyId: "e-1" } },
+      { memberId: "crew-2", action: { type: "stim" } },
+    ]);
+    expect(r.success).toBe(true);
+    expect(r.data).toHaveLength(2);
+  });
+
+  it("rejects the whole array when one order is malformed (fail closed)", () => {
+    const r = RouteOrders.safeParse([
+      { memberId: "crew-1", action: { type: "attack", enemyId: "e-1" } },
+      { memberId: "crew-2", action: { type: "not-a-real-action" } }, // bad enum
+    ]);
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects an order missing a memberId", () => {
+    const r = RouteOrders.safeParse([{ action: { type: "cover" } }]);
+    expect(r.success).toBe(false);
+  });
+
+  it("caps at 6 orders", () => {
+    const seven = Array.from({ length: 7 }, (_, i) => ({
+      memberId: `crew-${i}`,
+      action: { type: "cover" as const },
+    }));
+    expect(RouteOrders.safeParse(seven).success).toBe(false);
+    expect(RouteOrders.safeParse(seven.slice(0, 6)).success).toBe(true);
   });
 });

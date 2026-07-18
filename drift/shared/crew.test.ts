@@ -159,6 +159,18 @@ describe("upkeep — wages + superlinear overhead, charged as tendays pass", () 
     expect(chargeCrewUpkeep(s, 0, maxRng).lines).toHaveLength(0);
   });
 
+  it("a temporary member (STORY.md ally) draws no wage and doesn't count toward overhead", () => {
+    const ally = { ...crewMember("Ally"), temporary: true };
+    const s = state({ characters: [pc(500), ally], shipClass: "hauler" });
+    const r = chargeCrewUpkeep(s, 2, maxRng);
+    expect(r.state.characters.find((c) => c.kind === "pc")!.credits).toBe(500); // no charge at all
+    expect(r.lines).toHaveLength(0);
+    // A paid regular crew member alongside a temporary one: only the regular pays.
+    const mixed = state({ characters: [pc(500), ally, crewMember("Paid")], shipClass: "hauler" });
+    const r2 = chargeCrewUpkeep(mixed, 1, maxRng);
+    expect(r2.lines[0]).toMatch(/Crew upkeep: -¢25 \(1 crew\)/); // only "Paid" counted
+  });
+
   it("role passives: specialists assist their skill (+1, non-stacking per role)", () => {
     const eng = buildCrewMember({ id: "n1", name: "Torres" }, "T1", "engineer", "c", maxRng);
     const eng2 = buildCrewMember({ id: "n2", name: "Bolt" }, "T1", "engineer", "c", maxRng);

@@ -4,6 +4,7 @@ import { liveRng, type RNG, type EngineEvent } from "@/engine";
 import { combatActions, type CombatState, type CombatAction, type CombatOutcome } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
 import { TurnRuntime } from "./engineBridge";
+import type { MemberOrder } from "./combat/types";
 import { deepseekChat, deepseekChatStream, isDeepSeekModel, resolveModel } from "./deepseek";
 import { sanitizeHistory } from "./history";
 import { stripInlineMenu } from "@/shared/narration";
@@ -22,6 +23,9 @@ export interface CombatTurnInput {
   combat: CombatState;
   history: Anthropic.MessageParam[];
   action: CombatAction;
+  /** Squad orders for standing crew/allies (HANDOFF_COMBAT_V2_1 Task C) — a
+   *  member with no matching order here keeps crewPhase's auto-act. */
+  crewOrders?: MemberOrder[];
   /** The player's raw typed action (when they didn't click a chip) — woven into
    *  the narration for flavor, but the engine numbers are final. */
   playerText?: string;
@@ -76,8 +80,11 @@ export async function runCombatTurn(input: CombatTurnInput): Promise<CombatTurnR
 
   const runtime = new TurnRuntime(input.state, input.rng ?? liveRng, { tickedThisScene: input.tickedSet });
 
-  // 1. Resolve the round in the engine.
-  const { combat: nextCombat, lines, outcome, loot } = runtime.resolveCombatRound(input.combat, input.action);
+  // 1. Resolve the round in the engine — the PC's action plus any staged
+  // squad orders (HANDOFF_COMBAT_V2_1 Task C); un-ordered members auto-act.
+  const pcId = runtime.state.characters.find((c) => c.kind === "pc")?.id ?? "";
+  const orders: MemberOrder[] = [{ memberId: pcId, action: input.action }, ...(input.crewOrders ?? [])];
+  const { combat: nextCombat, lines, outcome, loot } = runtime.resolveCombatRound(input.combat, orders);
   input.onEngine?.(lines);
   void loot;
 

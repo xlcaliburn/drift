@@ -156,6 +156,41 @@ export function combatActions(
   return actions;
 }
 
+export interface CrewChipGroup {
+  memberId: string;
+  memberName: string;
+  chips: { label: string; combatAction: CombatAction }[];
+}
+
+/** Per-member combat chip GROUPS for standing crew/allies (HANDOFF_COMBAT_V2_1
+ *  Task C — squad orders): attack a chosen enemy, or use one of their own held
+ *  consumables. Deliberately modest (no aim/cover/switch for crew this slice —
+ *  see runtimeCombat.ts's crewPhase doc comment) and PERSONAL SCALE ONLY: ship
+ *  crew orders are out of scope this slice (they become station assignments in
+ *  COMBAT_V2.md slice 2), so an un-ordered member there just keeps auto-acting.
+ *  `membersConsumables` is pre-filtered per member — same pattern as
+ *  `combatActions`' own `consumables` param, keeping this module free of a
+ *  server import. */
+export function crewActionChips(
+  combat: CombatState,
+  members: { id: string; name: string }[],
+  membersConsumables: Record<string, UsableConsumable[]>,
+): CrewChipGroup[] {
+  if (combat.scale !== "personal") return [];
+  return members.map((m) => {
+    const chips: { label: string; combatAction: CombatAction }[] = combat.enemies
+      .filter((e) => e.hp > 0)
+      .map((e) => ({
+        label: `Attack ${e.name} (${e.hp}/${e.maxHp})`,
+        combatAction: { type: "attack", enemyId: e.id },
+      }));
+    for (const u of membersConsumables[m.id] ?? []) {
+      chips.push({ label: `${u.verb} ${u.name} (×${u.count})`, combatAction: { type: "item", itemId: u.itemId } });
+    }
+    return { memberId: m.id, memberName: m.name, chips };
+  });
+}
+
 /**
  * Map a FREE-TYPED action during a live fight to a combat action, so typing can
  * never bypass the engine (the player narrating "I gun them all down" must still

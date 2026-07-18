@@ -205,7 +205,11 @@ export function chargeCrewUpkeep(
   tendays: number,
   rng: RNG,
 ): { state: CampaignState; lines: string[]; events: EngineEvent[] } {
-  const crew = crewMembers(state);
+  // Temporary members (STORY.md prologue ally, etc.) are otherwise normal
+  // crew — controllable, downable, fate-tracked — but draw no wage: they're
+  // story-granted, not hired. Filtered HERE (wages only), not in crewMembers
+  // itself, so berth-counting / crew UI still see them as present.
+  const crew = crewMembers(state).filter((m) => !m.temporary);
   const pc = state.characters.find((c) => c.kind === "pc");
   if (!tendays || tendays <= 0 || !crew.length || !pc) return { state, lines: [], events: [] };
 

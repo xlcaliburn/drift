@@ -205,36 +205,104 @@ function medicStabilize(rt: CombatRT, combat: CombatState, targetId: string, lin
   return true;
 }
 
-/** Crew act after the player — ONE summary line per round (C-3): muscle/gunner
- *  attack the front enemy, the medic patches a downed crewmate, the rest hold
- *  position (their value is out-of-fight passives). Mutates `enemies`. */
-function crewPhase(rt: CombatRT, combat: CombatState, enemies: CombatEnemy[], lines: string[]): void {
+/** Crew act after the player — ONE summary line per round (C-3). An ORDERED
+ *  member (HANDOFF_COMBAT_V2_1 Task C — squad orders) attacks their chosen
+ *  target or self-uses a stim/item; an UN-ORDERED member keeps today's exact
+ *  auto-act (muscle/gunner attack the front enemy, everyone else holds
+ *  position). The medic's stabilize is UNCONDITIONAL — a downed ally is always
+ *  caught first, regardless of any order; only once there's no patient can an
+ *  ordered medic act instead of holding. aim/cover/switch/flee orders aren't
+ *  wired for crew this slice (no persistent per-member CombatState yet) — they
+ *  silently absorb as a hold. Mutates `enemies`. */
+function crewPhase(
+  rt: CombatRT,
+  combat: CombatState,
+  enemies: CombatEnemy[],
+  lines: string[],
+  orders: MemberOrder[] = [],
+): void {
   const acts: string[] = [];
   for (const m of standingCrew(rt)) {
+    const order = orders.find((o) => o.memberId === m.id)?.action;
+
     if (m.crewRole === "medic") {
       const downedMate = rt.state.characters.find(
         (c) =>
           c.kind === "party" && c.id !== m.id && !isDeadChar(c) &&
           c.hp <= 0 && (c.injuries ?? []).some((i) => i.name === "Downed"),
       );
-      if (downedMate) medicStabilize(rt, combat, downedMate.id, lines);
+      if (downedMate) {
+        medicStabilize(rt, combat, downedMate.id, lines);
+        continue;
+      }
+    }
+
+    if (!order) {
+      // Un-ordered: today's exact auto-act — muscle/gunner hit the front
+      // enemy; everyone else (including a patient-less medic) holds position.
+      if (m.crewRole !== "muscle" && m.crewRole !== "gunner") continue;
+      const target = enemies.find((e) => e.hp > 0);
+      if (!target) break;
+      const w = defaultWeapon(m);
+      const effAc = Math.max(1, target.ac - acPenalty(target.statuses));
+      const r = playerAttack({ ...target, ac: effAc }, computeModifier(m, weaponSkill(w?.name)), w?.damage ? String(w.damage) : "1d4", 0, rt.rng);
+      target.hp = r.enemyHpAfter;
+      target.shieldReady = r.shieldReadyAfter;
+      acts.push(
+        r.hit
+          ? r.damage > 0
+            ? `${m.name} hits ${target.name} — ${r.damage}${r.killed ? ` · ${target.name} down` : ""}`
+            : `${m.name} hits ${target.name}'s shield`
+          : `${m.name} misses ${target.name}`,
+      );
       continue;
     }
-    if (m.crewRole !== "muscle" && m.crewRole !== "gunner") continue; // hold position
-    const target = enemies.find((e) => e.hp > 0);
-    if (!target) break;
-    const w = defaultWeapon(m);
-    const effAc = Math.max(1, target.ac - acPenalty(target.statuses));
-    const r = playerAttack({ ...target, ac: effAc }, computeModifier(m, weaponSkill(w?.name)), w?.damage ? String(w.damage) : "1d4", 0, rt.rng);
-    target.hp = r.enemyHpAfter;
-    target.shieldReady = r.shieldReadyAfter;
-    acts.push(
-      r.hit
-        ? r.damage > 0
-          ? `${m.name} hits ${target.name} — ${r.damage}${r.killed ? ` · ${target.name} down` : ""}`
-          : `${m.name} hits ${target.name}'s shield`
-        : `${m.name} misses ${target.name}`,
-    );
+
+    // Ordered (any role, including a patient-less medic).
+    if (order.type === "attack") {
+      const target = enemies.find((e) => e.id === order.enemyId && e.hp > 0) ?? enemies.find((e) => e.hp > 0);
+      if (!target) continue;
+      const w = defaultWeapon(m);
+      const effAc = Math.max(1, target.ac - acPenalty(target.statuses));
+      const r = playerAttack({ ...target, ac: effAc }, computeModifier(m, weaponSkill(w?.name)), w?.damage ? String(w.damage) : "1d4", 0, rt.rng);
+      target.hp = r.enemyHpAfter;
+      target.shieldReady = r.shieldReadyAfter;
+      acts.push(
+        r.hit
+          ? r.damage > 0
+            ? `${m.name} hits ${target.name} — ${r.damage}${r.killed ? ` · ${target.name} down` : ""}`
+            : `${m.name} hits ${target.name}'s shield`
+          : `${m.name} misses ${target.name}`,
+      );
+    } else if (order.type === "stim" || order.type === "item") {
+      const itemId = order.type === "stim" ? "stim" : order.itemId ?? "";
+      const item = catalogItem(itemId);
+      if (!item || itemCount(m, itemId) <= 0) {
+        acts.push(`${m.name} has nothing to use.`);
+        continue;
+      }
+      const eff = item.effect;
+      if (eff?.kind === "heal") {
+        if (m.hp >= m.maxHp) {
+          acts.push(`${m.name} is unhurt — holds the ${item.name}.`);
+          continue;
+        }
+        const before = m.hp;
+        const after = applyHeal(rt, m.id, rollDamage(eff.dice ?? "1d6+2", rt.rng));
+        consumeItem(rt, m.id, itemId);
+        acts.push(`${m.name} uses ${item.name} — +${after - before} HP.`);
+      } else if (eff?.kind === "aoe") {
+        const dmg = rollDamage(eff.dice ?? "2d6", rt.rng);
+        for (const e of enemies) if (e.hp > 0) e.hp = Math.max(0, e.hp - dmg);
+        consumeItem(rt, m.id, itemId);
+        acts.push(`${m.name} throws ${item.name} — ${dmg} to every enemy.`);
+      } else {
+        // autoFlee (party-wide escape) doesn't fit a single ordered crew
+        // member — treated as nothing-to-use, same as an unsupported effect.
+        acts.push(`${m.name} has nothing to use.`);
+      }
+    }
+    // aim/cover/switch/flee: no-op this slice (see doc comment above).
   }
   if (acts.length) lines.push(`🧑‍🚀 Crew — ${acts.join(" · ")}.`);
 }
@@ -678,17 +746,18 @@ export function startShipCombat(rt: CombatRT, specs: ShipSpawnSpec[], surprise: 
 }
 
 /**
- * THE "classic" CombatSystem (Modularity M5, HANDOFF_COMBAT_V2_1 Task B) —
- * today's d20 engine, both scales, wrapped as one CombatSystem object. Reads
- * ONLY the PC's order for now (crewPhase inside resolvePersonalRound still
- * auto-acts everyone else, unchanged) — Task C is what makes crew orders
- * real; this task is extraction only, zero behavior change.
+ * THE "classic" CombatSystem (Modularity M5, HANDOFF_COMBAT_V2_1 Tasks B+C) —
+ * today's d20 engine, both scales, wrapped as one CombatSystem object. Ground
+ * (personal scale) threads the full `orders` array into crewPhase (Task C —
+ * squad orders); SHIP scale still reads only the PC's order (ship crew are
+ * out of scope this slice — they become station assignments in COMBAT_V2.md
+ * slice 2's power system, not squad combat orders).
  */
 const classicSystem: CombatSystem = {
   resolveRound(rt, combat, orders) {
     const pc = pcOf(rt);
     const pcAction: CombatAction = orders.find((o) => o.memberId === pc?.id)?.action ?? { type: "cover" };
-    return combat.scale === "ship" ? resolveShipRound(rt, combat, pcAction) : resolvePersonalRound(rt, combat, pcAction);
+    return combat.scale === "ship" ? resolveShipRound(rt, combat, pcAction) : resolvePersonalRound(rt, combat, pcAction, orders);
   },
 };
 
@@ -740,6 +809,9 @@ function resolvePersonalRound(
   rt: CombatRT,
   combat: CombatState,
   action: CombatAction,
+  /** Squad orders (HANDOFF_COMBAT_V2_1 Task C) — passed through to crewPhase;
+   *  a crew/ally member with no matching order here keeps auto-acting. */
+  orders: MemberOrder[] = [],
 ): { combat: CombatState; lines: string[]; outcome: CombatOutcome; loot: number } {
   const lines: string[] = [];
   const cbt = personalCombatant(rt, combat.weaponName);
@@ -876,9 +948,11 @@ function resolvePersonalRound(
     }
   }
 
-  // Crew act after the player — attacks, or the medic patching a downed mate
-  // (one summary line per round, C-3). They fight on the surprise round too.
-  crewPhase(rt, combat, enemies, lines);
+  // Crew act after the player — ORDERED members act on their own choice
+  // (attack a chosen target / self-use an item); un-ordered members keep
+  // auto-acting exactly as before (C-3). Medic stabilize-priority is
+  // unconditional either way. They fight on the surprise round too.
+  crewPhase(rt, combat, enemies, lines, orders);
 
   // Deaths resolve; victory if the field is clear.
   enemies = enemies.filter((e) => e.hp > 0);

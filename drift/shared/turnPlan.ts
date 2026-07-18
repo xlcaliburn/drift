@@ -69,6 +69,15 @@ export const CombatActionSpec = z.object({
   weaponName: optionalNullable(z.string()),
 });
 
+/** A squad order carried by a crew-member combat chip (HANDOFF_COMBAT_V2_1
+ *  Task C) — routes ONE standing party member's round action. Not model-
+ *  authored, like CombatActionSpec: parsed straight from a clicked/staged
+ *  client chip. */
+export const MemberOrderSpec = z.object({
+  memberId: z.string().min(1),
+  action: CombatActionSpec,
+});
+
 /** A desperate act carried by an engine-generated Bleeding Out choice (death.ts).
  *  Engine-owned like CombatActionSpec — the model never authors these. */
 export const DownedActionSpec = z.object({

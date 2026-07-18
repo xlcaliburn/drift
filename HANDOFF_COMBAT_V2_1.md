@@ -114,7 +114,54 @@ CombatState without `system` resolves via classic; a `MemberOrder[]` carrying
 only the PC's order behaves byte-identically to the old single-action call
 (same seeded RNG → same lines).
 
-## Task C — squad orders (ground)
+## Task C — squad orders (ground) ✅ SHIPPED
+
+*Implementation decisions: `crewPhase` now takes a trailing `orders:
+MemberOrder[]` (default `[]`, threaded from `resolvePersonalRound`; ship scale
+untouched per Task B). For each standing member: a downed-ally check still
+fires FIRST and unconditionally for a medic (matches the handoff's "medic help
+maps to the existing stabilize"); only once there's no patient does an
+ORDERED medic fall through to act like anyone else. An un-ordered non-medic
+keeps the exact old auto-act branch (byte-identical — verified by the existing
+crewCombat suite passing unchanged). An ordered member supports "attack"
+(targeted, falls back to first-alive if the target's already dead) and "stim"/
+"item" (self-heal via `applyHeal`/`consumeItem`, mirroring the PC's own
+handling — heal effects only; "aoe" also wired symmetrically to the PC path
+since it was nearly free, but "autoFlee" doesn't fit a single ordered member
+and no-ops as "nothing to use"). aim/cover/switch/flee orders on crew are
+explicitly out of scope this slice (see COMBAT_V2.md's Part A shipped-note)
+and silently absorb as a hold — not an error, so a stray client-sent order of
+that type never wedges a round.
+
+Protocol: added `MemberOrderSpec` to `shared/turnPlan.ts` (next to
+`CombatActionSpec`/`DownedActionSpec` — same non-model-authored, route-parsed
+pattern). Route validates `body.combatActions` as `z.array(MemberOrderSpec)
+.max(6)` and DROPS THE WHOLE ARRAY on any malformed entry (fail closed, not
+partial-apply) — kept as its own `combatOrders` local, threaded into
+`runCombatTurn` as a new `crewOrders?: MemberOrder[]` field on
+`CombatTurnInput`; `runCombatTurn` builds the full `orders` array (PC action +
+crewOrders) and calls `runtime.resolveCombatRound(combat, orders)` via the
+existing array-form path (no new adapter needed — Task B's back-compat
+overload already handles both shapes at the `TurnRuntime` layer, but this call
+site now always passes the array form directly).
+
+Chips: new `crewActionChips()` in `shared/combat.ts` — per-member chip GROUPS
+(attack per living enemy + their own usable consumables), PERSONAL SCALE ONLY
+(returns `[]` for ship scale — ship crew orders are out of scope this slice,
+matching Task B's classicSystem which never threads `orders` into
+`resolveShipRound`). `PlayClient.tsx` stages selections client-side in a
+`Record<memberId, CombatAction>` (tap to stage/toggle off, highlighted while
+staged), merges them into the `/api/turn` POST body as `combatActions` when
+the player submits any of their own chips, and clears the staging once a
+combat round is in flight (orders are per-round, not sticky).
+
+Tests: 9 new — 5 in `llm/crewCombat.test.ts` (targeted attack, self-heal, a
+patient-less ordered medic, a mixed ordered/un-ordered round, solo-PC
+array-vs-single equivalence) + 4 in `shared/turnPlan.test.ts` (`MemberOrderSpec`
+accept/reject-malformed/reject-missing-memberId/cap-at-6, mirroring the
+route's exact validation). 877 tests pass (868 baseline + 9), `tsc` clean,
+golden byte-identical, zero live campaigns mid-fight at check time (queried
+again post-Task-C).*
 
 **Behavior:** the player may order EVERY standing party member each round;
 un-ordered members keep today's auto-act (`crewPhase`) so combat never stalls

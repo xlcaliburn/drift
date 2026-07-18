@@ -31,6 +31,22 @@ engine resolves all sides in one pass → one narration beat covers the round.
   removed by the story. The prologue ally is the first.
 - **Enemy side unchanged** (tiers, statuses, majors, fate recording).
 
+**✅ SHIPPED (2026-07-18, HANDOFF_COMBAT_V2_1.md Task C — slice 1 of squad
+control):** every standing crew/ally member can be ordered "attack \<chosen
+enemy\>" or "stim/item \<self-heal\>" each round; an un-ordered member keeps
+today's exact `crewPhase` auto-act, so combat never stalls and solo play is
+byte-identical. A patient-less medic can now act on an order instead of
+unconditionally holding (stabilize priority stays unconditional whenever a
+downed ally exists, regardless of any order). **Narrower than the design
+above, by choice:** aim/cover/switch orders aren't wired for crew this slice —
+they'd need new persistent per-member `CombatState` fields (today's `aim`/
+`cover` bonuses are single PC-scoped fields) that weren't in the handoff's
+scope; an aim/cover/switch order on a crew member silently no-ops (held
+position) rather than erroring. Chips UI is per-member GROUPS (name + row of
+attack/item chips), staged client-side, sent as `combatActions` alongside the
+PC's own chip. Full per-member action parity (aim/cover/switch, role
+specials like engineer overcharge) is follow-up work, not done here.
+
 ## Part B — ship combat: POWER + DICE (the Eclipse core, digital-native)
 
 Scrap the d20-attack reskin for ship scale. A ship fight becomes an

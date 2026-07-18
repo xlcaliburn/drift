@@ -106,6 +106,11 @@ export const Character = z.object({
   crewTier: z.enum(["T1", "T2", "T3"]).optional(),
   /** Wage per TENDAY (engine-charged as the clock advances). */
   wage: z.number().int().optional(),
+  /** A story-granted party member (STORY.md's prologue ally, etc.) — otherwise
+   *  a normal kind:"party" member (controllable in squad orders, can be
+   *  downed, fate rules apply), except `chargeCrewUpkeep` skips them: no
+   *  wages. Absent/false for regular hired crew. */
+  temporary: z.boolean().optional(),
   /** Vitality-based death save penalty is derived from attributes.vitality; this
    *  flag documents fragile crew (e.g. Josen at -4) for the UI. */
   fragile: z.boolean().default(false),

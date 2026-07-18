@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
+import { z } from "zod";
 import { runJsonTurn, TurnGenerationError } from "@/llm/jsonTurn";
 import { runCombatTurn } from "@/llm/combatTurn";
 import { runDownedTurn } from "@/llm/downedTurn";
@@ -28,7 +29,7 @@ import { recordAiCall } from "@/lib/audit";
 import { createAppealIssue } from "@/lib/github";
 import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { buildFallbackChoices } from "@/shared/recap";
-import { CheckSpec, CombatActionSpec, DownedActionSpec, type ChoiceOption } from "@/shared/turnPlan";
+import { CheckSpec, CombatActionSpec, MemberOrderSpec, DownedActionSpec, type ChoiceOption } from "@/shared/turnPlan";
 import { carryScene, isSceneMove, type SceneCard, type SceneMemory } from "@/shared/scene";
 import { analyzeScene, type NpcAnalysis, type ItemAnalysis, type ThreadAnalysis, type FactAnalysis } from "@/llm/summarizer";
 import { applyAnalystUpdates, runOpenSceneAnalyst, repairDegradedScenes, recordSummaryCall, ANALYST_INTERVAL } from "@/lib/analystRun";
@@ -178,6 +179,12 @@ export async function POST(req: NextRequest) {
   const preCheck = body.check ? CheckSpec.safeParse(body.check).data : undefined;
   // Combat action from a clicked combat chip (routes through the combat engine).
   const combatAction = body.combatAction ? CombatActionSpec.safeParse(body.combatAction).data : undefined;
+  // Staged squad orders (HANDOFF_COMBAT_V2_1 Task C) — one per standing crew/ally
+  // member, alongside the PC's own combatAction above. Cap ~6; a malformed array
+  // is dropped whole (fail closed) rather than partially applied.
+  const combatOrders = Array.isArray(body.combatActions)
+    ? z.array(MemberOrderSpec).max(6).safeParse(body.combatActions).data
+    : undefined;
   // Desperate act from a clicked Bleeding Out chip (routes through death saves).
   const downedAction = body.downedAction ? DownedActionSpec.safeParse(body.downedAction).data : undefined;
   // Catalog id from a clicked "Use X" consumable chip (engine applies it deterministically).
@@ -508,7 +515,7 @@ export async function POST(req: NextRequest) {
                   combatPc ? usableConsumables(combatPc, session.combat!.scale) : [],
                   (combatPc?.gear ?? []).filter((g) => g.damage).map((g) => g.name),
                 );
-              return runCombatTurn({ ...common, combat: session.combat!, action, playerText });
+              return runCombatTurn({ ...common, combat: session.combat!, action, crewOrders: combatOrders, playerText });
             })()
           : await (async () => {
               // Cross-campaign cameos: other players' characters reachable in this

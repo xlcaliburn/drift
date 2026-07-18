@@ -11,7 +11,7 @@ import type { ChoiceOption } from "@/shared/turnPlan";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
 import type { Fact } from "@/shared/facts";
-import { combatActions, type CombatState } from "@/shared/combat";
+import { combatActions, crewActionChips, type CombatState, type CombatAction } from "@/shared/combat";
 import { usableConsumables } from "@/shared/items";
 import { dispositionLabel, type NpcRelations, type SceneCard } from "@/shared/scene";
 import { type RiskTier } from "@/shared/risk";
@@ -58,6 +58,9 @@ export default function PlayClient({
   const [chat, setChat] = useState<ChatEntry[]>([]);
   const [choices, setChoices] = useState<ChoiceOption[]>([]);
   const [combat, setCombat] = useState<CombatState | null>(null);
+  // Staged squad orders (HANDOFF_COMBAT_V2_1 Task C) — memberId → chosen action,
+  // sent alongside the PC's own combat chip; cleared once a round is submitted.
+  const [crewOrders, setCrewOrders] = useState<Record<string, CombatAction>>({});
   const [npcRelations, setNpcRelations] = useState<NpcRelations>({});
   const [sceneCard, setSceneCard] = useState<SceneCard | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -233,8 +236,16 @@ export default function PlayClient({
           campaignId,
           playerText: text,
           fromChoice: !!action,
+          // Staged squad orders (HANDOFF_COMBAT_V2_1 Task C) ride along with the
+          // PC's own combat chip; an un-ordered member keeps auto-acting.
+          ...(combat?.active && Object.keys(crewOrders).length
+            ? { combatActions: Object.entries(crewOrders).map(([memberId, order]) => ({ memberId, action: order })) }
+            : {}),
         }),
       });
+      // Orders are per-round — clear the staging once this round is in flight;
+      // the next round's chips (if any) start fresh.
+      if (combat?.active) setCrewOrders({});
 
       // Gating errors (budget/auth/not-found) come back as plain JSON, not a stream.
       if (!res.ok || !res.body) {
@@ -373,6 +384,24 @@ export default function PlayClient({
   const headerClock =
     state?.clocks.find((c) => c.id === "clk-faultline") ??
     state?.clocks.find((c) => c.status === "active");
+
+  // Squad-order chip groups (HANDOFF_COMBAT_V2_1 Task C) — one per standing
+  // crew/ally member, personal-scale fights only (crewActionChips returns []
+  // for ship scale; crew orders there are out of scope this slice).
+  const standingCrew =
+    combat?.active && state
+      ? state.characters.filter(
+          (c) => c.kind === "party" && c.hp > 0 && !(c.injuries ?? []).some((i) => i.name === "Dead"),
+        )
+      : [];
+  const crewChipGroups =
+    combat?.active && standingCrew.length
+      ? crewActionChips(
+          combat,
+          standingCrew.map((c) => ({ id: c.id, name: c.name })),
+          Object.fromEntries(standingCrew.map((c) => [c.id, usableConsumables(c, combat.scale)])),
+        )
+      : [];
 
   return (
     <div className="flex h-[100dvh] flex-col">
@@ -718,6 +747,49 @@ export default function PlayClient({
           )}
 
           <div className="mx-auto w-full max-w-3xl border-t border-edge px-3 py-2.5 sm:px-5 sm:py-4">
+            {/* Squad orders (HANDOFF_COMBAT_V2_1 Task C) — order every standing
+                crew/ally member before acting yourself. Tap a chip to STAGE that
+                member's order (highlighted); tap again to clear it back to
+                auto-act. Submitting any of your own chips below sends the
+                staged set along; an un-ordered member keeps auto-acting. */}
+            {crewChipGroups.length > 0 && !busy && (
+              <div className="mb-2 space-y-1.5 rounded-lg border border-edge bg-panel/60 px-3 py-2">
+                {crewChipGroups.map((g) => (
+                  <div key={g.memberId} className="flex flex-wrap items-center gap-1.5">
+                    <span className="w-20 shrink-0 truncate text-xs font-medium text-neutral-400">{g.memberName}</span>
+                    {g.chips.map((chip, ci) => {
+                      const staged = crewOrders[g.memberId];
+                      const selected =
+                        !!staged &&
+                        staged.type === chip.combatAction.type &&
+                        (staged.enemyId ?? staged.itemId) === (chip.combatAction.enemyId ?? chip.combatAction.itemId);
+                      return (
+                        <button
+                          key={ci}
+                          onClick={() =>
+                            setCrewOrders((prev) => {
+                              const next = { ...prev };
+                              if (selected) delete next[g.memberId];
+                              else next[g.memberId] = chip.combatAction;
+                              return next;
+                            })
+                          }
+                          className={
+                            "rounded-full border px-2.5 py-1 text-[12px] transition " +
+                            (selected
+                              ? "border-accent bg-accent/15 text-accent"
+                              : "border-edge bg-panel text-neutral-300 hover:border-accent hover:text-accent")
+                          }
+                        >
+                          {chip.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Suggested actions — click to act, or type your own below. The
                 toggle is a compact icon tab on mobile (⚡ + count) so the row
                 costs almost nothing when tucked away; full label on desktop. */}
