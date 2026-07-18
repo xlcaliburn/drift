@@ -207,6 +207,11 @@ Don't add prose rules for things the engine can enforce.
   kept as the WORKED EXAMPLE of the workflow: each task carries shipped-
   annotations describing what the implementer decided and what the closing
   review caught.
+- `HANDOFF_MODULARITY_M1.md` — **READY TO IMPLEMENT**: finish the content
+  boundary (catalogs/names/npcFlavor pools/creation data/openings → the pack;
+  facade re-exports; canonLint extension). First slice of the modularity
+  roadmap (M2 lexicon → M3 voice → M4 runtime pack selection → M5 combat
+  interface). The trap: deterministic pools are order-sensitive — pin first.
 - `MULTIPLAYER.md` — shared-world design (dossiers, ledgers, seasons — NPCs done)
 - `WORLD_SYSTEMS.md` — exploration / artifacts / consequence-web design (unbuilt)
 - `STATUS.md` — **THE single backlog** (what's left, in order, updated at every
