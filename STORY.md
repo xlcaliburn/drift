@@ -104,10 +104,25 @@ chapter that showcases both combat systems (COMBAT_V2.md):
    (dormant) until content lands** — every field of the machinery is exercised,
    but zero chapters are armed on any real campaign. `STORY_AUTHORING.md`
    (the owner-facing format guide) shipped alongside it.
-3. **Authored content pass** — the actual season-one script (Fable drafts
+3a. **Content machinery** — **specced into `HANDOFF_STORY_2.md` (READY TO
+   IMPLEMENT)**. The build-order's old "content, not code" framing was
+   wrong: three things the script depends on have no runtime. This slice
+   wires authored cast depth as a PACK-ONLY live overlay (the seed cast
+   loads from the DB npcs table, so `seedNpcs` is a dead end — and
+   persisting `secret` would leak it to the client via `/api/state`),
+   chapter-gated `secret`/`arc` reveals (a new castReveals section:
+   chapter-active ∧ cast-member ∧ present), sidequests as a thin wrapper
+   on the Job machinery (placed, act/rep/trust/fact-triggered, one-shot
+   via the jobs slice itself — completed/failed jobs persist forever, so
+   no migration), and signature chapter rewards (catalog `itemId` through
+   the full-pack pendingPickup path + `crewUnlock`). Ships DORMANT like
+   slice 2: live pack authors nothing.
+3b. **Authored content pass** — the actual season-one script (Fable drafts
    the full 9 chapters + ~12 sidequests + cast depth grounded in existing
    canon; owner edits the pack files directly, per `STORY_AUTHORING.md`).
-   Content, not code. NOT YET STARTED.
+   Content, not code — genuinely, once 3a lands. Note: authoring depth for
+   the seed cast will legitimately move the context-slice golden (the
+   fixture retrieves `npc-broker`) — re-pin deliberately. NOT YET STARTED.
 4. **Prologue** — COMBAT_V2 has landed, so this is unblocked; it rides after
    the content slice (Chapter 0 is content too).
 

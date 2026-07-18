@@ -240,8 +240,15 @@ Don't add prose rules for things the engine can enforce.
   (dormant)** — hot-editability is the whole point: a campaign persists only
   id pointers, so content shipped later applies live, even mid-campaign, to
   every existing campaign (retrofit via state-predicate triggers, patient
-  pacing via the nudge cadence). NEXT (not yet started): the season-one
-  content pass (Fable drafts, owner edits per `STORY_AUTHORING.md`).
+  pacing via the nudge cadence). NEXT: `HANDOFF_STORY_2.md` — **READY TO
+  IMPLEMENT** (slice 3a, the content machinery the script depends on):
+  authored cast depth as a PACK-ONLY live overlay (`seedNpcs` is a dead
+  end — the seed cast loads from the DB npcs table; persisting `secret`
+  would leak it to the client), chapter-gated secret/arc reveals,
+  sidequests as a thin Job wrapper (one-shot via the jobs slice itself,
+  NO migration), signature chapter rewards (item via pendingPickup +
+  crewUnlock). Ships dormant. Then 3b: the season-one content pass (Fable
+  drafts, owner edits per `STORY_AUTHORING.md`).
 - `COMBAT_V2.md` — **DESIGN (owner priority, decisions RESOLVED), Parts A+B
   core + customization all SHIPPED (2026-07-18)**: squad control (order every
   party member, temporary allies — Part A) + Eclipse-style ship combat (power

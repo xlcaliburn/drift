@@ -68,11 +68,17 @@ npx vitest run                 # ~1049 model-free tests, no keys needed
      prompt section, the Story tab's "Season" block, and
      `STORY_AUTHORING.md` (the owner-facing format guide) — proven against a
      TEST-ONLY 2-chapter stub; **the live pack ships an empty storyline
-     (dormant)** until content lands. NEXT: the season-one content pass
-     (Fable drafts the actual 9 chapters, owner edits per
-     `STORY_AUTHORING.md` — hot-editable pack data, no code), then the
-     PROLOGUE (tutorial as authored Chapter 0 showcasing both combat systems
-     with a temporary ally). NOT YET STARTED.
+     (dormant)** until content lands. NEXT: **`HANDOFF_STORY_2.md` (READY
+     TO IMPLEMENT)** — slice 3a, the content machinery the script depends
+     on: authored cast depth as a pack-only live overlay (never persisted,
+     never client-sent), chapter-gated secret/arc reveals, sidequests as a
+     thin Job wrapper (one-shot via the jobs slice — NO migration), and
+     signature chapter rewards (item via pendingPickup + crewUnlock). Ships
+     dormant. THEN 3b: the season-one content pass (Fable drafts the 9
+     chapters + ~12 sidequests + cast depth, owner edits per
+     `STORY_AUTHORING.md` — genuinely no code once 3a lands), then the
+     PROLOGUE (tutorial as authored Chapter 0 showcasing both combat
+     systems with a temporary ally).
    - Squad orders' own follow-up: aim/cover/switch + role specials
      (engineer overcharge etc.) for crew, deferred this slice (COMBAT_V2.md's
      shipped-note). Ship2's crew passives are similarly all-always-on, not
