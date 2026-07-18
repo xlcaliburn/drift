@@ -92,5 +92,29 @@ describe("personal-job arc resolution", () => {
     expect(r.npcRelations["npc-gen-kessa"].disposition).toBe(2);
     expect(r.npcRelations["npc-gen-kessa"].arcStage).toBeUndefined();
   });
+
+  it("HANDOFF_STORY_2 Task C review fix: a giver-is-npc job does NOT falsely resolve an arc that was never OPENED (arcStage undefined)", () => {
+    // A sidequest's giver is also an npc id, not "board" — but unlike
+    // generatePersonalJob it never sets arcStage:"active" at accept. Before the
+    // gate was tightened to arcStage==="active" (from "!== resolved"), completing
+    // ANY npc-giver job the player had prior standing with — sidequest or
+    // otherwise — would permanently mark a personal favor "resolved" that was
+    // never opened, blocking personalJobAvailable's real offer for that NPC.
+    const s = state({ currentLocationId: "loc-b" });
+    (s.npcs as { id: string; name: string }[]).push({ id: "npc-ilyana", name: "Ilyana" });
+    const rels = { "npc-ilyana": { disposition: 2 } }; // prior standing, but arcStage never set
+    const sidequestShapedJob: Job = {
+      id: "sq-favor", title: "A Favor for Ilyana", blurb: "x", giver: "npc-ilyana",
+      playstyle: "authored", archetype: "authored", tier: "T1",
+      objectives: [{ id: "o1", kind: "deliver", summary: "Haul it to Rook", done: false, locationId: "loc-b" }],
+      cast: [], reward: { tier: "T1" }, status: "active", createdTenday: 0,
+    };
+    const r = resolveJobsTurn({
+      state: s, jobs: [sidequestShapedJob], events: [], combatResolvedAlive: false, rng: seededRng(1), npcRelations: rels,
+    });
+    expect(r.npcRelations["npc-ilyana"].arcStage).toBeUndefined(); // never falsely "resolved"
+    expect(r.npcRelations["npc-ilyana"].disposition).toBe(2); // untouched
+    expect(r.lines.some((l) => /bond deepened/.test(l))).toBe(false);
+  });
 });
 

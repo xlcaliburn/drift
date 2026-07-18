@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ContentPack, validatePack, PackStoryChapter, PackStoryObjective } from "./types";
+import { ContentPack, validatePack, PackStoryChapter, PackStoryObjective, PackSidequest } from "./types";
 import { ObjectiveKind } from "@/shared/quests";
 import { pack, seedNpcs, NAMED_LANES, FACTION_HOME, MAP_LAYOUT, DEFAULT_HOME_LOCATION, buildAuthoredCastDepth } from "./index";
 
@@ -233,6 +233,87 @@ describe("content pack — storyline schema + referential integrity (HANDOFF_STO
   it("at most one choicePoint per chapter is enforced by the SCHEMA shape (not an array)", () => {
     const withChoice = chapter({ choicePoint: { id: "c1", prompt: "Pick a side", options: [{ id: "a", label: "Crown", fact: "sided-crown" }, { id: "b", label: "Chain", fact: "sided-chain" }] } });
     expect(PackStoryChapter.safeParse(withChoice).success).toBe(true);
+  });
+});
+
+describe("content pack — sidequest schema + referential integrity (HANDOFF_STORY_2.md Task C)", () => {
+  it("the live pack ships ZERO sidequests (dormant until 3b)", () => {
+    expect(pack.sidequests).toEqual([]);
+  });
+
+  function sq(over: Partial<(typeof pack.sidequests)[number]> = {}) {
+    return {
+      id: "sq-1",
+      title: "Test Sidequest",
+      blurb: "A favor.",
+      giverNpcId: pack.cast[0].id,
+      tier: "T1" as const,
+      postedLocationId: pack.locations[0].id,
+      objectives: [{ id: "o1", kind: "travel" as const, summary: "Go there", locationId: pack.locations[0].id }],
+      reward: {},
+      ...over,
+    };
+  }
+
+  it("a well-formed sidequest fixture has no integrity problems", () => {
+    const withSq = { ...pack, sidequests: [sq()] };
+    expect(ContentPack.safeParse(withSq).success).toBe(true);
+    expect(validatePack(withSq)).toEqual([]);
+  });
+
+  it("catches a duplicate sidequest id", () => {
+    const problems = validatePack({ ...pack, sidequests: [sq({ id: "sq-1" }), sq({ id: "sq-1" })] });
+    expect(problems.some((p) => p.includes("sidequests: duplicate id sq-1"))).toBe(true);
+  });
+
+  it("catches an unknown giver npc, postedLocationId, and faction", () => {
+    const problems = validatePack({
+      ...pack,
+      sidequests: [sq({ giverNpcId: "npc-nowhere", postedLocationId: "loc-nowhere", factionId: "f-nowhere" })],
+    });
+    expect(problems.some((p) => p.includes("unknown giver npc npc-nowhere"))).toBe(true);
+    expect(problems.some((p) => p.includes("unknown postedLocationId loc-nowhere"))).toBe(true);
+    expect(problems.some((p) => p.includes("unknown faction f-nowhere"))).toBe(true);
+  });
+
+  it("catches unknown faction/npc ids in the trigger", () => {
+    const problems = validatePack({
+      ...pack,
+      sidequests: [
+        sq({
+          trigger: {
+            factionRepAtLeast: { factionId: "f-nowhere", rep: 2 },
+            npcTrustAtLeast: { npcId: "npc-nowhere", disposition: 1 },
+          },
+        }),
+      ],
+    });
+    expect(problems.some((p) => p.includes("trigger faction f-nowhere"))).toBe(true);
+    expect(problems.some((p) => p.includes("trigger npc npc-nowhere"))).toBe(true);
+  });
+
+  it("catches unknown location/npc ids in an objective, and an unknown reward faction", () => {
+    const problems = validatePack({
+      ...pack,
+      sidequests: [
+        sq({
+          objectives: [{ id: "o1", kind: "report" as const, summary: "Find them", npcId: "npc-nowhere" }],
+          reward: { repFactionId: "f-nowhere", repDelta: 1 },
+        }),
+      ],
+    });
+    expect(problems.some((p) => p.includes("objective o1: unknown npc"))).toBe(true);
+    expect(problems.some((p) => p.includes("reward faction f-nowhere"))).toBe(true);
+  });
+
+  it("actAtLeast is schema-capped to 1-3 (only meaningful acts)", () => {
+    expect(PackSidequest.safeParse(sq({ trigger: { actAtLeast: 2 } })).success).toBe(true);
+    expect(PackSidequest.safeParse(sq({ trigger: { actAtLeast: 4 as never } })).success).toBe(false);
+    expect(PackSidequest.safeParse(sq({ trigger: { actAtLeast: 0 as never } })).success).toBe(false);
+  });
+
+  it("objectives reuse PackStoryObjective's full kind set, including report", () => {
+    expect(ContentPack.safeParse({ ...pack, sidequests: [sq({ objectives: [{ id: "o1", kind: "report", summary: "x", npcId: pack.cast[0].id }] })] }).success).toBe(true);
   });
 });
 

@@ -671,6 +671,8 @@ export async function POST(req: NextRequest) {
           rng: liveRng,
           npcRelations: session.npcRelations,
           presentNpcIds: session.sceneCard.presentNpcIds,
+          storyline: session.storyline,
+          facts: session.facts ?? [],
         });
         result.state = jobsRes.state; // credits + faction rep for any job paid out
         result.events = [...result.events, ...jobsRes.events];

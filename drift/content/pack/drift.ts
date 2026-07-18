@@ -29,6 +29,9 @@ import { driftShip2 } from "./drift/ship2";
 // The authored main questline (HANDOFF_STORY_1.md Task B) — empty on the
 // live pack; the machinery is proven against a test-only stub instead.
 import { driftStoryline } from "./drift/storyline";
+// Authored side quests (HANDOFF_STORY_2.md Task C) — same: empty on the live
+// pack, machinery proven against a test-only stub.
+import { driftSidequests } from "./drift/sidequests";
 
 /**
  * THE DRIFT — content pack v0. This is the CURRENT live world, ported verbatim
@@ -271,4 +274,6 @@ export const driftPack: ContentPack = {
   ship2: driftShip2,
 
   storyline: driftStoryline,
+
+  sidequests: driftSidequests,
 };

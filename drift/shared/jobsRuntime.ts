@@ -2,6 +2,10 @@ import type { CampaignState, FactionRep } from "./schemas";
 import type { EngineEvent } from "@/engine/events";
 import type { RNG } from "@/engine/rng";
 import { type NpcRelations, DISPOSITION_MAX } from "./scene";
+import type { Fact } from "./facts";
+import type { StorylineState } from "./storyline";
+import { pack } from "@/content/pack";
+import { injectSidequests } from "./sidequests";
 import {
   advanceJobs,
   turnSignals,
@@ -67,6 +71,12 @@ export function resolveJobsTurn(input: {
   /** NPCs present in the CURRENT scene — feeds the `report` objective kind
    *  (QUESTS.md 1b). Defaults to none for callers that don't track presence. */
   presentNpcIds?: string[];
+  /** The main-questline progress (HANDOFF_STORY_2.md Task C) — gates a
+   *  sidequest's `actAtLeast` trigger. Dormant (act 0) for callers that don't
+   *  track it. */
+  storyline?: StorylineState;
+  /** The durable facts ledger — gates a sidequest's `hasFact` trigger. */
+  facts?: Fact[];
 }): JobsTurnResult {
   const { events, combatResolvedAlive, rng } = input;
   let state = input.state;
@@ -74,7 +84,20 @@ export function resolveJobsTurn(input: {
   const tenday = state.campaign.tendaysElapsed ?? 0;
   const signals = turnSignals(state.campaign.currentLocationId, events, combatResolvedAlive, input.presentNpcIds);
 
-  const progress = advanceJobs(input.jobs, signals);
+  // Authored sidequests (HANDOFF_STORY_2.md Task C): inject any that qualify
+  // BEFORE the procedural top-up below, so an authored offer counts toward
+  // BOARD_SIZE and can displace a generated one.
+  const jobsWithSidequests = injectSidequests(
+    { sidequests: pack.sidequests, storyline: pack.storyline },
+    input.jobs,
+    state,
+    input.storyline ?? { chapters: {} },
+    npcRelations,
+    input.facts ?? [],
+    tenday,
+  );
+
+  const progress = advanceJobs(jobsWithSidequests, signals);
   const lines = [...progress.lines];
   const payEvents: EngineEvent[] = [];
   const pc = state.characters.find((c) => c.kind === "pc");
@@ -119,9 +142,18 @@ export function resolveJobsTurn(input: {
     // A PERSONAL job (giver is an NPC, not the board) resolves that NPC's arc
     // (RELATIONSHIPS.md): their want paid off in this campaign, so their standing
     // deepens and the arc closes. Campaign-side only — the shared NPC is untouched.
+    // Gated on arcStage === "active" (not just "!== resolved") — HANDOFF_STORY_2.md
+    // Task C review: a sidequest's giver is ALSO an npc (not "board"), and unlike
+    // generatePersonalJob it never sets arcStage:"active" at accept. Without this
+    // tightened gate, completing a sidequest for an NPC the player already has ANY
+    // relation with (arcStage undefined, which passes "!== resolved") would
+    // falsely mark a personal favor "resolved" that was never opened — permanently
+    // blocking personalJobAvailable's real offer for that NPC (it requires
+    // `!rel.arcStage`). Only a job that genuinely OPENED as a personal favor sets
+    // arcStage to "active" in the first place, so this scopes correctly.
     if (job.giver !== "board") {
       const rel = npcRelations[job.giver];
-      if (rel && rel.arcStage !== "resolved") {
+      if (rel && rel.arcStage === "active") {
         const npcName = state.npcs.find((n) => n.id === job.giver)?.name ?? "them";
         npcRelations = {
           ...npcRelations,

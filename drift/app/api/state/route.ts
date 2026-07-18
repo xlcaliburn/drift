@@ -5,6 +5,8 @@ import { refreshBoard } from "@/shared/quests";
 import { liveRng } from "@/engine/rng";
 import { revalidateChoices } from "@/shared/choices";
 import { freshStorylineState } from "@/shared/storyline";
+import { injectSidequests } from "@/shared/sidequests";
+import { pack } from "@/content/pack";
 
 export const runtime = "nodejs";
 
@@ -33,7 +35,19 @@ export async function GET(req: NextRequest) {
   // The turn loop keeps it topped up thereafter; this write mirrors the same safe
   // getSession → mutate → persist path (a warm re-save won't clobber it).
   if (!session.jobs?.length) {
-    const seeded = refreshBoard(session.state, session.jobs ?? [], liveRng, session.state.campaign.tendaysElapsed ?? 0);
+    // Authored sidequests (HANDOFF_STORY_2.md Task C) get the same first-read
+    // seed treatment as the procedural board, injected BEFORE the top-up so
+    // one can occupy a board slot from the very first load.
+    const withSidequests = injectSidequests(
+      { sidequests: pack.sidequests, storyline: pack.storyline },
+      session.jobs ?? [],
+      session.state,
+      session.storyline ?? freshStorylineState(),
+      session.npcRelations,
+      session.facts ?? [],
+      session.state.campaign.tendaysElapsed ?? 0,
+    );
+    const seeded = refreshBoard(session.state, withSidequests, liveRng, session.state.campaign.tendaysElapsed ?? 0);
     if (seeded.length) {
       const updated = { ...session, jobs: seeded };
       setSession(campaignId, updated);

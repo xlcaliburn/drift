@@ -445,6 +445,50 @@ export const PackStoryline = z.object({
 });
 export type PackStoryline = z.infer<typeof PackStoryline>;
 
+/** ALL specified conditions must hold (AND) — same state-predicate style as
+ *  PackStoryTrigger, minus `requiresChapterId` (a sidequest has no
+ *  prerequisite quest chain) plus `actAtLeast` (gate to how far the season
+ *  has progressed; the schema itself caps it to 1-3). */
+export const PackSidequestTrigger = z.object({
+  actAtLeast: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+  factionRepAtLeast: z.object({ factionId: z.string(), rep: z.number().int() }).optional(),
+  npcTrustAtLeast: z.object({ npcId: z.string(), disposition: z.number().int() }).optional(),
+  hasFact: z.string().optional(),
+});
+export type PackSidequestTrigger = z.infer<typeof PackSidequestTrigger>;
+
+/** An authored, PLACED side quest (STORY.md §2, HANDOFF_STORY_2.md Task C) —
+ *  a thin wrapper on the existing Job machinery: same objective shape/kinds
+ *  as a storyline chapter (`PackStoryObjective`, incl. `report`), materialized
+ *  into a real OFFERED Job the moment its trigger holds and it hasn't already
+ *  been taken (shared/sidequests.ts). Surfaces exactly like a generated board
+ *  offer through the existing offeredJobs section (no seam) — but with a
+ *  FIXED giver (a real pack cast id, never generated) and authored stakes. */
+export const PackSidequest = z.object({
+  /** Unique, prefix-free — the runtime materializes it as Job id `sq-<id>`. */
+  id: z.string().min(1),
+  title: z.string().min(1),
+  blurb: z.string().min(1),
+  /** The giver — a real pack cast id. Never a generated cast member. */
+  giverNpcId: z.string().min(1),
+  factionId: z.string().optional(),
+  /** Authored stakes — the author's call, NOT clamped by payoutCeiling
+   *  (that clamp only applies to the procedural generator). */
+  tier: z.enum(["T0", "T1", "T2", "T3"]),
+  /** Where this quest is OFFERED — station-local, like a generated board
+   *  offer (shared/quests.ts refreshBoard's `postedLocationId`). */
+  postedLocationId: z.string().min(1),
+  trigger: PackSidequestTrigger.optional(),
+  objectives: z.array(PackStoryObjective).min(1),
+  cargo: z.string().optional(),
+  complication: z.string().optional(),
+  reward: z.object({
+    repFactionId: z.string().optional(),
+    repDelta: z.number().int().optional(),
+  }),
+});
+export type PackSidequest = z.infer<typeof PackSidequest>;
+
 export const ContentPack = z.object({
   universe: z.object({
     id: z.string().regex(/^uni-[a-z0-9-]+$/),
@@ -483,6 +527,9 @@ export const ContentPack = z.object({
   /** The authored main questline (STORY.md, HANDOFF_STORY_1.md) — empty on
    *  the live pack until the content slice ships (a dormant storyline). */
   storyline: PackStoryline,
+  /** Authored, placed side quests (STORY.md §2, HANDOFF_STORY_2.md Task C) —
+   *  empty on the live pack until the content slice ships. */
+  sidequests: z.array(PackSidequest).default([]),
 });
 export type ContentPack = z.infer<typeof ContentPack>;
 
@@ -600,5 +647,29 @@ export function validatePack(pack: ContentPack): string[] {
       problems.push(`${tag}: reward faction ${chapter.reward.factionRep.factionId} is not a faction`);
     }
   });
+
+  // Sidequests (HANDOFF_STORY_2.md Task C): thin wrapper on Job, placed +
+  // triggered + one-shot via the jobs slice itself (no runtime slice here —
+  // no referential rule needed for that).
+  for (const d of dupes(pack.sidequests.map((sq) => sq.id))) problems.push(`sidequests: duplicate id ${d}`);
+  for (const sq of pack.sidequests) {
+    const tag = `sidequest.${sq.id}`;
+    if (!npcIds.has(sq.giverNpcId)) problems.push(`${tag}: unknown giver npc ${sq.giverNpcId}`);
+    if (!locIds.has(sq.postedLocationId)) problems.push(`${tag}: unknown postedLocationId ${sq.postedLocationId}`);
+    if (sq.factionId && !facIds.has(sq.factionId)) problems.push(`${tag}: unknown faction ${sq.factionId}`);
+    if (sq.trigger?.factionRepAtLeast && !facIds.has(sq.trigger.factionRepAtLeast.factionId)) {
+      problems.push(`${tag}: trigger faction ${sq.trigger.factionRepAtLeast.factionId} is not a faction`);
+    }
+    if (sq.trigger?.npcTrustAtLeast && !npcIds.has(sq.trigger.npcTrustAtLeast.npcId)) {
+      problems.push(`${tag}: trigger npc ${sq.trigger.npcTrustAtLeast.npcId} is not an npc`);
+    }
+    for (const obj of sq.objectives) {
+      if (obj.locationId && !locIds.has(obj.locationId)) problems.push(`${tag} objective ${obj.id}: unknown location ${obj.locationId}`);
+      if (obj.npcId && !npcIds.has(obj.npcId)) problems.push(`${tag} objective ${obj.id}: unknown npc ${obj.npcId}`);
+    }
+    if (sq.reward.repFactionId && !facIds.has(sq.reward.repFactionId)) {
+      problems.push(`${tag}: reward faction ${sq.reward.repFactionId} is not a faction`);
+    }
+  }
   return problems;
 }
