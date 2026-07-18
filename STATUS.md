@@ -38,27 +38,41 @@ npx vitest run                 # ~834 model-free tests, no keys needed
 
 ## What's left to build (rough order)
 
-0. **Modularity roadmap** (core engine, swappable worlds): **M1 content
+0. **Space-campaign depth** (owner priority 2026-07-18, from playtest
+   feedback — designs written, handoffs not yet):
+   - **COMBAT_V2.md** — squad control (order every party member; temporary
+     allies) + Eclipse-style ship combat (power allocation, dice profiles,
+     shields/evasion/armor counterplay, ship customization slots; built as
+     the M5 CombatSystem seam for real). Build order in the doc.
+   - **STORY.md** — the authored campaign layer: a 3-act main questline as
+     pack data (engine-owned triggers/objectives/beats/choice-facts), authored
+     sidequests placed beside the procedural board, rich pack-cast backstories
+     with authored reveals, and the tutorial rebuilt as an authored PROLOGUE
+     chapter showcasing both combat systems with a temporary ally.
+   - First slice: QUESTS 1b `report` objective (unblocks all authored content),
+     then squad orders, then the ship-combat core.
+1. **Modularity roadmap** (core engine, swappable worlds): **M1 content
    boundary SHIPPED** (2026-07-18, `HANDOFF_MODULARITY_M1.md` — catalogs/
    names/flavor pools/creation data/openings all moved into the pack;
    `content/` is now a pure facade; canonLint + pack.test.ts extended to
    enforce it). LEFT: M2 lexicon (tenday/¢ words → pack), M3 prompt voice
    split, M4 runtime pack selection (`WorldContent` threading +
-   `universes.pack_id`), M5 combat-system interface (only with a concrete
-   second system), and the second test-pack in CI as the modularity proof.
-1. **Shared-world runtime** (`MULTIPLAYER.md`): dossiers (§1), cross-campaign
+   `universes.pack_id`), M5 combat-system interface (its concrete second
+   system now EXISTS as a design — COMBAT_V2.md's ship combat builds the
+   seam), and the second test-pack in CI as the modularity proof.
+2. **Shared-world runtime** (`MULTIPLAYER.md`): dossiers (§1), cross-campaign
    reads (§3), and the relationship ledger (§2) are SHIPPED. LEFT: the
    break-away-from-faction trigger (§4), seasons with fixed end dates + the
    season-end reckoning (§5), a Rolodex UI, and the optional canon review queue
    (§6 — `world_events.visibility` already exists).
-2. **World systems** (`WORLD_SYSTEMS.md`): exploration / artifacts /
+3. **World systems** (`WORLD_SYSTEMS.md`): exploration / artifacts /
    consequence-web. Unbuilt.
-3. **Locations Phase 2** (`LOCATIONS.md`): tiered canonical places + persisted
+4. **Locations Phase 2** (`LOCATIONS.md`): tiered canonical places + persisted
    procedural SITES with loot tables. Design only.
-4. **Continuity v2 remainder** (`CONTINUITY.md` + `CONTINUITY_HARDENING.md`):
+5. **Continuity v2 remainder** (`CONTINUITY.md` + `CONTINUITY_HARDENING.md`):
    the history-window shrink (Task 7) — GATED on ~1 week of healthy production
    summary telemetry; the analyst's rolling playstyle read + relationship deltas.
-5. **Backstory Phase 2** (`BACKSTORY.md`): arrival tie-in, NPC-initiated contact,
+6. **Backstory Phase 2** (`BACKSTORY.md`): arrival tie-in, NPC-initiated contact,
    milestone beats, structured backstory tags.
 
 ## Feature-doc phase backlogs (next phases of shipped features)
