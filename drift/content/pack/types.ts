@@ -62,6 +62,14 @@ export const PackNpc = z.object({
   factionId: z.string().optional(),
   locationId: z.string().optional(),
   role: z.string().optional(),
+  /** Authored depth for STORYLINE cast (STORY.md, HANDOFF_STORY_1.md) — the
+   *  generated-pool fallbacks (shared/npcFlavor.ts) stay for everyone else;
+   *  these are GM-truth, never model-improvised. */
+  backstory: z.string().optional(),
+  /** The reveal a storyline beat can spend — what the backstory is hiding. */
+  secret: z.string().optional(),
+  /** How they change across the season, one line per act (index 0 = act 1). */
+  arc: z.array(z.string()).optional(),
 });
 export type PackNpc = z.infer<typeof PackNpc>;
 
@@ -337,6 +345,98 @@ export const PackCatalogs = z.object({
 });
 export type PackCatalogs = z.infer<typeof PackCatalogs>;
 
+/**
+ * The authored main questline (STORY.md, HANDOFF_STORY_1.md) — a season is
+ * `pack.storyline.chapters`, an ORDERED array the engine reads live every
+ * turn. Campaigns persist only PROGRESS POINTERS (chapter/beat/choice ids —
+ * shared/storyline.ts); content itself is never copied into campaign_runtime,
+ * which is what makes a chapter hot-editable mid-campaign. Ids are forever;
+ * everything else (prose, triggers, rewards) is safe to rewrite.
+ */
+
+/** ALL specified conditions must hold (AND) — every field is a state
+ *  predicate re-evaluated fresh each turn, so a campaign already past a
+ *  threshold when this chapter ships opens on the very next turn (the
+ *  "retrofit live campaigns" decision — no backfill, no event-edges). */
+export const PackStoryTrigger = z.object({
+  /** The prior chapter must be complete. Omit for an opening chapter. */
+  requiresChapterId: z.string().optional(),
+  tendaysAtLeast: z.number().int().min(0).optional(),
+  atLocationId: z.string().optional(),
+  factionRepAtLeast: z.object({ factionId: z.string(), rep: z.number().int() }).optional(),
+  npcTrustAtLeast: z.object({ npcId: z.string(), disposition: z.number().int() }).optional(),
+  /** Substring match against the facts ledger (shared/facts.ts). */
+  hasFact: z.string().optional(),
+});
+export type PackStoryTrigger = z.infer<typeof PackStoryTrigger>;
+
+/** A narrative directive fed to the narrator VERBATIM while its chapter is
+ *  active, one at a time, marked delivered by the engine (the
+ *  backstoryPressure pattern) — never model-improvised. `aboutNpcId` gates
+ *  the mortal-NPC rule: if that cast member has died/departed by the time
+ *  this beat comes up, `fallbackDirective` runs instead (both still count as
+ *  delivered) — a storyline chapter must survive its own cast dying. */
+export const PackStoryBeat = z.object({
+  id: z.string().min(1),
+  directive: z.string().min(1),
+  fallbackDirective: z.string().optional(),
+  aboutNpcId: z.string().optional(),
+});
+export type PackStoryBeat = z.infer<typeof PackStoryBeat>;
+
+/** One branch of a chapter's choice point — picking it records `fact` on the
+ *  ledger, which later chapters' triggers/beats can condition on. */
+export const PackChoiceOption = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  fact: z.string().min(1),
+});
+export type PackChoiceOption = z.infer<typeof PackChoiceOption>;
+
+/** An authored objective — the SAME shape `shared/quests.ts`'s `Objective`
+ *  tracks progress in, minus `done` (the engine adds that at runtime). The
+ *  `kind` enum is duplicated here rather than imported (same reason
+ *  `PackLoaner.shipClass` duplicates `Ship.shipClass`): `shared/quests.ts`
+ *  imports `pack` from this module's sibling `content/pack/index.ts`, so an
+ *  import the other way would be circular. `pack.test.ts` pins the literal
+ *  set matches `shared/quests.ts`'s `ObjectiveKind`. */
+export const PackStoryObjective = z.object({
+  id: z.string().min(1),
+  kind: z.enum(["travel", "deliver", "eliminate", "survive", "investigate", "persuade", "sabotage", "report"]),
+  summary: z.string().min(1),
+  locationId: z.string().optional(),
+  npcId: z.string().optional(),
+  enemyTier: z.enum(["T1", "T2", "T3"]).optional(),
+  requiredSkills: z.array(z.string()).optional(),
+});
+export type PackStoryObjective = z.infer<typeof PackStoryObjective>;
+
+export const PackStoryChapter = z.object({
+  id: z.string().min(1),
+  act: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  title: z.string().min(1),
+  trigger: PackStoryTrigger,
+  /** Authored cast for this chapter — pack NPC ids, "use EXACTLY these
+   *  people" (the cast-manifest rule; no generation). */
+  castNpcIds: z.array(z.string()).default([]),
+  objectives: z.array(PackStoryObjective).min(1),
+  beats: z.array(PackStoryBeat).default([]),
+  /** At most one branch point per chapter (STORY.md: "branch light"). */
+  choicePoint: z.object({ id: z.string().min(1), prompt: z.string().min(1), options: z.array(PackChoiceOption).min(2) }).optional(),
+  reward: z.object({
+    credits: z.number().int().min(0),
+    factionRep: z.object({ factionId: z.string(), delta: z.number().int() }).optional(),
+  }),
+});
+export type PackStoryChapter = z.infer<typeof PackStoryChapter>;
+
+export const PackStoryline = z.object({
+  /** ORDERED — a chapter's position here has no mechanical meaning (triggers
+   *  do the gating), but authoring reads top-to-bottom act by act. */
+  chapters: z.array(PackStoryChapter).default([]),
+});
+export type PackStoryline = z.infer<typeof PackStoryline>;
+
 export const ContentPack = z.object({
   universe: z.object({
     id: z.string().regex(/^uni-[a-z0-9-]+$/),
@@ -372,6 +472,9 @@ export const ContentPack = z.object({
    *  from `catalogs` (which is deliberately loose) because it needs REAL
    *  referential validation: every class's `mounts`/`policy` must resolve. */
   ship2: PackShip2,
+  /** The authored main questline (STORY.md, HANDOFF_STORY_1.md) — empty on
+   *  the live pack until the content slice ships (a dormant storyline). */
+  storyline: PackStoryline,
 });
 export type ContentPack = z.infer<typeof ContentPack>;
 
@@ -446,5 +549,48 @@ export function validatePack(pack: ContentPack): string[] {
   for (const o of pack.openings.factions) {
     if (!facIds.has(o.factionId)) problems.push(`openings: unknown faction ${o.factionId}`);
   }
+
+  // Storyline (HANDOFF_STORY_1.md): the live pack ships empty, but the
+  // referential rules matter the moment content lands, so they're checked
+  // now against a schema-shaped fixture (pack.test.ts) rather than deferred.
+  const npcIds = new Set(pack.cast.map((n) => n.id));
+  const chapterIds = pack.storyline.chapters.map((c) => c.id);
+  for (const d of dupes(chapterIds)) problems.push(`storyline: duplicate chapter id ${d}`);
+  pack.storyline.chapters.forEach((chapter, i) => {
+    const tag = `storyline.${chapter.id}`;
+    for (const npcId of chapter.castNpcIds) {
+      if (!npcIds.has(npcId)) problems.push(`${tag}: unknown cast npc ${npcId}`);
+    }
+    const { trigger } = chapter;
+    if (trigger.requiresChapterId) {
+      const priorIdx = chapterIds.indexOf(trigger.requiresChapterId);
+      if (priorIdx === -1) problems.push(`${tag}: trigger requires unknown chapter ${trigger.requiresChapterId}`);
+      else if (priorIdx >= i) problems.push(`${tag}: trigger requires a chapter that isn't EARLIER (${trigger.requiresChapterId})`);
+    }
+    if (trigger.atLocationId && !locIds.has(trigger.atLocationId)) {
+      problems.push(`${tag}: trigger location ${trigger.atLocationId} is not a location`);
+    }
+    if (trigger.factionRepAtLeast && !facIds.has(trigger.factionRepAtLeast.factionId)) {
+      problems.push(`${tag}: trigger faction ${trigger.factionRepAtLeast.factionId} is not a faction`);
+    }
+    if (trigger.npcTrustAtLeast && !npcIds.has(trigger.npcTrustAtLeast.npcId)) {
+      problems.push(`${tag}: trigger npc ${trigger.npcTrustAtLeast.npcId} is not an npc`);
+    }
+    for (const obj of chapter.objectives) {
+      if (obj.locationId && !locIds.has(obj.locationId)) problems.push(`${tag} objective ${obj.id}: unknown location ${obj.locationId}`);
+      if (obj.npcId && !npcIds.has(obj.npcId)) problems.push(`${tag} objective ${obj.id}: unknown npc ${obj.npcId}`);
+    }
+    for (const beat of chapter.beats) {
+      // The mortal-NPC rule: a beat ABOUT a cast member must survive their
+      // death — no fallback means a dead NPC silently breaks the chapter.
+      if (beat.aboutNpcId && !beat.fallbackDirective) {
+        problems.push(`${tag} beat ${beat.id}: aboutNpcId set with no fallbackDirective (the mortal-NPC rule)`);
+      }
+      if (beat.aboutNpcId && !npcIds.has(beat.aboutNpcId)) problems.push(`${tag} beat ${beat.id}: unknown npc ${beat.aboutNpcId}`);
+    }
+    if (chapter.reward.factionRep && !facIds.has(chapter.reward.factionRep.factionId)) {
+      problems.push(`${tag}: reward faction ${chapter.reward.factionRep.factionId} is not a faction`);
+    }
+  });
   return problems;
 }

@@ -26,6 +26,9 @@ import { driftOpenings } from "./drift/openings";
 // module (not raw JSON) so `policy` narrows to its real literal union; needs
 // real referential validation like creation/briefs/openings/npcFlavor.
 import { driftShip2 } from "./drift/ship2";
+// The authored main questline (HANDOFF_STORY_1.md Task B) — empty on the
+// live pack; the machinery is proven against a test-only stub instead.
+import { driftStoryline } from "./drift/storyline";
 
 /**
  * THE DRIFT — content pack v0. This is the CURRENT live world, ported verbatim
@@ -266,4 +269,6 @@ export const driftPack: ContentPack = {
   },
 
   ship2: driftShip2,
+
+  storyline: driftStoryline,
 };

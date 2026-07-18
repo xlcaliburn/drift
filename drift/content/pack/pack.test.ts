@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { ContentPack, validatePack } from "./types";
+import { ContentPack, validatePack, PackStoryChapter, PackStoryObjective } from "./types";
+import { ObjectiveKind } from "@/shared/quests";
 import { pack, NAMED_LANES, FACTION_HOME, MAP_LAYOUT, DEFAULT_HOME_LOCATION } from "./index";
 
 describe("content pack — schema + referential integrity (the world seam)", () => {
@@ -105,6 +106,133 @@ describe("content pack — ship2 CombatSystem completeness (HANDOFF_COMBAT_V2_2.
         expect(["guns", "shields", "engines"], `${classId} policy token ${token}`).toContain(token);
       }
     }
+  });
+});
+
+describe("content pack — storyline schema + referential integrity (HANDOFF_STORY_1.md)", () => {
+  it("the live pack ships an EMPTY storyline (dormant until content lands)", () => {
+    expect(pack.storyline.chapters).toEqual([]);
+  });
+
+  function chapter(over: Partial<(typeof pack.storyline.chapters)[number]> = {}) {
+    return {
+      id: "ch-1", act: 1 as const, title: "Test Chapter",
+      trigger: {},
+      castNpcIds: [pack.cast[0].id],
+      objectives: [{ id: "o1", kind: "travel" as const, summary: "Go there", locationId: pack.locations[0].id }],
+      beats: [],
+      reward: { credits: 100 },
+      ...over,
+    };
+  }
+
+  it("a well-formed 2-chapter fixture has no integrity problems", () => {
+    const withStory = {
+      ...pack,
+      storyline: {
+        chapters: [
+          chapter({ id: "ch-1" }),
+          chapter({ id: "ch-2", trigger: { requiresChapterId: "ch-1" } }),
+        ],
+      },
+    };
+    expect(ContentPack.safeParse(withStory).success).toBe(true);
+    expect(validatePack(withStory)).toEqual([]);
+  });
+
+  it("catches a duplicate chapter id", () => {
+    const problems = validatePack({ ...pack, storyline: { chapters: [chapter({ id: "ch-1" }), chapter({ id: "ch-1" })] } });
+    expect(problems.some((p) => p.includes("duplicate chapter id"))).toBe(true);
+  });
+
+  it("catches an unknown cast npc", () => {
+    const problems = validatePack({ ...pack, storyline: { chapters: [chapter({ castNpcIds: ["npc-does-not-exist"] })] } });
+    expect(problems.some((p) => p.includes("unknown cast npc"))).toBe(true);
+  });
+
+  it("catches a trigger requiring an UNKNOWN chapter, and one requiring a LATER chapter", () => {
+    const unknown = validatePack({ ...pack, storyline: { chapters: [chapter({ trigger: { requiresChapterId: "ch-nope" } })] } });
+    expect(unknown.some((p) => p.includes("requires unknown chapter"))).toBe(true);
+
+    const outOfOrder = validatePack({
+      ...pack,
+      storyline: {
+        chapters: [
+          chapter({ id: "ch-1", trigger: { requiresChapterId: "ch-2" } }), // ch-2 comes AFTER ch-1
+          chapter({ id: "ch-2" }),
+        ],
+      },
+    });
+    expect(outOfOrder.some((p) => p.includes("isn't EARLIER"))).toBe(true);
+  });
+
+  it("catches unknown location/faction/npc ids in a trigger", () => {
+    const problems = validatePack({
+      ...pack,
+      storyline: {
+        chapters: [
+          chapter({
+            trigger: {
+              atLocationId: "loc-nowhere",
+              factionRepAtLeast: { factionId: "f-nowhere", rep: 3 },
+              npcTrustAtLeast: { npcId: "npc-nowhere", disposition: 2 },
+            },
+          }),
+        ],
+      },
+    });
+    expect(problems.some((p) => p.includes("trigger location loc-nowhere"))).toBe(true);
+    expect(problems.some((p) => p.includes("trigger faction f-nowhere"))).toBe(true);
+    expect(problems.some((p) => p.includes("trigger npc npc-nowhere"))).toBe(true);
+  });
+
+  it("catches unknown location/npc ids in an objective, and an unknown reward faction", () => {
+    const problems = validatePack({
+      ...pack,
+      storyline: {
+        chapters: [
+          chapter({
+            objectives: [{ id: "o1", kind: "report" as const, summary: "Find them", npcId: "npc-nowhere" }],
+            reward: { credits: 50, factionRep: { factionId: "f-nowhere", delta: 1 } },
+          }),
+        ],
+      },
+    });
+    expect(problems.some((p) => p.includes("objective o1: unknown npc"))).toBe(true);
+    expect(problems.some((p) => p.includes("reward faction f-nowhere"))).toBe(true);
+  });
+
+  it("the mortal-NPC rule: a beat ABOUT a cast member needs a fallbackDirective", () => {
+    const missing = validatePack({
+      ...pack,
+      storyline: {
+        chapters: [chapter({ beats: [{ id: "b1", directive: "They reveal a secret.", aboutNpcId: pack.cast[0].id }] })],
+      },
+    });
+    expect(missing.some((p) => p.includes("aboutNpcId set with no fallbackDirective"))).toBe(true);
+
+    const withFallback = validatePack({
+      ...pack,
+      storyline: {
+        chapters: [
+          chapter({
+            beats: [{ id: "b1", directive: "They reveal a secret.", aboutNpcId: pack.cast[0].id, fallbackDirective: "A note in their effects reveals it instead." }],
+          }),
+        ],
+      },
+    });
+    expect(withFallback.some((p) => p.includes("fallbackDirective"))).toBe(false);
+  });
+
+  it("PackStoryObjective's duplicated kind enum stays in sync with shared/quests.ts's ObjectiveKind", () => {
+    const packKinds = [...PackStoryObjective.shape.kind.options].sort();
+    const realKinds = [...ObjectiveKind.options].sort();
+    expect(packKinds).toEqual(realKinds);
+  });
+
+  it("at most one choicePoint per chapter is enforced by the SCHEMA shape (not an array)", () => {
+    const withChoice = chapter({ choicePoint: { id: "c1", prompt: "Pick a side", options: [{ id: "a", label: "Crown", fact: "sided-crown" }, { id: "b", label: "Chain", fact: "sided-chain" }] } });
+    expect(PackStoryChapter.safeParse(withChoice).success).toBe(true);
   });
 });
 
