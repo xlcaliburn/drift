@@ -155,8 +155,18 @@ chapter that showcases both combat systems (COMBAT_V2.md):
    slice added no code, so faction-flavored openings stay a future idea,
    not a gap in this season. Owner edits/tunes from here per
    `STORY_AUTHORING.md` — genuinely just pack-file edits, no code.
-4. **Prologue** — COMBAT_V2 has landed, so this is unblocked; it rides after
-   the content slice (Chapter 0 is content too).
+4. **Prologue** — **specced into `HANDOFF_STORY_4.md` (READY TO
+   IMPLEMENT)**. NOT a storyline chapter (no trigger predicate can
+   distinguish a new campaign from a veteran, so a "ch-0" would either
+   open for everyone or strand ch-1) — its own track: `pack.prologue`
+   (per-faction temporary ally + four stage directives) + a persisted
+   `Campaign.prologueStage`, engine-advanced intro → groundFight →
+   shipFight → graduation → complete on real signals (scale-aware fight
+   resolution). `undefined` stage = legacy campaign = the OLD quest-count
+   tutorial rules apply unchanged (zero backfill, zero behavior change
+   live). The ally rides migration 030's `temporary` character flag —
+   built for exactly this. Storyline + authored sidequests pause while
+   the prologue runs.
 
 ## Decisions (RESOLVED 2026-07-18 — owner approved recommendations)
 

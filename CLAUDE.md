@@ -267,8 +267,13 @@ Don't add prose rules for things the engine can enforce.
   in, and the golden re-pinned exactly once (one new hook line, nothing
   else moved). One deliberate deferral: a single neutral opener via the
   Ledger rather than per-faction variants (no faction trigger predicate
-  exists). NEXT: the PROLOGUE (tutorial as authored Chapter 0) — not yet
-  specced.
+  exists). NEXT: the PROLOGUE — **specced into `HANDOFF_STORY_4.md`
+  (READY TO IMPLEMENT)**: NOT a storyline chapter (no trigger predicate
+  distinguishes new campaigns from veterans) — its own `pack.prologue`
+  track + persisted `Campaign.prologueStage`, engine-advanced on
+  scale-aware fight signals; `undefined` stage = legacy = old tutorial
+  rules unchanged; the ally rides migration 030's `temporary` flag;
+  storyline + sidequests pause during the prologue.
 - `COMBAT_V2.md` — **DESIGN (owner priority, decisions RESOLVED), Parts A+B
   core + customization all SHIPPED (2026-07-18)**: squad control (order every
   party member, temporary allies — Part A) + Eclipse-style ship combat (power

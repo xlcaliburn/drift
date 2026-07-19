@@ -100,8 +100,15 @@ npx vitest run                 # ~1102 model-free tests, no keys needed
      hook line, nothing else moved). One deliberate deferral: a single
      neutral opener via the Ledger rather than per-faction variants (no
      faction trigger predicate exists; noted for a future slice, not a
-     gap). NEXT: the PROLOGUE (tutorial as authored Chapter 0 showcasing
-     both combat systems with a temporary ally) — not yet specced.
+     gap). NEXT: **the PROLOGUE — specced into `HANDOFF_STORY_4.md`
+     (READY TO IMPLEMENT)** — NOT a storyline chapter (no trigger
+     predicate distinguishes new campaigns from veterans): its own track,
+     `pack.prologue` (per-faction temporary ally + four stage directives)
+     + a persisted `Campaign.prologueStage`, engine-advanced on
+     scale-aware fight signals; `undefined` stage = legacy = old
+     quest-count tutorial rules unchanged (zero live-campaign impact);
+     the ally rides migration 030's `temporary` flag; storyline +
+     authored sidequests pause while the prologue runs.
    - Squad orders' own follow-up: aim/cover/switch + role specials
      (engineer overcharge etc.) for crew, deferred this slice (COMBAT_V2.md's
      shipped-note). Ship2's crew passives are similarly all-always-on, not

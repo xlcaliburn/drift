@@ -339,6 +339,26 @@ locked. (Reminder: credits roll from `tier`'s band automatically.)
   scoped to exactly those paths).
 - ✅ Dev server verified booting clean (zero console/server errors) with
   the full season loaded, before doc close-out.
+
+**Phase-3 review (Fable, 2026-07-18) — CLEAN, zero defects.** Every locked
+value verified against the shipped files: acts (1,1,1,2,2,2,3×5), the
+100→800 credit curve, all five fact strings character-for-character with
+the correct fan-out (each finale fact appears exactly twice — a ch-8
+option + its finale trigger; each ch-4 fact twice — the option + its gated
+sidequest), all seven requiredSkills pairs, ch-7's crewUnlock, the three
+finale itemIds. Spoiler discipline holds (every backstory reads true
+without the reveal; the broker's "re-checking claim dates" gestures at the
+season without naming the Verity — as the spine intended). The sidequest
+faction-rep judgment call was reasonable and honestly annotated. One
+KNOWN GAP logged in CHECKS.md, not a defect: story-choice facts are
+UNPINNED on the facts ledger (only the analyst may pin), so ch-4's
+allegiance fact can be evicted at the 20-cap many scenes later — which
+would silently end the two fact-gated sidequests' availability.
+Degradation, not stranding (ch-8's finale fact is consumed by the very
+next turn's trigger evaluation, so the finale itself has effectively zero
+eviction exposure). A future one-word hardening (pin story facts at the
+route's applyFactUpdates call) is noted for whenever the route is next
+open.
 - The season is READABLE as a story straight from the two pack files — the
   owner reviews it there before it deploys (patient pacing means nothing
   fires mid-scene on live campaigns; ch-1 will open on their next quiet

@@ -226,6 +226,12 @@ mapping it to a field.
   suit is narrative-only.
 - **Crew v1.1** — crew don't track statuses/resists; downed crew can't be finished
   off; mutiny events; ship-scale crew actions.
+- **Story-choice facts are unpinned** (HANDOFF_STORY_3 review) — a chapter
+  choicePoint's fact rides `applyFactUpdates` without `pinned`, so ch-4's
+  allegiance fact can be evicted at the 20-cap many scenes later, silently
+  ending the two fact-gated sidequests' availability (the finale fact has ~zero
+  exposure — consumed by the next turn's trigger eval). One-word fix (pass
+  `pinned: true` at the route's story-fact append) next time the route is open.
 
 ## Incident → check (the lineage, for the record)
 
