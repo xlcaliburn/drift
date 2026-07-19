@@ -30,7 +30,7 @@ npm install
 cp .env.example .env.local     # DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY; + Supabase vars for auth
 npm run dev                    # http://localhost:3000
 npx tsc --noEmit               # fast typecheck (never touches .next)
-npx vitest run                 # ~1093 model-free tests, no keys needed
+npx vitest run                 # ~1102 model-free tests, no keys needed
 ```
 
 - **Keyless mode** (no Supabase vars): no login, stub dev admin, nothing persists.
@@ -82,17 +82,26 @@ npx vitest run                 # ~1093 model-free tests, no keys needed
      way: the personal-job arc-resolution gate in `shared/jobsRuntime.ts`
      would have falsely resolved an arc that was never opened the first
      time a sidequest's giver was an NPC the player already had standing
-     with — tightened to `arcStage === "active"`. NEXT: **3b, SEASON ONE
-     "FAULT LINE" — specced into `HANDOFF_STORY_3.md` (READY TO
-     IMPLEMENT)**: Fable locked the full season spine (the Verity-sabotage
-     plot, 11 chapter entries incl. 3 fact-gated finale variants, every
-     id/trigger/fact/secret/reward, 12 sidequest specs); Sonnet expands
-     the prose inside those rails (division adjusted from "Fable drafts"
-     for Fable-budget reasons); owner edits after per `STORY_AUTHORING.md`.
-     This slice ENDS dormancy — three dormancy tests flip to structural
-     pins, the golden re-pins once. Then the PROLOGUE (tutorial as
-     authored Chapter 0 showcasing both combat systems with a temporary
-     ally).
+     with — tightened to `arcStage === "active"`. **`HANDOFF_STORY_3.md`
+     — SEASON ONE "FAULT LINE" — is ALSO FULLY SHIPPED (2026-07-18)**:
+     Fable locked the full season spine (division adjusted from "Fable
+     drafts" for Fable-budget reasons — every id/trigger/fact/secret/
+     reward fixed in the handoff, Sonnet expanded only the prose); the
+     Hollow Crown's founding houses filed salvage claims on colony ships
+     still in transit, engineering the "accident" (the wrecked **Verity**)
+     their debt empire was built on. 11 chapter entries
+     (`content/pack/drift/storyline.ts` — ch-1..ch-8 shared spine + 3
+     fact-gated finale variants at ch-9a/b/c), 12 placed sidequests
+     (`content/pack/drift/sidequests.ts`), and 6 principals with full
+     cast depth + 2 with backstory only (`content/pack/drift.ts`). **This
+     slice ENDS dormancy** — the three dormancy tests in `pack.test.ts`
+     flip to structural pins, `validatePack(pack)` returns `[]` with the
+     full season in, and the golden re-pinned exactly once (one NPC's new
+     hook line, nothing else moved). One deliberate deferral: a single
+     neutral opener via the Ledger rather than per-faction variants (no
+     faction trigger predicate exists; noted for a future slice, not a
+     gap). NEXT: the PROLOGUE (tutorial as authored Chapter 0 showcasing
+     both combat systems with a temporary ally) — not yet specced.
    - Squad orders' own follow-up: aim/cover/switch + role specials
      (engineer overcharge etc.) for crew, deferred this slice (COMBAT_V2.md's
      shipped-note). Ship2's crew passives are similarly all-always-on, not

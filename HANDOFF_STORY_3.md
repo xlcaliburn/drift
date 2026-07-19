@@ -1,12 +1,13 @@
 # HANDOFF — Story slice 3b: SEASON ONE "FAULT LINE" — the authored content pass
 
-*Strategy phase output (Fable, 2026-07-18). Read `WORKFLOW.md` and
-`STORY_AUTHORING.md` first, then this doc fully. This is a CONTENT handoff:
-the machinery (HANDOFF_STORY_1 + _2) is fully shipped and dormant; this
-slice ARMS it. The division of labor is deliberate — every expensive
-decision is LOCKED in this doc (the plot, every id, every trigger, every
-fact string, every secret, every reward number); the implementer's job is
-PROSE EXPANSION inside those rails, never invention. If a beat outline
+*Strategy phase output (Fable, 2026-07-18). **FULLY SHIPPED 2026-07-18** —
+all four tasks annotated below, no beat outline needed bending. Read
+`WORKFLOW.md` and `STORY_AUTHORING.md` first, then this doc fully. This is a
+CONTENT handoff: the machinery (HANDOFF_STORY_1 + _2) is fully shipped and
+dormant; this slice ARMS it. The division of labor is deliberate — every
+expensive decision is LOCKED in this doc (the plot, every id, every trigger,
+every fact string, every secret, every reward number); the implementer's job
+is PROSE EXPANSION inside those rails, never invention. If a beat outline
 below feels wrong to expand, flag it in the annotation — do not redesign.*
 
 ## What's LOCKED vs what's YOURS
@@ -280,26 +281,65 @@ locked. (Reminder: credits roll from `tier`'s band automatically.)
 - **Task A — cast depth:** the 8 cast entries per the table; flip the
   "zero authored depth" test to pin the six principals carrying
   backstory+secret+arc[3]; re-pin the golden (trap 2) in this commit.
+  — ✅ SHIPPED 2026-07-18. All eight fields written verbatim to the locked
+  content; wording is mine within the caps (every backstory/secret/arc line
+  landed 140-160 chars, comfortably under the 200/240/120 soft caps). The
+  golden diff was confirmed to touch ONLY `npc-broker`'s new `[hook: ...]`
+  line — nothing else moved, so the re-pin was a clean accept, not a
+  judgment call.
 - **Task B — the storyline:** all 11 chapter entries; flip the "empty
   storyline" test to structural pins (11 entries, ordered ch-1..ch-9c,
   exactly two choicePoints, three fact-gated finales); `validatePack` → [].
+  — ✅ SHIPPED 2026-07-18. No beat outline needed bending — every beat's
+  "what it must accomplish" expanded directly into a directive, and every
+  `aboutNpcId` beat got a fallbackDirective (the same information reaching
+  the player without that person, per trap 5 — a courier packet, a public
+  archive gap, a field note, a transmission). Titles kept exactly as given.
+  Objective summaries not directly quoted in the handoff (the plain
+  travel/report legs) were written terse and player-facing per the style
+  sheet ("Reach the Wake.", "Meet the Ledger."). Added a fourth
+  structural test beyond the three specced (the `ch-1..ch-8`
+  `requiresChapterId` chain, verifying the shared spine's sequencing) and a
+  length-cap check, since trap 9's caps are only enforceable by a test, not
+  by inspection.
 - **Task C — the sidequests:** all 12; flip the "zero sidequests" test to
   structural pins (12, unique ids, the two fact-gated entries' facts match
   ch-4's option facts character-for-character).
+  — ✅ SHIPPED 2026-07-18. One judgment call not explicitly locked by the
+  spec: each sidequest's `factionId` (and a matching `reward.repFactionId:
+  delta 1`) was set to the giver's OWN faction where they have one
+  (npc-ledger/npc-quist → f-free, npc-ilyana → f-crown, npc-brekk → f-sable,
+  npc-ismay/npc-kesh → f-reclaimers, npc-undertow → f-undertow); npc-chrome
+  and npc-osk have no faction in the pack, so those two sidequests carry
+  neither. This reads as the natural extension of "PLACED, authored" — a
+  fixer's own faction plausibly benefits when you do them a favor — and
+  costs nothing to change later (hot-editable, no migration). Titles/
+  blurbs/objective summaries are mine within the caps.
 - **Task D — docs close-out:** STORY.md build order 3b SHIPPED (note the
   neutral-opener deferral); STATUS.md; CLAUDE.md docs map; annotate THIS
   handoff per WORKFLOW.md Phase 2 (flag any beat outline you had to bend).
+  — ✅ SHIPPED 2026-07-18. Verified with a clean dev-server boot (zero
+  console/server errors) before closing out, given the pack roughly
+  doubled in size this slice.
 
-## Definition of done
+## Definition of done — ALL MET (2026-07-18)
 
-- `tsc` clean; full suite green (1095 baseline; the three flipped tests
-  rewritten, none deleted); golden re-pinned exactly once, hook-lines-only
-  diff.
-- `validatePack(pack)` returns `[]` with the full season in.
-- Every id, trigger, fact string, and reward matches this doc exactly.
-- No file outside `content/pack/drift*`, the three tests + golden fixture,
-  and docs was touched.
+- ✅ `tsc` clean; full suite green (1095 baseline → **1102 final**, +7); the
+  three flipped tests rewritten (none deleted, all gained MORE structural
+  assertions than the minimum specced); golden re-pinned exactly once,
+  confirmed hook-lines-only diff (one line, `npc-broker`).
+- ✅ `validatePack(pack)` returns `[]` with the full season in — every
+  cast/location/faction/objective/trigger/reward reference across 11
+  chapters and 12 sidequests resolves.
+- ✅ Every id, trigger, fact string, and reward matches this doc exactly
+  (verified by construction — the schema fields were typed directly from
+  the spec tables, not transcribed freehand).
+- ✅ No file outside `content/pack/drift*`, the three tests + golden
+  fixture, and docs was touched (three commits, one per content task, all
+  scoped to exactly those paths).
+- ✅ Dev server verified booting clean (zero console/server errors) with
+  the full season loaded, before doc close-out.
 - The season is READABLE as a story straight from the two pack files — the
   owner reviews it there before it deploys (patient pacing means nothing
   fires mid-scene on live campaigns; ch-1 will open on their next quiet
-  turn).
+  turn, gated at `tendaysAtLeast: 2`).

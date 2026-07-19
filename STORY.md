@@ -1,9 +1,11 @@
 # STORY.md — the authored campaign layer (main questline, sidequests, prologue)
 
-*DESIGN (2026-07-18, Phase 1 — owner direction from playtest feedback: "a single
-main questline that has rich npc backstories woven in, and pre-created
-sidequests as well, not just auto-generated ones"). Companion to COMBAT_V2.md
-(the prologue showcases both systems). Nothing built yet.*
+*Owner direction from playtest feedback (2026-07-18): "a single main
+questline that has rich npc backstories woven in, and pre-created sidequests
+as well, not just auto-generated ones." Companion to COMBAT_V2.md (the
+prologue showcases both systems). **Machinery + Season One "FAULT LINE" are
+FULLY SHIPPED (2026-07-18)** — see the build order below; only the prologue
+(slice 4) remains.*
 
 ## Why (what playtests showed)
 
@@ -127,19 +129,32 @@ chapter that showcases both combat systems (COMBAT_V2.md):
    "resolved" an arc that was never opened the first time a sidequest's
    giver was any NPC the player already had standing with — tightened to
    only fire for a job that genuinely opened as a personal favor.
-3b. **Authored content pass — SEASON ONE "FAULT LINE"** — **specced into
-   `HANDOFF_STORY_3.md` (READY TO IMPLEMENT)**. Division of labor ADJUSTED
-   from the original "Fable drafts, owner edits" (Fable budget): Fable
-   locked the complete season SPINE in the handoff — the plot (the Verity
-   sabotage case, built from the canon Kesh/Wake/Reclaimers seeds), all 11
-   chapter entries (9 played; 3 fact-gated finale variants) with exact
-   ids/triggers/facts/objectives/rewards, every principal's secret and arc,
-   and all 12 sidequest specs — and Sonnet expands the PROSE inside those
-   rails (directives, blurbs, backstories' wording), never the structure.
-   Owner edits after, per `STORY_AUTHORING.md`. This slice ENDS dormancy:
-   the three dormancy tests flip to structural pins, and the context-slice
-   golden re-pins once (authored depth on `npc-broker` moves the hook line
-   the fixture renders — deliberate).
+3b. ~~**Authored content pass — SEASON ONE "FAULT LINE"**~~ — SHIPPED
+   2026-07-18 (`HANDOFF_STORY_3.md`, fully annotated). Division of labor
+   ADJUSTED from the original "Fable drafts, owner edits" (Fable budget):
+   Fable locked the complete season SPINE in the handoff — the plot (the
+   Hollow Crown's founding houses filed salvage claims on colony ships still
+   in transit, then engineered the "accident" their debt empire was built
+   on — the wrecked **Verity**, built from the canon Kesh/Wake/Reclaimers
+   seeds), all 11 chapter entries (`content/pack/drift/storyline.ts` —
+   ch-1..ch-8 shared spine + 3 fact-gated finale variants), every principal's
+   secret and arc (`content/pack/drift.ts`: npc-ledger/ismay/kesh/ilyana/
+   osk/brekk get full depth; npc-quist/broker get backstory only), and all
+   12 sidequest specs (`content/pack/drift/sidequests.ts`) — and Sonnet
+   expanded the PROSE inside those rails (directives, blurbs, backstory
+   wording), never the structure. **This slice ENDS dormancy** — the three
+   dormancy tests in `pack.test.ts` flip to structural pins (11 chapters in
+   order, exactly two choicePoints, the three-way finale exclusivity, 12
+   unique sidequest ids, the six-principal cast-depth split), and the
+   context-slice golden re-pinned exactly once (authored `backstory` on
+   `npc-broker` moved its `[hook: ...]` line — confirmed no other line
+   moved). `validatePack(pack)` returns `[]` with the full season in.
+   One deliberate deferral, noted for later: a single NEUTRAL opener (via
+   the Ledger, canon "trusted by all sides") rather than per-faction
+   opening variants — the trigger schema has no faction predicate and this
+   slice added no code, so faction-flavored openings stay a future idea,
+   not a gap in this season. Owner edits/tunes from here per
+   `STORY_AUTHORING.md` — genuinely just pack-file edits, no code.
 4. **Prologue** — COMBAT_V2 has landed, so this is unblocked; it rides after
    the content slice (Chapter 0 is content too).
 

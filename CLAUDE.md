@@ -251,14 +251,24 @@ Don't add prose rules for things the engine can enforce.
   one-shot for FREE via the jobs slice itself, no migration), and signature
   chapter rewards (`itemId` via the full-pack pendingPickup path,
   `crewUnlock` raising trust to recruit-eligible) riding the existing
-  payout bridge. **Live pack ships zero authored depth and zero
-  sidequests** — dormant like the storyline itself. NEXT: 3b, SEASON ONE
-  "FAULT LINE" — **specced into `HANDOFF_STORY_3.md` (READY TO
-  IMPLEMENT)**: Fable locked the full season spine (plot, all ids/
-  triggers/facts/secrets/rewards, 11 chapters incl. 3 fact-gated finale
-  variants, 12 sidequests); Sonnet expands the prose inside those rails;
-  owner edits after per `STORY_AUTHORING.md`. Ends dormancy (three
-  dormancy tests flip; the golden re-pins once, hook-lines only).
+  payout bridge. `HANDOFF_STORY_3.md` — SEASON ONE "FAULT LINE" — is ALSO
+  **FULLY SHIPPED (2026-07-18)**: Fable locked the complete season spine
+  (division adjusted from "Fable drafts" for Fable-budget reasons — every
+  id/trigger/fact/secret/reward fixed in the handoff, Sonnet expanded only
+  the prose). The Hollow Crown's founding houses filed salvage claims on
+  colony ships still in transit, engineering the "accident" (the wrecked
+  **Verity**) their debt empire was built on — 11 chapters
+  (`content/pack/drift/storyline.ts`, ch-1..ch-8 shared spine + 3
+  fact-gated finales at ch-9a/b/c), 12 placed sidequests
+  (`content/pack/drift/sidequests.ts`), 6 principals with full cast depth
+  + 2 with backstory only (`content/pack/drift.ts`). **This slice ENDS
+  DORMANCY** — the three dormancy tests in `pack.test.ts` flip to
+  structural pins, `validatePack(pack)` returns `[]` with the full season
+  in, and the golden re-pinned exactly once (one new hook line, nothing
+  else moved). One deliberate deferral: a single neutral opener via the
+  Ledger rather than per-faction variants (no faction trigger predicate
+  exists). NEXT: the PROLOGUE (tutorial as authored Chapter 0) — not yet
+  specced.
 - `COMBAT_V2.md` — **DESIGN (owner priority, decisions RESOLVED), Parts A+B
   core + customization all SHIPPED (2026-07-18)**: squad control (order every
   party member, temporary allies — Part A) + Eclipse-style ship combat (power
