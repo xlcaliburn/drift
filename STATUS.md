@@ -82,11 +82,17 @@ npx vitest run                 # ~1093 model-free tests, no keys needed
      way: the personal-job arc-resolution gate in `shared/jobsRuntime.ts`
      would have falsely resolved an arc that was never opened the first
      time a sidequest's giver was an NPC the player already had standing
-     with — tightened to `arcStage === "active"`. NEXT: 3b, the season-one
-     content pass (Fable drafts the 9 chapters + ~12 sidequests + cast
-     depth, owner edits per `STORY_AUTHORING.md` — genuinely no code now
-     that 3a has landed), then the PROLOGUE (tutorial as authored Chapter 0
-     showcasing both combat systems with a temporary ally). NOT YET STARTED.
+     with — tightened to `arcStage === "active"`. NEXT: **3b, SEASON ONE
+     "FAULT LINE" — specced into `HANDOFF_STORY_3.md` (READY TO
+     IMPLEMENT)**: Fable locked the full season spine (the Verity-sabotage
+     plot, 11 chapter entries incl. 3 fact-gated finale variants, every
+     id/trigger/fact/secret/reward, 12 sidequest specs); Sonnet expands
+     the prose inside those rails (division adjusted from "Fable drafts"
+     for Fable-budget reasons); owner edits after per `STORY_AUTHORING.md`.
+     This slice ENDS dormancy — three dormancy tests flip to structural
+     pins, the golden re-pins once. Then the PROLOGUE (tutorial as
+     authored Chapter 0 showcasing both combat systems with a temporary
+     ally).
    - Squad orders' own follow-up: aim/cover/switch + role specials
      (engineer overcharge etc.) for crew, deferred this slice (COMBAT_V2.md's
      shipped-note). Ship2's crew passives are similarly all-always-on, not

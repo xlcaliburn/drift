@@ -252,9 +252,13 @@ Don't add prose rules for things the engine can enforce.
   chapter rewards (`itemId` via the full-pack pendingPickup path,
   `crewUnlock` raising trust to recruit-eligible) riding the existing
   payout bridge. **Live pack ships zero authored depth and zero
-  sidequests** — dormant like the storyline itself. NEXT: 3b, the
-  season-one content pass (Fable drafts, owner edits per
-  `STORY_AUTHORING.md` — genuinely no code now).
+  sidequests** — dormant like the storyline itself. NEXT: 3b, SEASON ONE
+  "FAULT LINE" — **specced into `HANDOFF_STORY_3.md` (READY TO
+  IMPLEMENT)**: Fable locked the full season spine (plot, all ids/
+  triggers/facts/secrets/rewards, 11 chapters incl. 3 fact-gated finale
+  variants, 12 sidequests); Sonnet expands the prose inside those rails;
+  owner edits after per `STORY_AUTHORING.md`. Ends dormancy (three
+  dormancy tests flip; the golden re-pins once, hook-lines only).
 - `COMBAT_V2.md` — **DESIGN (owner priority, decisions RESOLVED), Parts A+B
   core + customization all SHIPPED (2026-07-18)**: squad control (order every
   party member, temporary allies — Part A) + Eclipse-style ship combat (power

@@ -127,12 +127,19 @@ chapter that showcases both combat systems (COMBAT_V2.md):
    "resolved" an arc that was never opened the first time a sidequest's
    giver was any NPC the player already had standing with — tightened to
    only fire for a job that genuinely opened as a personal favor.
-3b. **Authored content pass** — the actual season-one script (Fable drafts
-   the full 9 chapters + ~12 sidequests + cast depth grounded in existing
-   canon; owner edits the pack files directly, per `STORY_AUTHORING.md`).
-   Content, not code — genuinely, once 3a lands. Note: authoring depth for
-   the seed cast will legitimately move the context-slice golden (the
-   fixture retrieves `npc-broker`) — re-pin deliberately. NOT YET STARTED.
+3b. **Authored content pass — SEASON ONE "FAULT LINE"** — **specced into
+   `HANDOFF_STORY_3.md` (READY TO IMPLEMENT)**. Division of labor ADJUSTED
+   from the original "Fable drafts, owner edits" (Fable budget): Fable
+   locked the complete season SPINE in the handoff — the plot (the Verity
+   sabotage case, built from the canon Kesh/Wake/Reclaimers seeds), all 11
+   chapter entries (9 played; 3 fact-gated finale variants) with exact
+   ids/triggers/facts/objectives/rewards, every principal's secret and arc,
+   and all 12 sidequest specs — and Sonnet expands the PROSE inside those
+   rails (directives, blurbs, backstories' wording), never the structure.
+   Owner edits after, per `STORY_AUTHORING.md`. This slice ENDS dormancy:
+   the three dormancy tests flip to structural pins, and the context-slice
+   golden re-pins once (authored depth on `npc-broker` moves the hook line
+   the fixture renders — deliberate).
 4. **Prologue** — COMBAT_V2 has landed, so this is unblocked; it rides after
    the content slice (Chapter 0 is content too).
 
