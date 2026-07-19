@@ -77,6 +77,12 @@ export function resolveJobsTurn(input: {
   storyline?: StorylineState;
   /** The durable facts ledger — gates a sidequest's `hasFact` trigger. */
   facts?: Fact[];
+  /** HANDOFF_STORY_4.md decision 6 — while the authored prologue is active,
+   *  authored sidequests stay silent so a new player meets the sandbox and
+   *  Season One in order; the generated board still works exactly as it
+   *  does in the tutorial today. Defaults false — every existing caller is
+   *  unaffected. */
+  suppressSidequests?: boolean;
 }): JobsTurnResult {
   const { events, combatResolvedAlive, rng } = input;
   let state = input.state;
@@ -86,16 +92,19 @@ export function resolveJobsTurn(input: {
 
   // Authored sidequests (HANDOFF_STORY_2.md Task C): inject any that qualify
   // BEFORE the procedural top-up below, so an authored offer counts toward
-  // BOARD_SIZE and can displace a generated one.
-  const jobsWithSidequests = injectSidequests(
-    { sidequests: pack.sidequests, storyline: pack.storyline },
-    input.jobs,
-    state,
-    input.storyline ?? { chapters: {} },
-    npcRelations,
-    input.facts ?? [],
-    tenday,
-  );
+  // BOARD_SIZE and can displace a generated one. Suppressed during the
+  // prologue (HANDOFF_STORY_4.md decision 6).
+  const jobsWithSidequests = input.suppressSidequests
+    ? input.jobs
+    : injectSidequests(
+        { sidequests: pack.sidequests, storyline: pack.storyline },
+        input.jobs,
+        state,
+        input.storyline ?? { chapters: {} },
+        npcRelations,
+        input.facts ?? [],
+        tenday,
+      );
 
   const progress = advanceJobs(jobsWithSidequests, signals);
   const lines = [...progress.lines];

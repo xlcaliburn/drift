@@ -13,6 +13,7 @@ import { establishedFacts } from "./facts";
 import { backstoryPressure } from "./backstoryPressure";
 import { activeChapter } from "./activeChapter";
 import { castReveals } from "./castReveals";
+import { prologue } from "./prologue";
 import type { Job } from "@/shared/quests";
 import type { PlayerLedger } from "@/shared/ledger";
 import type { Fact } from "@/shared/facts";
@@ -27,7 +28,7 @@ import type { StorylineState } from "@/shared/storyline";
  * llm/contextSlice.golden.test.ts.
  */
 const SECTIONS: (Section | "")[] = [
-  tutorial, previously, directive, backstoryPressure, sceneHeader, season, sceneNow,
+  tutorial, previously, directive, backstoryPressure, prologue, sceneHeader, season, sceneNow,
   "",
   pcSheet, vitals, ship, threat, market, dock, patron, bodyMod,
   "",

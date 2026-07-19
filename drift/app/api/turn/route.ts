@@ -18,6 +18,8 @@ import { acceptJob, abandonJob, generatePersonalJob, inferJobAccept, grantJobCar
 import { resolveJobsTurn } from "@/shared/jobsRuntime";
 import { nextBeat, recordChoice } from "@/shared/storyline";
 import { resolveStorylineTurn } from "@/shared/storylineRuntime";
+import { advancePrologue } from "@/shared/prologue";
+import type { EngineEvent } from "@/engine/events";
 import { applyFactUpdates } from "@/shared/facts";
 import { pack } from "@/content/pack";
 import { personalJobAvailable, TRUST_THRESHOLD } from "@/shared/scene";
@@ -303,6 +305,16 @@ export async function POST(req: NextRequest) {
       const prevLoc = session.state.campaign.currentLocationId;
       // Combat turns never change place — only compute `moved` on the JSON path.
       const wasCombatTurn = !!session.combat?.active;
+      // HANDOFF_STORY_4.md trap 4 — snapshot the fight's scale HERE, before it
+      // clears on resolution (a resolved CombatState is nulled), so the
+      // prologue's groundFight/shipFight signal can tell a personal win from
+      // a ship win after the fact.
+      const preTurnCombatScale = session.combat?.scale;
+      // HANDOFF_STORY_4.md decision 6 — while the authored prologue is
+      // running, the storyline + authored sidequests stay silent so a new
+      // player meets the sandbox and Season One cleanly, in sequence.
+      const inActivePrologue =
+        session.state.campaign.prologueStage !== undefined && session.state.campaign.prologueStage !== "complete";
       try {
         // ── APPEAL: the player escalates a mechanical outcome to the strong judge
         //    (Sonnet). It's a META correction — handled regardless of combat/downed
@@ -569,7 +581,9 @@ export async function POST(req: NextRequest) {
                 otherDossiers,
                 jobs: session.jobs ?? [],
                 ledger: session.playerLedger ?? {},
-                storyline: session.storyline,
+                // HANDOFF_STORY_4.md decision 6 / trap 6 — activeChapter/
+                // castReveals stay silent while the prologue runs.
+                storyline: inActivePrologue ? undefined : session.storyline,
                 model: cinematic ? "claude-sonnet-5" : undefined,
               });
             })();
@@ -617,6 +631,9 @@ export async function POST(req: NextRequest) {
         //    fight that ended this turn with the PC standing satisfies eliminate/
         //    survive objectives.
         const combatResolvedAlive = wasCombatTurn && !resultCombat?.active && !pcDied;
+        // HANDOFF_STORY_4.md trap 4 — only meaningful alongside a real win;
+        // `preTurnCombatScale` was snapshotted before the fight cleared.
+        const resolvedScale = combatResolvedAlive ? preTurnCombatScale : undefined;
         let jobsBoard = session.jobs ?? [];
         // Typed-accept backstop (QUESTS.md): with the board tab gone, offers are
         // taken diegetically. The model SHOULD attach acceptJob to the take-it
@@ -673,6 +690,9 @@ export async function POST(req: NextRequest) {
           presentNpcIds: session.sceneCard.presentNpcIds,
           storyline: session.storyline,
           facts: session.facts ?? [],
+          // HANDOFF_STORY_4.md decision 6 / trap 6 — authored sidequests stay
+          // silent while the prologue runs; the generated board is untouched.
+          suppressSidequests: inActivePrologue,
         });
         result.state = jobsRes.state; // credits + faction rep for any job paid out
         result.events = [...result.events, ...jobsRes.events];
@@ -689,34 +709,42 @@ export async function POST(req: NextRequest) {
         //    Everything stays in LOCAL variables until the final session assembly
         //    (trap 4): a turn that throws before then leaves session.storyline
         //    exactly as it was, so a failed turn can never burn a beat or a choice.
-        let storylineWorking = session.storyline;
+        //    HANDOFF_STORY_4.md decision 6 / trap 6 — none of this evaluates,
+        //    advances, or pays out while the authored prologue is active; the
+        //    storyline stays exactly as it was until the prologue completes.
         let factsWorking = session.facts ?? [];
-        if (storyChoicePick) {
-          const choiceRes = recordChoice(pack.storyline, storylineWorking, storyChoicePick.chapterId, storyChoicePick.optionId);
-          storylineWorking = choiceRes.storyline;
-          if (choiceRes.fact) {
-            factsWorking = applyFactUpdates(factsWorking, [{ text: choiceRes.fact }], result.state.campaign.tendaysElapsed);
-          }
-        }
-        // The beat only ever reaches the narrator through the activeChapter
-        // section, which exists ONLY on the JSON path — a combat round builds no
-        // context slice, so marking a beat delivered on a combat turn would burn
-        // it silently (delivered-but-never-narrated, trap 4's class via a path
-        // gap). Objectives still ADVANCE on combat turns (eliminate/survive need
-        // the fight's outcome); only beat delivery is JSON-path-gated.
-        const preTurnBeat = wasCombatTurn
-          ? null
-          : nextBeat(pack.storyline, session.storyline, session.state.npcs, session.state.campaign.tendaysElapsed ?? 0);
-        const storylineSignals = turnSignals(result.state.campaign.currentLocationId, result.events, combatResolvedAlive, session.sceneCard.presentNpcIds);
-        const storylineRes = resolveStorylineTurn({
-          content: pack.storyline,
-          storyline: storylineWorking,
-          state: result.state,
-          npcRelations: session.npcRelations,
-          facts: factsWorking,
-          signals: storylineSignals,
-          deliveredBeat: preTurnBeat ?? undefined,
-        });
+        const storylineRes = inActivePrologue
+          ? { storyline: session.storyline, state: result.state, npcRelations: session.npcRelations, lines: [] as string[], events: [] as EngineEvent[], pendingPickup: undefined }
+          : (() => {
+              let storylineWorking = session.storyline;
+              if (storyChoicePick) {
+                const choiceRes = recordChoice(pack.storyline, storylineWorking, storyChoicePick.chapterId, storyChoicePick.optionId);
+                storylineWorking = choiceRes.storyline;
+                if (choiceRes.fact) {
+                  factsWorking = applyFactUpdates(factsWorking, [{ text: choiceRes.fact }], result.state.campaign.tendaysElapsed);
+                }
+              }
+              // The beat only ever reaches the narrator through the activeChapter
+              // section, which exists ONLY on the JSON path — a combat round builds
+              // no context slice, so marking a beat delivered on a combat turn
+              // would burn it silently (delivered-but-never-narrated, trap 4's
+              // class via a path gap). Objectives still ADVANCE on combat turns
+              // (eliminate/survive need the fight's outcome); only beat delivery
+              // is JSON-path-gated.
+              const preTurnBeat = wasCombatTurn
+                ? null
+                : nextBeat(pack.storyline, session.storyline, session.state.npcs, session.state.campaign.tendaysElapsed ?? 0);
+              const storylineSignals = turnSignals(result.state.campaign.currentLocationId, result.events, combatResolvedAlive, session.sceneCard.presentNpcIds);
+              return resolveStorylineTurn({
+                content: pack.storyline,
+                storyline: storylineWorking,
+                state: result.state,
+                npcRelations: session.npcRelations,
+                facts: factsWorking,
+                signals: storylineSignals,
+                deliveredBeat: preTurnBeat ?? undefined,
+              });
+            })();
         result.state = storylineRes.state; // credits + faction rep + a signature item for any chapter paid out
         result.events = [...result.events, ...storylineRes.events];
         // Fold any crewUnlock relation bump back onto the live relations (same
@@ -725,6 +753,23 @@ export async function POST(req: NextRequest) {
         // A signature item that didn't fit the pack parks the same way any other
         // pickup does — the existing swap chips take it from here (trap 5).
         if (storylineRes.pendingPickup) session.sceneCard.pendingPickup = storylineRes.pendingPickup;
+
+        // ── PROLOGUE (HANDOFF_STORY_4.md Task C) — the authored Chapter 0.
+        //    Advances on real signals only, mirroring the storyline/jobs
+        //    pattern above: never model-driven. A legacy or already-graduated
+        //    campaign (prologueStage undefined/"complete") never runs this.
+        const prologueLines: string[] = [];
+        if (inActivePrologue) {
+          const stageBefore = session.state.campaign.prologueStage!;
+          const advance = advancePrologue(stageBefore, { turnCompleted: true, combatResolvedAlive, resolvedScale });
+          result.state = { ...result.state, campaign: { ...result.state.campaign, prologueStage: advance.stage } };
+          prologueLines.push(...advance.lines);
+          // The ally departs in-memory the same turn (the load seam in
+          // db/queries.ts's survivesLoad covers a cold reload after this).
+          if (advance.allyDeparts) {
+            result.state = { ...result.state, characters: result.state.characters.filter((c) => !c.temporary) };
+          }
+        }
 
         // ── ENGINE-OWNED TIME (engine/time.ts): a station hop, or every Nth scene
         //    close in place, advances the tenday clock — deterministic, never model-
@@ -891,7 +936,7 @@ export async function POST(req: NextRequest) {
         // Engine display lines (dice/ticks/damage/payment/combat/time) — the handlers
         // return them pre-prefixed; they become system transcript lines so a
         // refresh shows the same mechanics seen live.
-        const engineLineTexts = [...(result.engineLines ?? []), ...locLines, ...jobsRes.lines, ...storylineRes.lines, ...timeLines];
+        const engineLineTexts = [...(result.engineLines ?? []), ...locLines, ...jobsRes.lines, ...storylineRes.lines, ...timeLines, ...prologueLines];
         const engineLines = engineLineTexts.map((text) => ({ role: "system" as const, text }));
 
         const transcriptAdds = [

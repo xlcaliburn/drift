@@ -63,6 +63,22 @@ describe("resolveJobsTurn", () => {
   });
 });
 
+describe("suppressSidequests (HANDOFF_STORY_4.md decision 6)", () => {
+  // "cold-comfort" is a real, trigger-less live-pack sidequest posted at
+  // loc-rook (content/pack/drift/sidequests.ts) -- a real fixture, not a stub,
+  // since jobsRuntime.ts reads the live pack singleton directly.
+  it("injects the placed sidequest by default, and suppresses it when the prologue is active", () => {
+    const s = state({ currentLocationId: "loc-rook" });
+    const withSidequest = resolveJobsTurn({ state: s, jobs: [], events: [], combatResolvedAlive: false, rng: seededRng(1) });
+    expect(withSidequest.jobs.some((j) => j.id === "sq-cold-comfort")).toBe(true);
+
+    const suppressed = resolveJobsTurn({
+      state: s, jobs: [], events: [], combatResolvedAlive: false, rng: seededRng(1), suppressSidequests: true,
+    });
+    expect(suppressed.jobs.some((j) => j.id === "sq-cold-comfort")).toBe(false);
+  });
+});
+
 describe("personal-job arc resolution", () => {
   const personalJob = (): Job => ({
     id: "pj1", title: "Kessa — a personal favor", blurb: "wants a ship of her own", giver: "npc-gen-kessa",

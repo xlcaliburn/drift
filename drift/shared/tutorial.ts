@@ -23,19 +23,42 @@ export function resolvedQuestCount(state: CampaignState): number {
   return state.threads.filter((t) => t.status === "resolved").length;
 }
 
-/** In the tutorial while fewer than TUTORIAL_QUEST_TARGET quests are resolved. */
+/**
+ * In the tutorial while fewer than TUTORIAL_QUEST_TARGET quests are resolved
+ * — UNLESS this campaign runs the authored prologue (HANDOFF_STORY_4.md
+ * decision 3), in which case its `prologueStage` is the sole source of truth:
+ * "in tutorial" until the stage reaches `complete`. `prologueStage` is
+ * undefined on every campaign created before this slice, so this preserves
+ * EXACT existing behavior for every live campaign — zero backfill.
+ */
 export function inTutorial(state: CampaignState): boolean {
+  const stage = state.campaign?.prologueStage;
+  if (stage !== undefined) return stage !== "complete";
   return resolvedQuestCount(state) < TUTORIAL_QUEST_TARGET;
 }
 
 /**
- * True on exactly the turn the tutorial ends — i.e. the resolved-quest count
- * first reaches the target. Since the count is monotonic, `before < target <=
- * after` holds on one turn only, so this doubles as a one-time "just graduated"
- * signal with no stored flag. `before` is the pre-turn state, `after` the state
- * after this turn's tool calls have been applied.
+ * True on exactly the turn the tutorial ends. For a legacy (non-staged)
+ * campaign: the resolved-quest count first reaches the target (monotonic, so
+ * `before < target <= after` holds on one turn only — a one-time signal with
+ * no stored flag). For a staged campaign (HANDOFF_STORY_4.md): the prologue
+ * stage's graduation→complete transition, which is decided by
+ * `shared/prologue.ts`'s `advancePrologue` — this function only detects it
+ * here so every existing consumer (death.ts's tutorial-safe death saves, the
+ * TUTORIAL directives, the choice clamp) keeps working unedited. In practice
+ * this always reads false for a staged campaign at THIS call site: nothing
+ * mutates `prologueStage` between a turn's `before`/`after` engine-bridge
+ * snapshots, since route.ts applies the stage transition afterward and
+ * prints the prologue's own 🎓 lines instead of `TUTORIAL_GRADUATION_BEAT` —
+ * which is exactly the point: a staged campaign never fires the OLD beat.
+ * `before` is the pre-turn state, `after` the state after this turn's tool
+ * calls have been applied.
  */
 export function graduatedTutorialThisTurn(before: CampaignState, after: CampaignState): boolean {
+  const stageBefore = before.campaign?.prologueStage;
+  if (stageBefore !== undefined) {
+    return stageBefore !== "complete" && after.campaign?.prologueStage === "complete";
+  }
   return (
     resolvedQuestCount(before) < TUTORIAL_QUEST_TARGET &&
     resolvedQuestCount(after) >= TUTORIAL_QUEST_TARGET
