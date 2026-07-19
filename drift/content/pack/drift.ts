@@ -233,16 +233,53 @@ export const driftPack: ContentPack = {
    *  NOTE: never seed a faction as an NPC (validatePack enforces it) — the live
    *  "Sable Chain the person" bug. Give a faction a human face instead. */
   cast: [
-    { id: "npc-ilyana", name: "Ilyana", oneBreath: "Hollow Crown debt handler on Meridian — pragmatic, watches debtors fail for a living; a gateway to Crown contractor work for those who prove reliable.", factionId: "f-crown", locationId: "loc-meridian" },
-    { id: "npc-broker", name: "Meridian broker", oneBreath: "A pragmatic Crown-backed trade-house broker on Meridian who offers standing bulk contracts; increasingly wary as Sable Chain pressure creeps onto the lanes.", factionId: "f-crown", locationId: "loc-meridian" },
-    { id: "npc-ledger", name: "The Ledger", oneBreath: "Rook's symbol-marked courier-fixer, no real name — a Free Drift operator who moves cargo and secrets for anyone, trusted by all sides and beholden to none.", factionId: "f-free", locationId: "loc-rook" },
+    {
+      id: "npc-ilyana", name: "Ilyana", oneBreath: "Hollow Crown debt handler on Meridian — pragmatic, watches debtors fail for a living; a gateway to Crown contractor work for those who prove reliable.", factionId: "f-crown", locationId: "loc-meridian",
+      // Season One "FAULT LINE" (HANDOFF_STORY_3.md Task A) — spoiler-safe;
+      // the reveal lives in `secret`, gated to the chapter that arms it.
+      backstory: "Believes the Crown's ledger system is at least honest, even when it's cruel — pragmatic about debt, and about what happens to those who can't pay it.",
+      secret: "Six years ago she flagged a claim dated before its own wreck. The flag vanished and she was demoted to the collections floor. She kept a copy.",
+      arc: ["Loyal professional — by the book, no exceptions.", "Privately reopens her own buried flag.", "Picks a side, her old copy in hand."],
+    },
+    { id: "npc-broker", name: "Meridian broker", oneBreath: "A pragmatic Crown-backed trade-house broker on Meridian who offers standing bulk contracts; increasingly wary as Sable Chain pressure creeps onto the lanes.", factionId: "f-crown", locationId: "loc-meridian",
+      backstory: "A standing-contracts broker who's quietly started re-checking old Crown claim dates against the ships they were filed for — and not liking what she's finding.",
+    },
+    {
+      id: "npc-ledger", name: "The Ledger", oneBreath: "Rook's symbol-marked courier-fixer, no real name — a Free Drift operator who moves cargo and secrets for anyone, trusted by all sides and beholden to none.", factionId: "f-free", locationId: "loc-rook",
+      backstory: "No name anyone's gotten to stick; carries every side's secrets and none of their colors. The symbol marked on their cargo is older than their career.",
+      secret: "The mark is the Verity's hull registry. The Ledger is a grandchild of its survivors — the famous neutrality is a long game aimed at the Hollow Crown.",
+      arc: ["Broker's curiosity — interested, not yet committed.", "Calling in old favors across every faction at once.", "All in. It was always personal."],
+    },
     { id: "npc-undertow", name: "Undertow contact", oneBreath: "The Undertow's bounty desk at Rook — respects a clean operator and pays for results.", factionId: "f-undertow", locationId: "loc-rook" },
-    { id: "npc-kesh", name: "Kesh", oneBreath: "Wreck-field researcher aligned with the Reclaimers; holds proof a colony ship's 'accident' was decades-old sabotage, and is undecided what to do with it.", factionId: "f-reclaimers" },
+    {
+      id: "npc-kesh", name: "Kesh", oneBreath: "Wreck-field researcher aligned with the Reclaimers; holds proof a colony ship's 'accident' was decades-old sabotage, and is undecided what to do with it.", factionId: "f-reclaimers",
+      backstory: "Years spent quietly assembling the case that the Wake's worst wreck wasn't an accident — she has the proof, and still hasn't decided who deserves to see it.",
+      secret: "She took Crown hush money once, early in the research — signed silence over a 'salvage anomaly.' Everyone who knows assumes she stayed bought.",
+      arc: ["Hunted researcher — cautious, watching who's asking.", "Commits. Burns the nondisclosure she signed years ago.", "Hands over custody of the whole case. All trust."],
+    },
     { id: "npc-chrome", name: "Chrome", oneBreath: "Rook's back-room body artist — reshapes a face, a build, a whole silhouette for anyone with the credits and a reason to become someone new. Discreet, unbothered, expensive.", role: "body-modification artist", locationId: "loc-rook" },
-    { id: "npc-quist", name: "Harbormaster Quist", oneBreath: "Halcyon's harbormaster — keeps the freeport neutral by force of reputation; knows every hull, every debt, and every crew that passes through, and trades berths for favors.", factionId: "f-free", locationId: "loc-freeport", role: "harbormaster" },
-    { id: "npc-brekk", name: "Quartermaster Brekk", oneBreath: "Coldharbor's quartermaster — runs the Sable Chain's staging docks with cold efficiency; always short on reliable hands for runs onto the Crown lanes. Pays fast, asks twice as much next time.", factionId: "f-sable", locationId: "loc-sable", role: "Sable quartermaster" },
-    { id: "npc-osk", name: "Foreman Osk", oneBreath: "Cinderhaul's dock foreman — twenty years of slag and short pay; keeps the ore moving and quietly shields his crews from the syndicate collectors when he can.", locationId: "loc-cinder", role: "dock foreman" },
-    { id: "npc-ismay", name: "Warden Ismay", oneBreath: "The Wake's warden — a Reclaimer who logs every hull in the graveyard and decides who salvages where; superstitious about the wrecks, and rightly so.", factionId: "f-reclaimers", locationId: "loc-wake", role: "graveyard warden" },
+    {
+      id: "npc-quist", name: "Harbormaster Quist", oneBreath: "Halcyon's harbormaster — keeps the freeport neutral by force of reputation; knows every hull, every debt, and every crew that passes through, and trades berths for favors.", factionId: "f-free", locationId: "loc-freeport", role: "harbormaster",
+      backstory: "Keeps Halcyon neutral by force of reputation, not luck — he watched a 'neutral' port burn once, and has never let his guard down since.",
+    },
+    {
+      id: "npc-brekk", name: "Quartermaster Brekk", oneBreath: "Coldharbor's quartermaster — runs the Sable Chain's staging docks with cold efficiency; always short on reliable hands for runs onto the Crown lanes. Pays fast, asks twice as much next time.", factionId: "f-sable", locationId: "loc-sable", role: "Sable quartermaster",
+      backstory: "Runs Coldharbor's staging docks with cold efficiency, always short on hands he trusts for the runs that matter — pays fast, and the price climbs every time.",
+      secret: "His bid for the Verity proof is his own play — no Chain sanction, no backstop. If it sours, Coldharbor never knew him.",
+      arc: ["Opportunist — sees an angle, moves on it.", "Over-extended. Pressing harder than he should.", "Exposed — ally or enemy, by the player's choice."],
+    },
+    {
+      id: "npc-osk", name: "Foreman Osk", oneBreath: "Cinderhaul's dock foreman — twenty years of slag and short pay; keeps the ore moving and quietly shields his crews from the syndicate collectors when he can.", locationId: "loc-cinder", role: "dock foreman",
+      backstory: "Twenty years of slag and short pay on Cinderhaul's dock floor; shields his crews from the syndicate collectors whenever he can afford to.",
+      secret: "His apprentice-mark is milled inside the Verity's detonator housings — a 'lane-clearance' job he ran at nineteen, specced blind, never questioned.",
+      arc: ["Weary foreman — tired, not yet afraid.", "Implicated, and afraid for his crews.", "Defiant. Hands over the work order himself."],
+    },
+    {
+      id: "npc-ismay", name: "Warden Ismay", oneBreath: "The Wake's warden — a Reclaimer who logs every hull in the graveyard and decides who salvages where; superstitious about the wrecks, and rightly so.", factionId: "f-reclaimers", locationId: "loc-wake", role: "graveyard warden",
+      backstory: "Logs every hull that comes through the graveyard by hand; her superstitions about the wrecks have kept more salvage crews alive than luck ever did.",
+      secret: "She scrubbed a pod's berth-of-origin from her own ledgers decades ago — silence traded so the Crown would leave the graveyard, and its dead, alone.",
+      arc: ["Guarded gatekeeper — rules first, questions later.", "Shaken. The ledgers she buried are getting reopened.", "Makes her peace with it — testifies to what she hid."],
+    },
   ],
 
   jobFlavor: {

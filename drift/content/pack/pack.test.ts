@@ -366,10 +366,33 @@ describe("content pack — ship2 outfitting completeness (HANDOFF_COMBAT_V2_3.md
   });
 });
 
-describe("content pack — authored cast depth (HANDOFF_STORY_2.md Task A)", () => {
-  it("the live pack ships ZERO authored depth (dormant until 3b)", () => {
-    expect(pack.cast.every((n) => n.backstory === undefined && n.secret === undefined && n.arc === undefined)).toBe(true);
-    expect(buildAuthoredCastDepth(pack.cast)).toEqual({});
+describe("content pack — authored cast depth (HANDOFF_STORY_2.md Task A; armed by HANDOFF_STORY_3.md)", () => {
+  const PRINCIPALS = ["npc-ledger", "npc-ismay", "npc-kesh", "npc-ilyana", "npc-osk", "npc-brekk"];
+  const BACKSTORY_ONLY = ["npc-quist", "npc-broker"];
+
+  it("Season One's six principals carry backstory + secret + a 3-line arc; two carry backstory only; everyone else is dormant", () => {
+    for (const id of PRINCIPALS) {
+      const n = pack.cast.find((c) => c.id === id)!;
+      expect(n.backstory, `${id} backstory`).toBeTruthy();
+      expect(n.secret, `${id} secret`).toBeTruthy();
+      expect(n.arc, `${id} arc`).toHaveLength(3);
+    }
+    for (const id of BACKSTORY_ONLY) {
+      const n = pack.cast.find((c) => c.id === id)!;
+      expect(n.backstory, `${id} backstory`).toBeTruthy();
+      expect(n.secret, `${id} secret`).toBeUndefined();
+      expect(n.arc, `${id} arc`).toBeUndefined();
+    }
+    const depthless = pack.cast.filter((n) => !PRINCIPALS.includes(n.id) && !BACKSTORY_ONLY.includes(n.id));
+    expect(depthless.every((n) => n.backstory === undefined && n.secret === undefined && n.arc === undefined)).toBe(true);
+  });
+
+  it("authored depth stays inside the prose length caps (HANDOFF_STORY_3.md trap 9)", () => {
+    for (const n of pack.cast) {
+      if (n.backstory) expect(n.backstory.length, `${n.id} backstory`).toBeLessThanOrEqual(220);
+      if (n.secret) expect(n.secret.length, `${n.id} secret`).toBeLessThanOrEqual(260);
+      for (const line of n.arc ?? []) expect(line.length, `${n.id} arc line`).toBeLessThanOrEqual(140);
+    }
   });
 
   it("keys only cast members carrying at least one authored field", () => {
