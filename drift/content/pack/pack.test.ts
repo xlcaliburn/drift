@@ -295,9 +295,29 @@ describe("content pack — storyline schema + referential integrity (HANDOFF_STO
   });
 });
 
-describe("content pack — sidequest schema + referential integrity (HANDOFF_STORY_2.md Task C)", () => {
-  it("the live pack ships ZERO sidequests (dormant until 3b)", () => {
-    expect(pack.sidequests).toEqual([]);
+describe("content pack — sidequest schema + referential integrity (HANDOFF_STORY_2.md Task C; armed by HANDOFF_STORY_3.md)", () => {
+  it("Season One's 12 sidequests are armed, with unique ids", () => {
+    expect(pack.sidequests).toHaveLength(12);
+    const ids = pack.sidequests.map((sq) => sq.id);
+    expect(new Set(ids).size).toBe(12);
+  });
+
+  it("the two fact-gated sidequests key off ch-4's OWN choice facts, character-for-character", () => {
+    const ch4 = pack.storyline.chapters.find((c) => c.id === "ch-4")!;
+    const ch4Facts = new Set(ch4.choicePoint!.options.map((o) => o.fact));
+    const factGated = pack.sidequests.filter((sq) => sq.trigger?.hasFact);
+    expect(factGated).toHaveLength(2);
+    for (const sq of factGated) {
+      expect(ch4Facts, `${sq.id}'s hasFact matches a real ch-4 option`).toContain(sq.trigger!.hasFact);
+    }
+    expect(new Set(factGated.map((sq) => sq.trigger!.hasFact)).size).toBe(2); // one sidequest per branch
+  });
+
+  it("sidequest prose stays inside the length caps (HANDOFF_STORY_3.md trap 9)", () => {
+    for (const sq of pack.sidequests) {
+      expect(sq.blurb.length, `${sq.id} blurb`).toBeLessThanOrEqual(160);
+      for (const obj of sq.objectives) expect(obj.summary.length, `${sq.id}.${obj.id} summary`).toBeLessThanOrEqual(100);
+    }
   });
 
   function sq(over: Partial<(typeof pack.sidequests)[number]> = {}) {

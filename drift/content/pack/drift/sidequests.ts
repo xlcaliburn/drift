@@ -1,11 +1,164 @@
 import type { PackSidequest } from "../types";
 
 /**
- * Authored, placed side quests (STORY.md §2, HANDOFF_STORY_2.md Task C) —
- * EMPTY on purpose, same as storyline.ts: this slice ships the machinery
- * only (schema, materialization, injection into the board), proven against
- * a test-only stub (shared/sidequests.test.ts); arming the live pack with
- * real sidequests is 3b's job (Fable drafts, owner edits — see
- * STORY_AUTHORING.md once that lands).
+ * Authored, placed side quests (STORY.md §2, HANDOFF_STORY_3.md Task C) —
+ * 12 entries riding the same locations/cast/facts as Season One "FAULT LINE"
+ * (content/pack/drift/storyline.ts). Each becomes a real, placed job offer
+ * the moment its trigger holds (thin wrapper on the existing Job machinery —
+ * shared/sidequests.ts); the two fact-gated entries key off ch-4's own
+ * choice facts character-for-character.
  */
-export const driftSidequests: PackSidequest[] = [];
+export const driftSidequests: PackSidequest[] = [
+  {
+    id: "cold-comfort",
+    title: "Cold Comfort",
+    blurb: "A sealed packet, no questions, straight to Halcyon.",
+    giverNpcId: "npc-ledger",
+    factionId: "f-free",
+    tier: "T1",
+    postedLocationId: "loc-rook",
+    objectives: [{ id: "o1", kind: "deliver", summary: "Deliver the packet to Halcyon.", locationId: "loc-freeport" }],
+    cargo: "a sealed courier packet",
+    reward: { repFactionId: "f-free", repDelta: 1 },
+  },
+  {
+    id: "collections-floor",
+    title: "Collections Floor",
+    blurb: "One family, one payment plan, and a debt handler who'll listen if you make the case well enough.",
+    giverNpcId: "npc-ilyana",
+    factionId: "f-crown",
+    tier: "T1",
+    postedLocationId: "loc-meridian",
+    objectives: [{ id: "o1", kind: "persuade", summary: "Argue down a defaulting dock family's case.", requiredSkills: ["negotiation", "diplomacy"] }],
+    reward: { repFactionId: "f-crown", repDelta: 1 },
+  },
+  {
+    id: "quists-tariff",
+    title: "Quist's Tariff",
+    blurb: "Someone's skimming Halcyon's berth fees, and Quist wants a name before he handles it himself.",
+    giverNpcId: "npc-quist",
+    factionId: "f-free",
+    tier: "T1",
+    postedLocationId: "loc-freeport",
+    objectives: [
+      { id: "o1", kind: "report", summary: "Report to Harbormaster Quist.", npcId: "npc-quist" },
+      { id: "o2", kind: "investigate", summary: "Find who's skimming the berth fees.", requiredSkills: ["streetwise", "perception"] },
+    ],
+    reward: { repFactionId: "f-free", repDelta: 1 },
+  },
+  {
+    id: "chromes-parcel",
+    title: "Chrome's Parcel",
+    blurb: "A refrigerated case, no questions, out to Talos before it warms up.",
+    giverNpcId: "npc-chrome",
+    tier: "T1",
+    postedLocationId: "loc-rook",
+    objectives: [{ id: "o1", kind: "deliver", summary: "Deliver the case to Talos, refrigerated.", locationId: "loc-talos" }],
+    cargo: "a refrigerated case, no questions",
+    reward: {},
+  },
+  {
+    id: "wake-vigil",
+    title: "Wake Vigil",
+    blurb: "A wreck field just shifted; Ismay wants it charted before someone finds out the hard way.",
+    giverNpcId: "npc-ismay",
+    factionId: "f-reclaimers",
+    tier: "T1",
+    postedLocationId: "loc-wake",
+    objectives: [{ id: "o1", kind: "investigate", summary: "Chart the newly-shifted wreck field.", requiredSkills: ["perception", "electronics"] }],
+    reward: { repFactionId: "f-reclaimers", repDelta: 1 },
+  },
+  {
+    id: "osks-quota",
+    title: "Osk's Quota",
+    blurb: "The syndicate collectors are squeezing his crews again. Osk wants them run off, permanently.",
+    giverNpcId: "npc-osk",
+    tier: "T2",
+    postedLocationId: "loc-cinder",
+    trigger: { actAtLeast: 2 },
+    objectives: [{ id: "o1", kind: "eliminate", summary: "Run off the collectors squeezing Osk's crews.", enemyTier: "T2" }],
+    reward: {},
+  },
+  {
+    id: "brekks-manifest",
+    title: "Brekk's Manifest",
+    blurb: "Unmarked drive components, no flight plan, no records — Brekk's paying well for the risk.",
+    giverNpcId: "npc-brekk",
+    factionId: "f-sable",
+    tier: "T2",
+    postedLocationId: "loc-sable",
+    trigger: { actAtLeast: 2 },
+    objectives: [{ id: "o1", kind: "deliver", summary: "Deliver the components to the Nest, off the books.", locationId: "loc-nest" }],
+    cargo: "unmarked drive components",
+    complication: "no flight plan, no records",
+    reward: { repFactionId: "f-sable", repDelta: 1 },
+  },
+  {
+    id: "undertow-marker",
+    title: "Undertow Marker",
+    blurb: "A bounty's gone to ground at the Undertow outpost. Clean work, clean pay.",
+    giverNpcId: "npc-undertow",
+    factionId: "f-undertow",
+    tier: "T2",
+    postedLocationId: "loc-rook",
+    objectives: [
+      { id: "o1", kind: "travel", summary: "Reach the Undertow outpost.", locationId: "loc-undertow" },
+      { id: "o2", kind: "eliminate", summary: "Take down the bounty gone to ground.", enemyTier: "T2" },
+    ],
+    reward: { repFactionId: "f-undertow", repDelta: 1 },
+  },
+  {
+    id: "keshs-samples",
+    title: "Kesh's Samples",
+    blurb: "Kesh left instrument packages out at the Shear — she wants them back before someone else finds them.",
+    giverNpcId: "npc-kesh",
+    factionId: "f-reclaimers",
+    tier: "T1",
+    postedLocationId: "loc-talos",
+    trigger: { actAtLeast: 2 },
+    objectives: [
+      { id: "o1", kind: "travel", summary: "Reach the Shear.", locationId: "loc-shear" },
+      { id: "o2", kind: "investigate", summary: "Recover Kesh's instrument packages.", requiredSkills: ["electronics", "mechanics"] },
+    ],
+    reward: { repFactionId: "f-reclaimers", repDelta: 1 },
+  },
+  {
+    id: "confidence-kept",
+    title: "Confidence Kept",
+    blurb: "Ilyana wants to know who else in the Crown has been reading her files.",
+    giverNpcId: "npc-ilyana",
+    factionId: "f-crown",
+    tier: "T2",
+    postedLocationId: "loc-meridian",
+    trigger: { hasFact: "faultline-confided-ilyana" },
+    objectives: [{ id: "o1", kind: "investigate", summary: "Find who else in the Crown reads her files.", requiredSkills: ["streetwise", "perception"] }],
+    reward: { repFactionId: "f-crown", repDelta: 1 },
+  },
+  {
+    id: "no-friends-in-collections",
+    title: "No Friends in Collections",
+    blurb: "The Crown's put a quiet marker on the player's name. The Ledger knows how to counter it.",
+    giverNpcId: "npc-ledger",
+    factionId: "f-free",
+    tier: "T2",
+    postedLocationId: "loc-rook",
+    trigger: { hasFact: "faultline-stonewalled-crown" },
+    objectives: [{ id: "o1", kind: "persuade", summary: "Get the Crown's quiet marker lifted.", requiredSkills: ["streetwise", "negotiation"] }],
+    reward: { repFactionId: "f-free", repDelta: 1 },
+  },
+  {
+    id: "gravedigger",
+    title: "Gravedigger",
+    blurb: "Wreckers are stripping the Verity's sister ship. Ismay wants them off her graveyard.",
+    giverNpcId: "npc-ismay",
+    factionId: "f-reclaimers",
+    tier: "T2",
+    postedLocationId: "loc-wake",
+    trigger: { actAtLeast: 3 },
+    objectives: [
+      { id: "o1", kind: "travel", summary: "Reach the Shear.", locationId: "loc-shear" },
+      { id: "o2", kind: "eliminate", summary: "Drive the Wreckers off the sister wreck.", enemyTier: "T2" },
+    ],
+    reward: { repFactionId: "f-reclaimers", repDelta: 1 },
+  },
+];
