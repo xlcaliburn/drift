@@ -109,9 +109,51 @@ describe("content pack — ship2 CombatSystem completeness (HANDOFF_COMBAT_V2_2.
   });
 });
 
-describe("content pack — storyline schema + referential integrity (HANDOFF_STORY_1.md)", () => {
-  it("the live pack ships an EMPTY storyline (dormant until content lands)", () => {
-    expect(pack.storyline.chapters).toEqual([]);
+describe("content pack — storyline schema + referential integrity (HANDOFF_STORY_1.md; armed by HANDOFF_STORY_3.md)", () => {
+  it("Season One 'FAULT LINE' is armed: 11 chapters in order, ch-1..ch-9c", () => {
+    expect(pack.storyline.chapters.map((c) => c.id)).toEqual([
+      "ch-1", "ch-2", "ch-3", "ch-4", "ch-5", "ch-6", "ch-7", "ch-8", "ch-9a", "ch-9b", "ch-9c",
+    ]);
+  });
+
+  it("exactly two choicePoints (ch-4's allegiance pick, ch-8's finale pick)", () => {
+    const withChoice = pack.storyline.chapters.filter((c) => c.choicePoint);
+    expect(withChoice.map((c) => c.id)).toEqual(["ch-4", "ch-8"]);
+  });
+
+  it("ch-9a/b/c are three MUTUALLY EXCLUSIVE finale variants — each requires ch-8 plus exactly one of ch-8's own facts", () => {
+    const ch8 = pack.storyline.chapters.find((c) => c.id === "ch-8")!;
+    const finaleFacts = ch8.choicePoint!.options.map((o) => o.fact).sort();
+    expect(finaleFacts).toEqual(["faultline-armed-the-chain", "faultline-broadcast-open", "faultline-buried-with-crown"]);
+    const finales = ["ch-9a", "ch-9b", "ch-9c"].map((id) => pack.storyline.chapters.find((c) => c.id === id)!);
+    for (const chapter of finales) {
+      expect(chapter.trigger.requiresChapterId, `${chapter.id} prerequisite`).toBe("ch-8");
+      expect(chapter.trigger.hasFact, `${chapter.id} fact gate`).toBeTruthy();
+      expect(finaleFacts, `${chapter.id}'s fact is one of ch-8's own options`).toContain(chapter.trigger.hasFact);
+    }
+    // Mutually exclusive by construction: three distinct facts, one each.
+    expect(new Set(finales.map((c) => c.trigger.hasFact)).size).toBe(3);
+  });
+
+  it("ch-1..ch-8 chain requiresChapterId in strict sequence (the shared spine)", () => {
+    const spine = ["ch-1", "ch-2", "ch-3", "ch-4", "ch-5", "ch-6", "ch-7", "ch-8"];
+    for (let i = 1; i < spine.length; i++) {
+      const chapter = pack.storyline.chapters.find((c) => c.id === spine[i])!;
+      expect(chapter.trigger.requiresChapterId, `${spine[i]} prerequisite`).toBe(spine[i - 1]);
+    }
+    expect(pack.storyline.chapters.find((c) => c.id === "ch-1")!.trigger.requiresChapterId).toBeUndefined();
+  });
+
+  it("directive/fallback/objective-summary/arc text stays inside the prose length caps (HANDOFF_STORY_3.md trap 9)", () => {
+    for (const c of pack.storyline.chapters) {
+      for (const beat of c.beats) {
+        expect(beat.directive.length, `${c.id}.${beat.id} directive`).toBeLessThanOrEqual(260);
+        if (beat.fallbackDirective) expect(beat.fallbackDirective.length, `${c.id}.${beat.id} fallback`).toBeLessThanOrEqual(260);
+      }
+      for (const obj of c.objectives) {
+        expect(obj.summary.length, `${c.id}.${obj.id} summary`).toBeLessThanOrEqual(100);
+      }
+    }
   });
 
   function chapter(over: Partial<(typeof pack.storyline.chapters)[number]> = {}) {
