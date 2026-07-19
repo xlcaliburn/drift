@@ -3,9 +3,10 @@
 *Owner direction from playtest feedback (2026-07-18): "a single main
 questline that has rich npc backstories woven in, and pre-created sidequests
 as well, not just auto-generated ones." Companion to COMBAT_V2.md (the
-prologue showcases both systems). **Machinery + Season One "FAULT LINE" are
-FULLY SHIPPED (2026-07-18)** — see the build order below; only the prologue
-(slice 4) remains.*
+prologue showcases both systems). **This entire roadmap is now FULLY SHIPPED
+(2026-07-18)** — see the build order below. What's left for STORY.md is
+future SEASONS (owner-authored pack content, no new code), tracked in
+STATUS.md, not this doc.*
 
 ## Why (what playtests showed)
 
@@ -155,18 +156,42 @@ chapter that showcases both combat systems (COMBAT_V2.md):
    slice added no code, so faction-flavored openings stay a future idea,
    not a gap in this season. Owner edits/tunes from here per
    `STORY_AUTHORING.md` — genuinely just pack-file edits, no code.
-4. **Prologue** — **specced into `HANDOFF_STORY_4.md` (READY TO
-   IMPLEMENT)**. NOT a storyline chapter (no trigger predicate can
+4. ~~**Prologue**~~ — SHIPPED 2026-07-18 (`HANDOFF_STORY_4.md`, fully
+   annotated). NOT a storyline chapter (no trigger predicate can
    distinguish a new campaign from a veteran, so a "ch-0" would either
    open for everyone or strand ch-1) — its own track: `pack.prologue`
-   (per-faction temporary ally + four stage directives) + a persisted
-   `Campaign.prologueStage`, engine-advanced intro → groundFight →
-   shipFight → graduation → complete on real signals (scale-aware fight
-   resolution). `undefined` stage = legacy campaign = the OLD quest-count
-   tutorial rules apply unchanged (zero backfill, zero behavior change
-   live). The ally rides migration 030's `temporary` character flag —
-   built for exactly this. Storyline + authored sidequests pause while
-   the prologue runs.
+   (`content/pack/drift/prologue.ts` — six per-faction temporary allies +
+   four stage directives) + a persisted `Campaign.prologueStage`
+   (migration 032), engine-advanced (`shared/prologue.ts`'s pure
+   `advancePrologue`) intro → groundFight → shipFight → graduation →
+   complete on real signals only — a completed turn for the two
+   turn-count transitions, a fight resolved alive AT THE MATCHING SCALE
+   for the two combat transitions (a personal-scale win never clears
+   shipFight and vice versa — the scale is snapshotted before the fight
+   clears, since a resolved `CombatState` is nulled by resolution).
+   `undefined` stage = legacy campaign = the OLD quest-count tutorial
+   rule applies unchanged, verified byte-for-byte (`shared/tutorial.ts`'s
+   `inTutorial`/`graduatedTutorialThisTurn` redefined to read the stage
+   first and fall back to the quest count only when it's unset — every
+   existing consumer, incl. death.ts's tutorial-safe death saves,
+   inherits this with zero edits). The ally rides migration 030's
+   `temporary` character flag (built for exactly this) as a real
+   squad-orderable `kind: "party"` character, id-derived from the
+   globally-unique campaign id (not an RNG suffix — `characters.id` is a
+   GLOBAL primary key, so a deterministic RNG seed risks collision across
+   campaigns) rather than reusing `shared/crew.ts`'s `buildCrewMember`
+   as-is. It departs in-memory on `allyDeparts` and never resurrects on a
+   cold load (`db/queries.ts`'s `survivesLoad` drops a `temporary`
+   character once the campaign's stage is `complete`). Storyline +
+   authored sidequests pause while the prologue runs (`resolveJobsTurn`
+   gained one new field, `suppressSidequests`, default false) and resume
+   untouched at completion. One canonLint fix mid-build: the ally's
+   crew ROLE per faction had to move onto the pack itself
+   (`PackPrologueAlly.crewRole`) rather than a faction→role lookup table
+   in `lib/newCampaign.ts` — even a small combat-role mapping counts as
+   canon data. Known accepted gap: a model that never stages the ship
+   fight stalls the shipFight stage indefinitely (no auto-skip this
+   slice — the stage is hot-recoverable via the admin editor).
 
 ## Decisions (RESOLVED 2026-07-18 — owner approved recommendations)
 

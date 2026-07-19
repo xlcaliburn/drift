@@ -30,7 +30,7 @@ npm install
 cp .env.example .env.local     # DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY; + Supabase vars for auth
 npm run dev                    # http://localhost:3000
 npx tsc --noEmit               # fast typecheck (never touches .next)
-npx vitest run                 # ~1102 model-free tests, no keys needed
+npx vitest run                 # ~1133 model-free tests, no keys needed
 ```
 
 - **Keyless mode** (no Supabase vars): no login, stub dev admin, nothing persists.
@@ -100,15 +100,33 @@ npx vitest run                 # ~1102 model-free tests, no keys needed
      hook line, nothing else moved). One deliberate deferral: a single
      neutral opener via the Ledger rather than per-faction variants (no
      faction trigger predicate exists; noted for a future slice, not a
-     gap). NEXT: **the PROLOGUE — specced into `HANDOFF_STORY_4.md`
-     (READY TO IMPLEMENT)** — NOT a storyline chapter (no trigger
-     predicate distinguishes new campaigns from veterans): its own track,
-     `pack.prologue` (per-faction temporary ally + four stage directives)
-     + a persisted `Campaign.prologueStage`, engine-advanced on
-     scale-aware fight signals; `undefined` stage = legacy = old
-     quest-count tutorial rules unchanged (zero live-campaign impact);
-     the ally rides migration 030's `temporary` flag; storyline +
-     authored sidequests pause while the prologue runs.
+     gap). **`HANDOFF_STORY_4.md` — THE PROLOGUE — is ALSO FULLY SHIPPED
+     (2026-07-18)**, closing out STORY.md's entire roadmap: NOT a
+     storyline chapter (no trigger predicate distinguishes new campaigns
+     from veterans) — its own track, `pack.prologue`
+     (`content/pack/drift/prologue.ts`: six per-faction temporary allies
+     + four stage directives) + a persisted `Campaign.prologueStage`
+     (migration 032), engine-advanced (`shared/prologue.ts`) intro →
+     groundFight → shipFight → graduation → complete on real signals
+     only — scale-aware fight resolution (a personal win never clears
+     shipFight and vice versa; the scale is snapshotted before the fight
+     clears). `undefined` stage = legacy campaign = the OLD quest-count
+     tutorial rule applies unchanged, verified byte-for-byte
+     (`shared/tutorial.ts`'s redefinition falls back to the count only
+     when the stage is unset — every existing consumer inherits this
+     with zero edits). The ally rides migration 030's `temporary` flag as
+     a real squad-orderable character, id-derived from the
+     already-globally-unique campaign id (not an RNG suffix, since
+     `characters.id` is a global primary key); it departs in-memory on
+     graduation and never resurrects on a cold load
+     (`db/queries.ts`'s `survivesLoad`). Storyline + authored sidequests
+     pause while the prologue runs (`resolveJobsTurn` gained one field,
+     `suppressSidequests`) and resume untouched at completion. Known
+     accepted gap: a model that never stages the ship fight stalls the
+     shipFight stage indefinitely — hot-recoverable via the admin editor,
+     no auto-skip this slice. **STORY.md itself is now fully shipped**;
+     what's left is future SEASONS — owner-authored pack content per
+     `STORY_AUTHORING.md`, no new code.
    - Squad orders' own follow-up: aim/cover/switch + role specials
      (engineer overcharge etc.) for crew, deferred this slice (COMBAT_V2.md's
      shipped-note). Ship2's crew passives are similarly all-always-on, not

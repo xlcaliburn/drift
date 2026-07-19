@@ -721,7 +721,13 @@ export async function POST(req: NextRequest) {
                 const choiceRes = recordChoice(pack.storyline, storylineWorking, storyChoicePick.chapterId, storyChoicePick.optionId);
                 storylineWorking = choiceRes.storyline;
                 if (choiceRes.fact) {
-                  factsWorking = applyFactUpdates(factsWorking, [{ text: choiceRes.fact }], result.state.campaign.tendaysElapsed);
+                  // HANDOFF_STORY_3 review gap, closed as a Task C rider (route
+                  // file already open): this fact is ENGINE-deterministic (a
+                  // choicePoint's authored fact string, never model output), so
+                  // pinning it carries none of the cheap-model-over-pins risk
+                  // `pinned` otherwise guards against — it just stops eviction
+                  // from silently ending the fact-gated sidequests it unlocks.
+                  factsWorking = applyFactUpdates(factsWorking, [{ text: choiceRes.fact, pinned: true }], result.state.campaign.tendaysElapsed);
                 }
               }
               // The beat only ever reaches the narrator through the activeChapter

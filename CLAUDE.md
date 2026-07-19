@@ -267,13 +267,28 @@ Don't add prose rules for things the engine can enforce.
   in, and the golden re-pinned exactly once (one new hook line, nothing
   else moved). One deliberate deferral: a single neutral opener via the
   Ledger rather than per-faction variants (no faction trigger predicate
-  exists). NEXT: the PROLOGUE — **specced into `HANDOFF_STORY_4.md`
-  (READY TO IMPLEMENT)**: NOT a storyline chapter (no trigger predicate
-  distinguishes new campaigns from veterans) — its own `pack.prologue`
-  track + persisted `Campaign.prologueStage`, engine-advanced on
-  scale-aware fight signals; `undefined` stage = legacy = old tutorial
-  rules unchanged; the ally rides migration 030's `temporary` flag;
-  storyline + sidequests pause during the prologue.
+  exists). `HANDOFF_STORY_4.md` — THE PROLOGUE — is ALSO **FULLY SHIPPED
+  (2026-07-18)**, closing out STORY.md's entire roadmap (what's left is
+  future SEASONS as pack content, not code): NOT a storyline chapter (no
+  trigger predicate distinguishes new campaigns from veterans) — its own
+  `pack.prologue` track (`content/pack/drift/prologue.ts`) + persisted
+  `Campaign.prologueStage` (migration 032), engine-advanced
+  (`shared/prologue.ts`) on scale-aware fight signals (a resolved fight's
+  scale is snapshotted before it clears, so a personal win never
+  advances the ship-fight stage or vice versa); `undefined` stage =
+  legacy campaign = the OLD quest-count tutorial rule unchanged, byte-
+  for-byte (`shared/tutorial.ts`'s redefinition falls back to it only
+  when unset — every existing consumer inherits this with zero edits).
+  The ally rides migration 030's `temporary` flag as a real
+  squad-orderable character, id-derived from the campaign id itself
+  (not an RNG suffix — `characters.id` is a GLOBAL primary key); it
+  departs in-memory at graduation and never resurrects on a cold load
+  (`db/queries.ts`'s `survivesLoad`). Storyline + authored sidequests
+  pause while the prologue runs (`resolveJobsTurn` gained one field,
+  `suppressSidequests`) and resume untouched at completion. Known
+  accepted gap: a model that never stages the ship fight stalls that
+  stage indefinitely — hot-recoverable via the admin editor, no
+  auto-skip this slice.
 - `COMBAT_V2.md` — **DESIGN (owner priority, decisions RESOLVED), Parts A+B
   core + customization all SHIPPED (2026-07-18)**: squad control (order every
   party member, temporary allies — Part A) + Eclipse-style ship combat (power
