@@ -364,6 +364,13 @@ export const WorldEvent = z.object({
 });
 export type WorldEvent = z.infer<typeof WorldEvent>;
 
+/** HANDOFF_STORY_4.md — the authored prologue's stage machine.
+ *  `undefined` on `Campaign.prologueStage` means a LEGACY campaign: the OLD
+ *  quest-count tutorial rule applies unchanged, no ally, no directive, no
+ *  pause (shared/tutorial.ts, shared/prologue.ts). */
+export const PrologueStage = z.enum(["intro", "groundFight", "shipFight", "graduation", "complete"]);
+export type PrologueStage = z.infer<typeof PrologueStage>;
+
 export const Campaign = z.object({
   id: z.string(),
   universeId: z.string(),
@@ -386,6 +393,10 @@ export const Campaign = z.object({
    *  route whenever `backstoryPressureDue` fires, regardless of the model's
    *  actual follow-through (a soft directive, like ambition/moralCode elsewhere). */
   lastBackstoryBeatTenday: z.number().int().min(0).optional(),
+  /** HANDOFF_STORY_4.md — the authored prologue's stage. Optional: set to
+   *  "intro" for every NEW campaign at creation; undefined on every campaign
+   *  that predates this slice (a legacy campaign never gets a prologue). */
+  prologueStage: PrologueStage.optional(),
 });
 export type Campaign = z.infer<typeof Campaign>;
 

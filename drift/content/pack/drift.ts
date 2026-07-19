@@ -32,6 +32,9 @@ import { driftStoryline } from "./drift/storyline";
 // Authored side quests (HANDOFF_STORY_2.md Task C) — same: empty on the live
 // pack, machinery proven against a test-only stub.
 import { driftSidequests } from "./drift/sidequests";
+// The prologue (HANDOFF_STORY_4.md) — a per-faction temporary ally + stage
+// directives; NOT a storyline chapter (its own persisted stage instead).
+import { driftPrologue } from "./drift/prologue";
 
 /**
  * THE DRIFT — content pack v0. This is the CURRENT live world, ported verbatim
@@ -313,4 +316,6 @@ export const driftPack: ContentPack = {
   storyline: driftStoryline,
 
   sidequests: driftSidequests,
+
+  prologue: driftPrologue,
 };

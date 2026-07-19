@@ -396,6 +396,43 @@ describe("content pack — sidequest schema + referential integrity (HANDOFF_STO
   });
 });
 
+describe("content pack — the prologue (HANDOFF_STORY_4.md)", () => {
+  it("every faction has an ally, and every stage has a directive", () => {
+    for (const f of pack.factions) {
+      expect(pack.prologue.allies[f.id], `ally for ${f.id}`).toBeTruthy();
+    }
+    for (const stage of ["intro", "groundFight", "shipFight", "graduation"] as const) {
+      expect(pack.prologue.stages[stage], `stage ${stage}`).toBeTruthy();
+    }
+  });
+
+  it("catches a faction with no ally", () => {
+    const missing = { ...pack, prologue: { ...pack.prologue, allies: { ...pack.prologue.allies } } };
+    delete (missing.prologue.allies as Record<string, unknown>)[pack.factions[0].id];
+    const problems = validatePack(missing);
+    expect(problems.some((p) => p.includes(`faction ${pack.factions[0].id} has no ally`))).toBe(true);
+  });
+
+  it("catches an ally name colliding with a cast NPC or a faction name", () => {
+    const collidesWithCast = {
+      ...pack,
+      prologue: { ...pack.prologue, allies: { ...pack.prologue.allies, [pack.factions[0].id]: { name: pack.cast[0].name, role: "x", oneBreath: "x", crewRole: "muscle" as const } } },
+    };
+    expect(validatePack(collidesWithCast).some((p) => p.includes("collides with a cast NPC"))).toBe(true);
+
+    const collidesWithFaction = {
+      ...pack,
+      prologue: { ...pack.prologue, allies: { ...pack.prologue.allies, [pack.factions[0].id]: { name: pack.factions[1].name, role: "x", oneBreath: "x", crewRole: "muscle" as const } } },
+    };
+    expect(validatePack(collidesWithFaction).some((p) => p.includes("collides with a faction name"))).toBe(true);
+  });
+
+  it("catches an ally keyed under an unknown faction id", () => {
+    const stray = { ...pack, prologue: { ...pack.prologue, allies: { ...pack.prologue.allies, "f-nowhere": { name: "Ghost", role: "x", oneBreath: "x", crewRole: "muscle" as const } } } };
+    expect(validatePack(stray).some((p) => p.includes("prologue.allies: unknown faction f-nowhere"))).toBe(true);
+  });
+});
+
 describe("content pack — ship2 outfitting completeness (HANDOFF_COMBAT_V2_3.md)", () => {
   it("every class's mount/system slot caps fit its own default loadout", () => {
     for (const [classId, cls] of Object.entries(pack.ship2.classes)) {

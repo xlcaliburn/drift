@@ -500,6 +500,46 @@ export const PackSidequest = z.object({
 });
 export type PackSidequest = z.infer<typeof PackSidequest>;
 
+/** A per-faction PROLOGUE ally (STORY.md §3, HANDOFF_STORY_4.md) — a
+ *  temporary squad member introduced at campaign start, gone by graduation.
+ *  Same shape as PackPatron (name/role/oneBreath) but a DISTINCT type: the
+ *  patron is a standing mentor NPC, the ally is a squad-orderable character
+ *  built once at creation (shared/prologue.ts), never seeded as an NPC. */
+export const PackPrologueAlly = z.object({
+  name: z.string().min(1),
+  role: z.string().min(1),
+  oneBreath: z.string().min(1),
+  /** Which shared/crew.ts CREW ROLE this ally fights as (their build's skill
+   *  + starting gear come from the SAME tier/role tables real crew use —
+   *  lib/newCampaign.ts reads this, never a hardcoded faction→role map:
+   *  canon ids/mappings live in the pack, never in app code, per
+   *  canonLint.test.ts). Enum duplicated from shared/crew.ts's CrewRole
+   *  (same reasoning as PackLoaner.shipClass) — content/pack stays
+   *  self-contained rather than importing app-layer types. */
+  crewRole: z.enum(["muscle", "gunner", "medic", "engineer", "pilot", "face"]),
+});
+export type PackPrologueAlly = z.infer<typeof PackPrologueAlly>;
+
+/** The authored prologue (STORY.md §3, HANDOFF_STORY_4.md) — NOT a
+ *  `pack.storyline` chapter (no trigger predicate distinguishes a new
+ *  campaign from a veteran one). Its own track: one ally per faction +
+ *  four stage directives, fed one per turn while that stage is active.
+ *  `{patron}`/`{ally}` placeholders are filled at render time
+ *  (shared/prologue.ts `prologueDirective`) from
+ *  `pack.creation.patrons[factionId].name` and the stage ally's name. */
+export const PackPrologue = z.object({
+  /** Keyed by faction id — validatePack: every pack faction has one, no
+   *  ally name collides with an existing cast/faction name. */
+  allies: z.record(z.string(), PackPrologueAlly),
+  stages: z.object({
+    intro: z.string().min(1),
+    groundFight: z.string().min(1),
+    shipFight: z.string().min(1),
+    graduation: z.string().min(1),
+  }),
+});
+export type PackPrologue = z.infer<typeof PackPrologue>;
+
 export const ContentPack = z.object({
   universe: z.object({
     id: z.string().regex(/^uni-[a-z0-9-]+$/),
@@ -541,6 +581,9 @@ export const ContentPack = z.object({
   /** Authored, placed side quests (STORY.md §2, HANDOFF_STORY_2.md Task C) —
    *  empty on the live pack until the content slice ships. */
   sidequests: z.array(PackSidequest).default([]),
+  /** The authored prologue (STORY.md §3, HANDOFF_STORY_4.md) — per-faction
+   *  temporary ally + stage directives. NOT a storyline chapter. */
+  prologue: PackPrologue,
 });
 export type ContentPack = z.infer<typeof ContentPack>;
 
@@ -689,5 +732,24 @@ export function validatePack(pack: ContentPack): string[] {
       problems.push(`${tag}: reward faction ${sq.reward.repFactionId} is not a faction`);
     }
   }
+
+  // Prologue (HANDOFF_STORY_4.md): every faction needs an ally, and no
+  // ally's name may collide with an existing cast/faction name (the same
+  // "a person and a faction can't share a name" rule the cast list enforces
+  // on itself above).
+  for (const f of pack.factions) {
+    if (!pack.prologue.allies[f.id]) problems.push(`prologue.allies: faction ${f.id} has no ally`);
+  }
+  for (const [factionId, ally] of Object.entries(pack.prologue.allies)) {
+    if (!facIds.has(factionId)) problems.push(`prologue.allies: unknown faction ${factionId}`);
+    const nameLc = ally.name.toLowerCase();
+    if (pack.cast.some((n) => n.name.toLowerCase() === nameLc)) {
+      problems.push(`prologue.allies.${factionId}: ally name "${ally.name}" collides with a cast NPC`);
+    }
+    if (pack.factions.some((f) => f.name.toLowerCase() === nameLc)) {
+      problems.push(`prologue.allies.${factionId}: ally name "${ally.name}" collides with a faction name`);
+    }
+  }
+
   return problems;
 }

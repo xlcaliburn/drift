@@ -64,6 +64,16 @@ export function getServiceClient(): SupabaseClient {
 
 // ── State assembly ───────────────────────────────────────────────────────────
 
+/** HANDOFF_STORY_4.md trap 2 — pure, DB-free predicate: should this loaded
+ *  character survive? The prologue ally is a real character ROW —
+ *  `saveCampaignRuntime`/`saveCampaignState` upsert but never delete, so
+ *  removing the ally from in-memory state at graduation would resurrect it
+ *  on the NEXT cold load unless the load seam also drops it. Self-healing:
+ *  no delete query, the orphan row just lingers harmlessly in the DB. */
+export function survivesLoad(c: CampaignState["characters"][number], campaign: CampaignState["campaign"]): boolean {
+  return !(c.temporary && campaign.prologueStage === "complete");
+}
+
 /** Load and validate a full CampaignState from the database. */
 export async function loadCampaignState(
   db: SupabaseClient,
@@ -94,10 +104,12 @@ export async function loadCampaignState(
     db.from("contracts").select("*").eq("campaign_id", campaignId),
   ]);
 
+  const characters = (chars.data ?? []).map((r) => Character.parse(fromRow(r))).filter((c) => survivesLoad(c, campaign));
+
   return {
     universe,
     campaign,
-    characters: (chars.data ?? []).map((r) => Character.parse(fromRow(r))),
+    characters,
     ship: ship.data ? Ship.parse(fromRow(ship.data)) : undefined,
     factions: (facs.data ?? []).map((r) => Faction.parse(fromRow(r))),
     factionRep: (rep.data ?? []).map((r) => FactionRep.parse(fromRow(r))),

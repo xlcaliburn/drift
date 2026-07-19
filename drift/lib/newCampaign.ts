@@ -1,9 +1,11 @@
 import type { CampaignState, Character, Clock, Ship } from "@/shared/schemas";
 import { universe, factions, locations, npcs } from "@/scripts/seedData";
-import { FACTION_HOME, DEFAULT_HOME_LOCATION } from "@/content/pack";
+import { FACTION_HOME, DEFAULT_HOME_LOCATION, pack } from "@/content/pack";
 import { seasonOneSpine, factionBriefs } from "@/content/briefs";
 import { openingFor, type GeneratedOpening, type LoanerDef } from "@/content/openings";
 import { shipThreadId } from "@/shared/recap";
+import { crew as crewContent } from "@/content";
+import type { CrewRole, CrewTier } from "@/shared/crew";
 
 /**
  * Every new character starts as a low-level faction minion flying a LOANER hull
@@ -69,6 +71,54 @@ export function buildFaultLineClock(campaignId: string): Clock {
   };
 }
 
+/**
+ * The prologue's temporary ally (STORY.md §3, HANDOFF_STORY_4.md) — a real
+ * squad-orderable character (kind "party", `temporary: true`), built from the
+ * SAME tier/role tables `shared/crew.ts` reads (`crewContent`), not a
+ * parallel stat system. Deliberately NOT `shared/crew.ts`'s `buildCrewMember`
+ * (which needs an RNG for HP variance and — critically — for the id suffix):
+ * `characters.id` is a GLOBAL primary key, and campaignId is already globally
+ * unique, so deriving the id from it directly (`ally-<campaignId>`) is both
+ * simpler and collision-proof — an RNG-suffixed id repeats across campaigns
+ * often enough at scale to be a real risk, not a theoretical one. HP is the
+ * tier band's fixed midpoint for the same reason: a scripted tutorial ally
+ * doesn't need variance, and it keeps campaign creation fully deterministic.
+ * Returns undefined if the faction has no ally (shouldn't happen on the live
+ * pack — validatePack enforces it — but creation must never crash on it).
+ * The ally's crew ROLE is authored on the pack itself (`ally.crewRole`),
+ * never a hardcoded faction→role map here — canon/content lives in
+ * content/pack, never in app code (canonLint.test.ts).
+ */
+function buildPrologueAlly(campaignId: string, factionId: string | undefined): Character | undefined {
+  const ally = factionId ? pack.prologue.allies[factionId] : undefined;
+  if (!ally || !factionId) return undefined;
+  const tier: CrewTier = "T2";
+  const role: CrewRole = ally.crewRole;
+  const t = (crewContent.tiers as Record<CrewTier, { hpRange: number[]; skillLevel: number }>)[tier];
+  const r = (crewContent.roles as Record<CrewRole, { skill: string; gear: { name: string; itemId?: string; damage?: string }[] }>)[role];
+  const hp = Math.round((t.hpRange[0] + t.hpRange[1]) / 2);
+  return {
+    id: `ally-${campaignId}`,
+    campaignId,
+    kind: "party",
+    name: ally.name,
+    attributes: { might: 0, reflex: 0, vitality: 0, intellect: 0, perception: 0, presence: 0 },
+    hp,
+    maxHp: hp,
+    ac: 12,
+    stims: 0,
+    fragile: false,
+    temporary: true,
+    crewRole: role,
+    crewTier: tier,
+    skills: [{ name: r.skill, level: t.skillLevel, ticks: 0 }],
+    actionModifiers: {},
+    backstory: ally.oneBreath,
+    gear: r.gear.map((g) => ({ ...g })),
+    injuries: [],
+  } as Character;
+}
+
 // Faction homes are authored on the content pack (this used to be a duplicate
 // of content/creation's copy — one more canon table to drift out of sync).
 
@@ -114,7 +164,13 @@ export function buildNewCampaignState(
     currentLocationId: homeLoc,
     tendaysElapsed: 0,
     situation: `You've thrown in with ${factionName}. ${context} The lanes are shifting: ${spineHeadline}`,
+    // HANDOFF_STORY_4.md — every NEW campaign starts the authored prologue;
+    // a legacy campaign (built before this slice) simply never gets this
+    // field set, and shared/tutorial.ts's old quest-count rule keeps applying.
+    prologueStage: "intro" as const,
   };
+
+  const ally = buildPrologueAlly(campaignId, parent);
 
   // Starting mobility: a faction loaner hull (if the faction gives one), flown but
   // not owned. Factions with no loaner leave the recruit grounded — begging and
@@ -162,7 +218,7 @@ export function buildNewCampaignState(
   return {
     universe,
     campaign,
-    characters: [character],
+    characters: ally ? [character, ally] : [character],
     ship,
     factions,
     factionRep,
