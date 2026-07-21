@@ -11,12 +11,13 @@ import { PeopleView } from "./PeopleTab";
 import { RolodexTab } from "./RolodexTab";
 import { FactionsDetail } from "./FactionsTab";
 import { ShipTab } from "./ShipTab";
+import { PartyTab } from "./PartyTab";
 import { EquipmentDetail, ItemsDetail } from "./GearTabs";
 import { StorySeason, StoryDetail, StoryThreads, FactsMemory } from "./StoryTab";
 import { AimEditor } from "./AimEditor";
 import { RemakeEditor } from "./RemakeEditor";
 
-export type DetailsTab = "equipment" | "items" | "ship" | "relationships" | "contacts" | "factions" | "story";
+export type DetailsTab = "equipment" | "items" | "ship" | "relationships" | "contacts" | "factions" | "story" | "party";
 
 /** Popup — extended info kept out of the always-on rail, split into tabs:
  *  Equipment (weapons/armor detail), Items (consumables + tools), Ship,
@@ -74,6 +75,7 @@ export function DetailsModal({
               ["equipment", "Equipment"],
               ["items", "Items"],
               ["ship", "Ship"],
+              ["party", "Party"],
               ["relationships", "People"],
               ["contacts", "Rolodex"],
               ["factions", "Factions"],
@@ -107,6 +109,7 @@ export function DetailsModal({
                 <ShipTab state={state} />
               </SheetSection>
             )}
+            {tab === "party" && <PartyTab state={state} />}
             {tab === "factions" && <FactionsDetail state={state} character={c} />}
             {tab === "story" && (
               <>

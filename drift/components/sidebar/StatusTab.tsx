@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { CampaignState } from "@/shared/schemas";
 import type { CombatState } from "@/shared/combat";
 import type { Job } from "@/shared/quests";
@@ -21,6 +22,139 @@ function StatusBadge({ statuses }: { statuses?: StatusEffect[] }) {
     <span className="ml-1 cursor-help" title={label}>
       {summarizeStatuses(statuses)}
     </span>
+  );
+}
+
+type Character = CampaignState["characters"][number];
+
+/** One character's card — the PC, real hired crew, or the prologue's
+ *  temporary ally (HANDOFF_PLAYTEST_POLISH_1.md — `c.temporary` reads as an
+ *  "escort" badge instead of loyalty dots, and never shows a wage). Shared by
+ *  the always-visible PC card and the collapsible Party block below it. */
+function CharacterCard({ c, upkeep, onDetails }: { c: Character; upkeep: number; onDetails: () => void }) {
+  const cond = condition(c.injuries);
+  const weapons = c.gear.filter((g) => g.damage);
+  const inventory = c.gear.filter((g) => !g.damage);
+  return (
+    <div className="rounded border border-edge p-2">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold text-neutral-100">{c.name}</span>
+        {c.kind === "pc" ? (
+          <span className="text-neutral-500">You</span>
+        ) : c.temporary ? (
+          <span className="text-[11px] text-accent/70">escort · riding along</span>
+        ) : (
+          <span
+            className="cursor-help text-neutral-500"
+            title={`Loyalty ${c.loyalty ?? 0}/5 — unpaid tendays erode it; at 0 they may walk.`}
+          >
+            <span className="text-accent">{"●".repeat(c.loyalty ?? 0)}</span>
+            <span className="text-neutral-700">{"○".repeat(Math.max(0, 5 - (c.loyalty ?? 0)))}</span>
+          </span>
+        )}
+      </div>
+      {/* Crew card line — the hire's role/tier (CREW.md); wage is suppressed
+          for a temporary ally (wage-exempt — chargeCrewUpkeep skips them). */}
+      {c.kind === "party" && c.crewRole && (
+        <div className="text-[11px] text-neutral-500">
+          {c.crewTier ?? "T1"} {c.crewRole}
+          {c.wage && !c.temporary ? ` · ¢${c.wage}/tenday` : ""}
+        </div>
+      )}
+      <div className="mt-1 flex items-center gap-2">
+        <span className="w-14 text-neutral-500">HP {c.hp}/{c.maxHp}</span>
+        <Bar value={c.hp} max={c.maxHp} tone={c.hp / c.maxHp < 0.34 ? "bg-bad" : "bg-good"} />
+      </div>
+      <div className="mt-1 text-neutral-500">
+        <span
+          className="cursor-help underline decoration-dotted decoration-neutral-700 underline-offset-2"
+          title="How hard you are to hit — an attack roll must meet or beat it to land (10 + Reflex + armor)."
+        >
+          Armor Class
+        </span>{" "}
+        {c.ac}
+        {c.credits !== undefined && ` · ¢${c.credits}`}
+        {c.kind === "pc" && upkeep > 0 && (
+          <span
+            className="cursor-help"
+            title="Crew wages + overhead, charged automatically as tendays pass. Can't pay? Loyalty erodes — and at zero, they walk."
+          >
+            {" "}· crew ¢{upkeep}/tenday
+          </span>
+        )}
+        {c.fragile && <span className="text-bad"> · FRAGILE</span>}
+        {cond && <span className={`font-semibold ${cond.className}`}> · {cond.text}</span>}
+      </div>
+
+      {/* Bleeding Out — the death-save track while Downed (COMBAT.md). Pips
+          fill as the engine rolls: three ● stabilise, three ✕ is death. */}
+      {c.deathSaves && (c.injuries ?? []).some((i) => i.name === "Downed") && (
+        <div className="mt-1 flex items-center gap-3 text-[12px]" title="Death saves — 3 successes stabilise you, 3 failures is death.">
+          <span className="text-good">
+            saves {"●".repeat(Math.min(3, c.deathSaves.successes))}
+            <span className="text-neutral-700">{"○".repeat(Math.max(0, 3 - c.deathSaves.successes))}</span>
+          </span>
+          <span className="text-bad">
+            fails {"✕".repeat(Math.min(3, c.deathSaves.failures))}
+            <span className="text-neutral-700">{"○".repeat(Math.max(0, 3 - c.deathSaves.failures))}</span>
+          </span>
+        </div>
+      )}
+
+      {(weapons.length > 0 || inventory.length > 0 || c.stims > 0) && (
+        <SheetSection label={`Equipment · ${slotsUsed(c)}/${maxSlotsFor(c)} slots`}>
+          <div className="space-y-0.5">
+            {weapons.map((g, i) => {
+              const dry = g.rounds === 0;
+              return (
+                <div key={`w${i}`} className="flex justify-between gap-2 text-[12px]" title={g.detail}>
+                  {/* ×qty on weapons too — a second copy of the same gun stacks
+                      (same catalog id), and hiding the count made a purchased
+                      duplicate INVISIBLE (the live Piotr sidearm appeal). */}
+                  <span className="text-neutral-200">
+                    {g.name}
+                    {g.qty && g.qty > 1 ? <span className="text-neutral-500"> ×{g.qty}</span> : null}
+                  </span>
+                  <span className="tabular-nums text-neutral-500">
+                    {g.damage}
+                    {typeof g.rounds === "number" && (
+                      <span className={dry ? "text-bad" : "text-neutral-600"}>
+                        {" · "}
+                        {dry ? "no ammo" : `${g.rounds} rds`}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+            {inventory.map((g, i) => (
+              <div key={`i${i}`} className="flex justify-between gap-2 text-[12px]" title={g.detail}>
+                <span className="text-neutral-200">
+                  {g.name}
+                  {g.qty && g.qty > 1 ? <span className="text-neutral-500"> ×{g.qty}</span> : null}
+                </span>
+                {g.acBonus ? <span className="tabular-nums text-neutral-600">+{g.acBonus} AC</span> : null}
+              </div>
+            ))}
+            {c.stims > 0 && (
+              <div className="flex justify-between gap-2 text-[12px]">
+                <span className="text-neutral-200">Stim ×{c.stims}</span>
+                <span className="tabular-nums text-neutral-600">heal 1d6+2</span>
+              </div>
+            )}
+          </div>
+        </SheetSection>
+      )}
+
+      {c.kind === "pc" && (
+        <button
+          onClick={onDetails}
+          className="mt-2 w-full rounded border border-edge py-1 text-[11px] uppercase tracking-wide text-neutral-400 transition hover:border-accent hover:text-accent"
+        >
+          More details
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -51,6 +185,10 @@ export function StatusTab({
   const active = state.threads.filter((t) => t.status === "active");
   const activeJobs = jobs.filter((j) => j.status === "active");
   const upkeep = upkeepPerTenday(state);
+  // PC-first + a collapsible Party block (HANDOFF_PLAYTEST_POLISH_1.md).
+  const pc = state.characters.find((c) => c.kind === "pc");
+  const party = state.characters.filter((c) => c.kind !== "pc");
+  const [partyOpen, setPartyOpen] = useState(true);
   return (
     <div className="space-y-4">
       {combat?.active && (
@@ -97,129 +235,34 @@ export function StatusTab({
           )}
         </div>
       )}
-      {state.characters.map((c) => {
-        const cond = condition(c.injuries);
-        const weapons = c.gear.filter((g) => g.damage);
-        const inventory = c.gear.filter((g) => !g.damage);
-        return (
-          <div key={c.id} className="rounded border border-edge p-2">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-neutral-100">{c.name}</span>
-              {c.kind === "pc" ? (
-                <span className="text-neutral-500">You</span>
-              ) : (
-                <span
-                  className="cursor-help text-neutral-500"
-                  title={`Loyalty ${c.loyalty ?? 0}/5 — unpaid tendays erode it; at 0 they may walk.`}
-                >
-                  <span className="text-accent">{"●".repeat(c.loyalty ?? 0)}</span>
-                  <span className="text-neutral-700">{"○".repeat(Math.max(0, 5 - (c.loyalty ?? 0)))}</span>
-                </span>
-              )}
-            </div>
-            {/* Crew card line — the hire's role/tier/wage (CREW.md). */}
-            {c.kind === "party" && c.crewRole && (
-              <div className="text-[11px] text-neutral-500">
-                {c.crewTier ?? "T1"} {c.crewRole}
-                {c.wage ? ` · ¢${c.wage}/tenday` : ""}
-              </div>
-            )}
-            <div className="mt-1 flex items-center gap-2">
-              <span className="w-14 text-neutral-500">HP {c.hp}/{c.maxHp}</span>
-              <Bar value={c.hp} max={c.maxHp} tone={c.hp / c.maxHp < 0.34 ? "bg-bad" : "bg-good"} />
-            </div>
-            <div className="mt-1 text-neutral-500">
-              <span
-                className="cursor-help underline decoration-dotted decoration-neutral-700 underline-offset-2"
-                title="How hard you are to hit — an attack roll must meet or beat it to land (10 + Reflex + armor)."
-              >
-                Armor Class
-              </span>{" "}
-              {c.ac}
-              {c.credits !== undefined && ` · ¢${c.credits}`}
-              {c.kind === "pc" && upkeep > 0 && (
-                <span
-                  className="cursor-help"
-                  title="Crew wages + overhead, charged automatically as tendays pass. Can't pay? Loyalty erodes — and at zero, they walk."
-                >
-                  {" "}· crew ¢{upkeep}/tenday
-                </span>
-              )}
-              {c.fragile && <span className="text-bad"> · FRAGILE</span>}
-              {cond && <span className={`font-semibold ${cond.className}`}> · {cond.text}</span>}
-            </div>
+      {/* PC always first (HANDOFF_PLAYTEST_POLISH_1.md) — the raw characters
+          array has no guaranteed order (DB load order), so the player used to
+          not reliably see themselves at the top. */}
+      {pc && <CharacterCard c={pc} upkeep={upkeep} onDetails={onDetails} />}
 
-            {/* Bleeding Out — the death-save track while Downed (COMBAT.md). Pips
-                fill as the engine rolls: three ● stabilise, three ✕ is death. */}
-            {c.deathSaves && (c.injuries ?? []).some((i) => i.name === "Downed") && (
-              <div className="mt-1 flex items-center gap-3 text-[12px]" title="Death saves — 3 successes stabilise you, 3 failures is death.">
-                <span className="text-good">
-                  saves {"●".repeat(Math.min(3, c.deathSaves.successes))}
-                  <span className="text-neutral-700">{"○".repeat(Math.max(0, 3 - c.deathSaves.successes))}</span>
-                </span>
-                <span className="text-bad">
-                  fails {"✕".repeat(Math.min(3, c.deathSaves.failures))}
-                  <span className="text-neutral-700">{"○".repeat(Math.max(0, 3 - c.deathSaves.failures))}</span>
-                </span>
-              </div>
-            )}
-
-            {(weapons.length > 0 || inventory.length > 0 || c.stims > 0) && (
-              <SheetSection label={`Equipment · ${slotsUsed(c)}/${maxSlotsFor(c)} slots`}>
-                <div className="space-y-0.5">
-                  {weapons.map((g, i) => {
-                    const dry = g.rounds === 0;
-                    return (
-                      <div key={`w${i}`} className="flex justify-between gap-2 text-[12px]" title={g.detail}>
-                        {/* ×qty on weapons too — a second copy of the same gun stacks
-                            (same catalog id), and hiding the count made a purchased
-                            duplicate INVISIBLE (the live Piotr sidearm appeal). */}
-                        <span className="text-neutral-200">
-                          {g.name}
-                          {g.qty && g.qty > 1 ? <span className="text-neutral-500"> ×{g.qty}</span> : null}
-                        </span>
-                        <span className="tabular-nums text-neutral-500">
-                          {g.damage}
-                          {typeof g.rounds === "number" && (
-                            <span className={dry ? "text-bad" : "text-neutral-600"}>
-                              {" · "}
-                              {dry ? "no ammo" : `${g.rounds} rds`}
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  {inventory.map((g, i) => (
-                    <div key={`i${i}`} className="flex justify-between gap-2 text-[12px]" title={g.detail}>
-                      <span className="text-neutral-200">
-                        {g.name}
-                        {g.qty && g.qty > 1 ? <span className="text-neutral-500"> ×{g.qty}</span> : null}
-                      </span>
-                      {g.acBonus ? <span className="tabular-nums text-neutral-600">+{g.acBonus} AC</span> : null}
-                    </div>
-                  ))}
-                  {c.stims > 0 && (
-                    <div className="flex justify-between gap-2 text-[12px]">
-                      <span className="text-neutral-200">Stim ×{c.stims}</span>
-                      <span className="tabular-nums text-neutral-600">heal 1d6+2</span>
-                    </div>
-                  )}
-                </div>
-              </SheetSection>
-            )}
-
-            {c.kind === "pc" && (
-              <button
-                onClick={onDetails}
-                className="mt-2 w-full rounded border border-edge py-1 text-[11px] uppercase tracking-wide text-neutral-400 transition hover:border-accent hover:text-accent"
-              >
-                More details
-              </button>
-            )}
-          </div>
-        );
-      })}
+      {party.length > 0 && (
+        <div>
+          <button
+            onClick={() => setPartyOpen((v) => !v)}
+            className="mb-1.5 inline-flex items-center gap-1.5 rounded-md border border-edge px-2 py-1 text-xs text-neutral-400 transition hover:border-accent hover:text-accent"
+            aria-expanded={partyOpen}
+            aria-label={`Party (${party.length})`}
+          >
+            <span className="text-[10px]">{partyOpen ? "▾" : "▸"}</span>
+            <span>Party</span>
+            <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+              {party.length}
+            </span>
+          </button>
+          {partyOpen && (
+            <div className="space-y-2">
+              {party.map((c) => (
+                <CharacterCard key={c.id} c={c} upkeep={upkeep} onDetails={onDetails} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
 
       <div className="rounded border border-edge p-2">
