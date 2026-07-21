@@ -289,16 +289,24 @@ Don't add prose rules for things the engine can enforce.
   accepted gap: a model that never stages the ship fight stalls that
   stage indefinitely — hot-recoverable via the admin editor, no
   auto-skip this slice.
-- `HANDOFF_PLAYTEST_POLISH_1.md` — **READY TO IMPLEMENT** (Fable,
-  2026-07-20): the first prologue-playtest polish batch, verified against
-  Ludo's live run — kill the interim 🎓 stage lines (keep one house-style
-  graduation line), fresh-campaign-only opening recap that names the ally,
-  full-transcript restore on resume (client was truncating to 5 exchanges),
-  PC-first collapsible sidebar party block + a Details "Party" tab, patron
-  rest chip gated on actually-hurt, crew aim/cover orders made real
-  (`CombatState.memberMods`, mirrors the PC's aim/cover semantics) + UI
-  default-staged attack orders, and a "Story so far" modal
-  (`/api/summary`: free scene-summary list + optional cheap-model retell).
+- `HANDOFF_PLAYTEST_POLISH_1.md` — **FULLY SHIPPED (2026-07-20)**: the first
+  prologue-playtest polish batch, verified against Ludo's live run — the
+  interim 🎓 stage lines are gone (one house-style graduation line stays;
+  `shared/prologue.ts`'s `advancePrologue` lines), a fresh-campaign-only
+  opening recap that names the ally (`buildOpeningRecap`), a full-transcript
+  restore on resume (`PlayClient.tsx` was truncating to 5 exchanges even
+  though `/api/state` already sent the whole capped transcript — instant
+  scroll-to-bottom on that initial restore, smooth for every later turn), a
+  PC-first collapsible sidebar party block + a Details "Party" tab
+  (`components/sidebar/StatusTab.tsx`/`PartyTab.tsx`), the patron rest chip
+  gated on genuinely hurt (`needsHelp = hp < maxHp/2`, tightened twice from
+  the initial "any HP loss" pass), crew aim/cover orders made real
+  (`CombatState.memberMods` mirrors the PC's own aim/cover semantics one
+  level down; `enemyVolley`'s crew branch reads the cover AC) + a UI default-
+  staged attack order per standing member each round, and a "Story so far"
+  modal (`/api/summary`: the free, already-persisted scene-summary list via
+  `loadRecentScenes`, plus an optional player-initiated cheap-model retelling
+  — `llm/summarizer.ts`'s `retellStory`, metered like an appeal).
 - `COMBAT_V2.md` — **DESIGN (owner priority, decisions RESOLVED), Parts A+B
   core + customization all SHIPPED (2026-07-18)**: squad control (order every
   party member, temporary allies — Part A) + Eclipse-style ship combat (power

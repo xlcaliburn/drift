@@ -186,6 +186,7 @@ mapping it to a field.
 | Slots + swap parking | `shared/items` slots, `sceneCard.pendingPickup` | any gain | silent item loss on a full pack — blocked visibly, offered as drop-to-take chips |
 | **Parked pickup survives scene turnover** | `shared/scene.ts` `carryScene` (`pendingPickup: prev.pendingPickup`) | every scene close with an item parked | the HANDOFF_STORY_2 review catch: carryScene rebuilt the card WITHOUT `pendingPickup`, so an item parked on a scene-closing turn was silently lost AND that turn's swap chips pointed at nothing ("nothing to swap" on click). Rare for loot (a gain + close on one turn), but the NORMAL path for a signature chapter reward — a final `travel` objective completes on the arrival turn, which IS a scene boundary. The only sanctioned way to lose a parked item is the explicit decline chip |
 | Seeded markets | `engine/market.ts` | shelves | stock is shared canon per (location, 30-day chunk), tier-gated so top guns aren't at backwater docks |
+| **Patron rest gated on genuinely hurt** | `shared/netWorth.patronHelp` (`needsHelp = pc.hp < pc.maxHp/2`) | every turn the patron is present | the free "Rest up" chip offered on any scratch (originally any HP loss at all, then tightened again to below-half) — HANDOFF_PLAYTEST_POLISH_1.md playtest finding: it kept showing up for a lightly-dinged PC, reading as the patron randomly narrated in for no reason. Presence + under-cap are unchanged; only the "do they actually need it" clause moved |
 
 ## 8. World & time — does the setting hold still?
 

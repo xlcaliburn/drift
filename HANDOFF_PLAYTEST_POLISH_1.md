@@ -1,9 +1,10 @@
 # HANDOFF — Playtest polish 1: prologue presentation, resume history, patron gate, crew aim/cover
 
-*Strategy phase output (Fable, 2026-07-20). Read `WORKFLOW.md` first, then this
-doc fully. Source: owner playtest of the freshly shipped prologue
-(HANDOFF_STORY_4) + a resumed-session pass. Verified against Ludo Duross's live
-run (`camp-mrr5dyb7-rack`): the prologue MACHINERY works — the intro directive
+*Strategy phase output (Fable, 2026-07-20). **FULLY SHIPPED 2026-07-20** — see
+the per-task annotations below. Read `WORKFLOW.md` first, then this doc fully.
+Source: owner playtest of the freshly shipped prologue (HANDOFF_STORY_4) + a
+resumed-session pass. Verified against Ludo Duross's live run
+(`camp-mrr5dyb7-rack`): the prologue MACHINERY works — the intro directive
 introduced Juno Vex in the very first narration, free-typed squad orders
 worked, the campaign is mid-shipFight — every issue below is presentation,
 gating, or a known-absorbed order, not stage-machine logic. Do not touch
@@ -146,20 +147,59 @@ gating, or a known-absorbed order, not stage-machine logic. Do not touch
 - **Task A — pure/shared fixes:** decision 1 (`shared/prologue.ts` + test
   updates), decision 7 (`shared/netWorth.ts` + tests), decision 3's recap
   line (`shared/recap.ts` + tests if any pin recap output).
+  — ✅ SHIPPED 2026-07-20. As specced. One owner follow-up landed right after
+  this commit, still Task A's scope: `needsHelp` was tightened a second time
+  from "any HP loss" to `hp < maxHp/2` — a single point of damage was still
+  offering the free-rest chip too eagerly. Separate small commit, same task.
 - **Task B — crew aim/cover:** decisions 8-9's engine half — `CombatState.
   memberMods`, crewPhase consume/clear, enemyVolley cover read,
   `crewActionChips` additions. Tests: ordered aim boosts the NEXT round's
   attack and clears; cover raises the member's effective AC in the enemy
   volley until they attack; medic/auto-act regressions pinned.
+  — ✅ SHIPPED 2026-07-20. As specced, incl. the exact `combat.memberMods?.
+  [id]?.aim ?? 0` defensive-read shape. Tests engineered the exact modifier
+  arithmetic (a "face"-role crew fixture's smallArms mod computes to
+  attrMod(0)+skillProficiency(level 1)=1) so a pinned d20 could prove the
+  bonus/AC actually flips a miss to a hit / a hit to a miss, rather than
+  asserting on `memberMods` state alone.
 - **Task C — PlayClient resume + default orders:** decisions 3-4 (full
   history, conditional recap, bottom-scroll), decision 9's UI half
   (pre-staged attack orders).
+  — ✅ SHIPPED 2026-07-20. Bottom-scroll used a `isRestoringRef` flag
+  consumed once by the existing auto-follow effect (`behavior: "auto"` vs
+  `"smooth"`) rather than a separate layout effect — simpler, same result.
+  The default-order effect deliberately depends on `[combat?.round,
+  combat?.active]` only (not `standingCrew`/`state`) so it fires once per
+  round and never re-clobbers a manual pick or a just-cleared order on an
+  unrelated re-render.
 - **Task D — sidebar + details:** decisions 5-6 (StatusTab sort/collapse/
   escort badge, DetailsModal "party" tab).
+  — ✅ SHIPPED 2026-07-20. `StatusTab`'s per-character card JSX was extracted
+  into a shared `CharacterCard` (used for both the PC and the party list) —
+  not explicitly specced, but the collapse/reorder needed it and it's zero
+  behavior change. `PartyTab` is its own file rather than folded into
+  `GearTabs.tsx`, matching the one-tab-per-file convention every other
+  Details tab already follows.
 - **Task E — story so far:** decision 10 (route + modal + button).
+  — ✅ SHIPPED 2026-07-20. `recordAiCall`'s kind used the existing `"summary"`
+  union member (not a new `"recap"` one — one already fit). `retellStory`
+  landed in `llm/summarizer.ts` mirroring `appealTurn.ts`'s `{text, model,
+  usage}` return contract (a prose retelling isn't a JSON-extraction task
+  like `summarizeScene`, so its candidate-fallback loop was copied, not its
+  parse step). No test coverage added for `retellStory`/the route itself —
+  matches this codebase's established precedent that LLM-calling functions
+  and API routes go untested (summarizer.ts's existing `summarizeScene`/
+  `analyzeScene` have none either).
 - **Task F — docs:** STATUS.md (playtest-polish shipped note), CHECKS.md
   (patron-gate row update if §7 lists it; the crew aim/cover order note in
   the combat family), annotate THIS handoff per WORKFLOW.md Phase 2.
+  — ✅ SHIPPED 2026-07-20. §7 had no prior patron-gate row (added one). No
+  combat-family row added for aim/cover itself: CHECKS.md's own convention
+  is a caught DEFECT, and the original squad-orders feature (HANDOFF_
+  COMBAT_V2_1) never got a row either — aim/cover is the same class, a
+  feature extension, not a backstop. STATUS.md's existing "squad orders'
+  own follow-up" bullet (already tracking aim/cover as deferred) was
+  updated in place rather than adding a duplicate note.
 
 ## Explicitly OUT of scope
 
@@ -170,15 +210,27 @@ a model-generated recap on load (the POST is player-initiated only).
 
 ## Definition of done
 
-- `tsc` clean; full suite green (1133 baseline + new); golden BYTE-IDENTICAL.
-- A resumed campaign scrolls back through its full stored transcript with no
-  recap blob; a fresh campaign still opens with the recap INCLUDING the ally
-  line.
-- Interim prologue turns print no 🎓 lines; graduation prints the one locked
-  line.
-- Full-HP PC never sees the patron rest chip; hurt PC does (patron present +
-  under cap).
-- An ally ordered to aim hits harder next round; ordered to cover, enemies
-  need more to hit them; every standing member defaults to a staged attack
-  order each round in the UI.
-- One commit per task; annotate this handoff per WORKFLOW.md Phase 2.
+- ✅ `tsc` clean; full suite green (1133 baseline → **1144 final**, +11 across
+  Tasks A-B; golden BYTE-IDENTICAL throughout — no prompt-section file was
+  ever touched by this handoff).
+- ✅ A resumed campaign scrolls back through its full stored transcript with
+  no recap blob (`components/PlayClient.tsx` — `lastExchanges` removed
+  entirely); a fresh campaign still opens with the recap INCLUDING the ally
+  line (`shared/recap.ts`).
+- ✅ Interim prologue turns print no 🎓 lines; graduation prints the one
+  locked line (`shared/prologue.ts`, pinned by `shared/prologue.test.ts`).
+- ✅ Full-HP PC never sees the patron rest chip; hurt PC does (patron present
+  + under cap) — tightened once more after this landed, to below-half HP
+  specifically (Task A's annotation).
+- ✅ An ally ordered to aim hits harder next round; ordered to cover, enemies
+  need more to hit them (`llm/crewCombat.test.ts`, engineered exact d20/
+  modifier arithmetic); every standing member defaults to a staged attack
+  order each round in the UI (`PlayClient.tsx`'s narrow-deps effect).
+- ✅ One commit per task (+ one small owner-follow-up commit inside Task A's
+  scope); this handoff annotated per WORKFLOW.md Phase 2.
+- Full interactive verification (a live resumed session, staged combat
+  orders, the collapsed party block, the Story so far modal) needs Google
+  auth this environment doesn't have credentials for — every task's commit
+  message flags this; the dev server was confirmed booting with zero
+  console/server errors after each task. Flagged for the owner's live
+  playtest pass.

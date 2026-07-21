@@ -30,7 +30,7 @@ npm install
 cp .env.example .env.local     # DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY; + Supabase vars for auth
 npm run dev                    # http://localhost:3000
 npx tsc --noEmit               # fast typecheck (never touches .next)
-npx vitest run                 # ~1133 model-free tests, no keys needed
+npx vitest run                 # ~1144 model-free tests, no keys needed
 ```
 
 - **Keyless mode** (no Supabase vars): no login, stub dev admin, nothing persists.
@@ -127,10 +127,27 @@ npx vitest run                 # ~1133 model-free tests, no keys needed
      no auto-skip this slice. **STORY.md itself is now fully shipped**;
      what's left is future SEASONS — owner-authored pack content per
      `STORY_AUTHORING.md`, no new code.
-   - Squad orders' own follow-up: aim/cover/switch + role specials
-     (engineer overcharge etc.) for crew, deferred this slice (COMBAT_V2.md's
-     shipped-note). Ship2's crew passives are similarly all-always-on, not
-     yet clickable station assignments.
+   - Squad orders' own follow-up: **aim/cover SHIPPED for crew**
+     (2026-07-20, `HANDOFF_PLAYTEST_POLISH_1.md` Task B — `CombatState.
+     memberMods` mirrors the PC's own aim/cover semantics one level down;
+     `enemyVolley`'s crew-target branch reads the cover AC). Still open:
+     switch + role specials (engineer overcharge etc.) for crew. Ship2's
+     crew passives are similarly all-always-on, not yet clickable station
+     assignments.
+   - **`HANDOFF_PLAYTEST_POLISH_1.md` is FULLY SHIPPED (2026-07-20)** — the
+     first playtest pass on the prologue, verified against a live run: the
+     interim 🎓 stage-transition lines are gone (the stage directive already
+     steers the narration; one house-style line stays at graduation), the
+     opening recap is fresh-campaign-only and names the temporary ally, a
+     resumed session restores its FULL stored transcript instead of the old
+     5-exchange truncation (the client was the one throwing history away —
+     `/api/state` already sent it all), the sidebar puts the PC first with
+     party members in a collapsible block (+ a Details "Party" tab), the
+     patron rest chip requires genuinely hurt (below half HP, tightened
+     twice from the initial "any HP loss" pass), crew aim/cover orders are
+     real (above), and a "Story so far" modal (`/api/summary`) surfaces the
+     free scene-summary list plus an optional player-initiated cheap-model
+     retelling.
 1. **Modularity roadmap** (core engine, swappable worlds): **M1 content
    boundary** and **M5 combat-system interface** SHIPPED (M1: 2026-07-18,
    `HANDOFF_MODULARITY_M1.md` — catalogs/names/flavor pools/creation data/
