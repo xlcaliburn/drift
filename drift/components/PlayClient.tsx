@@ -36,17 +36,6 @@ function normalizeChoices(list: unknown): ChoiceOption[] {
     .filter((c) => c && typeof c.label === "string" && c.label.length > 0);
 }
 
-/** On load, show only the tail of the transcript — from the Nth-most-recent
- *  player message onward — so you rejoin in recent context, not the whole log. */
-function lastExchanges(transcript: ChatEntry[], n: number): ChatEntry[] {
-  const playerIdxs: number[] = [];
-  transcript.forEach((e, i) => {
-    if (e.role === "player") playerIdxs.push(i);
-  });
-  if (playerIdxs.length <= n) return transcript;
-  return transcript.slice(playerIdxs[playerIdxs.length - n]);
-}
-
 export default function PlayClient({
   campaignId,
   roster = [],
@@ -104,6 +93,12 @@ export default function PlayClient({
   // The player's own submitted reports + status, shown inside the feedback modal.
   const [myFeedback, setMyFeedback] = useState<{ id: string; title: string; summary: string; status: string }[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  // HANDOFF_PLAYTEST_POLISH_1.md — the initial transcript restore should land
+  // the view at the bottom INSTANTLY, not animate through the whole history;
+  // every later chat change (a new turn) still scrolls smoothly. Set true
+  // right before the restored chat is populated; the scroll effect consumes
+  // it once, then it's smooth from then on.
+  const isRestoringRef = useRef(false);
 
   // On a phone the choice chips eat half the screen — start them tucked behind
   // the tab; the player's toggle is respected from then on. Set post-mount (not
@@ -135,10 +130,15 @@ export default function PlayClient({
         if (d.facts) setFacts(d.facts);
         if (d.storyline) setStoryline(d.storyline);
 
-        // The opening recap + starter choices are derived from stored state — free.
-        const recap: ChatEntry = { role: "recap", text: buildOpeningRecap(d.state) };
-        // Show only the last 5 exchanges on load — recent context, not the whole log.
-        const restored: ChatEntry[] = d.transcript?.length ? lastExchanges(d.transcript, 5) : [];
+        // HANDOFF_PLAYTEST_POLISH_1.md — a resumed campaign restores its FULL
+        // stored transcript (already capped server-side at TRANSCRIPT_CAP) so
+        // scrolling up actually shows past history, instead of the old
+        // 5-exchange truncation. The opening recap (derived from stored state,
+        // free — no API call) is shown ONLY on a genuinely fresh campaign; a
+        // resumed session gets its real history instead, never the stale
+        // creation-time recap blob.
+        const restored: ChatEntry[] = d.transcript ?? [];
+        const recap: ChatEntry[] = restored.length ? [] : [{ role: "recap", text: buildOpeningRecap(d.state) }];
         const notice: ChatEntry[] =
           !d.hasApiKey && !restored.length
             ? [
@@ -148,7 +148,8 @@ export default function PlayClient({
                 },
               ]
             : [];
-        setChat([recap, ...restored, ...notice]);
+        isRestoringRef.current = true;
+        setChat([...recap, ...restored, ...notice]);
         // In a live fight, rebuild the engine's combat chips; otherwise opening choices.
         if (d.combat?.active) {
           setCombat(d.combat);
@@ -185,9 +186,13 @@ export default function PlayClient({
   }, [campaignId]);
 
   // Auto-follow new content only while pinned to the bottom — don't yank the
-  // player down while they've scrolled up to re-read.
+  // player down while they've scrolled up to re-read. The initial transcript
+  // restore jumps instantly (a smooth animated scroll through hundreds of
+  // restored entries reads as a glitch); every later change animates.
   useEffect(() => {
-    if (atBottom) chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!atBottom) return;
+    chatEndRef.current?.scrollIntoView({ behavior: isRestoringRef.current ? "auto" : "smooth" });
+    isRestoringRef.current = false;
   }, [chat, choices, streamingText, atBottom]);
 
   // The staged ship2 allocation is per-round — clear it whenever the round
@@ -424,6 +429,33 @@ export default function PlayClient({
           Object.fromEntries(standingCrew.map((c) => [c.id, usableConsumables(c, combat.scale)])),
         )
       : [];
+
+  // HANDOFF_PLAYTEST_POLISH_1.md decision 9 — an un-ordered member just keeps
+  // auto-acting, which reads as the ally doing nothing to a player who has no
+  // way to know that. Pre-stage a default "attack the first living enemy"
+  // order for every standing member whenever a new round's chips arrive (fight
+  // start + each round result); the player can still change or clear any
+  // staged order before sending (clearing goes back to auto-act, as today).
+  // Narrow deps deliberately: this should fire once per round, not on every
+  // unrelated re-render (which would also re-add an order the player just
+  // cleared).
+  useEffect(() => {
+    if (!combat?.active || combat.scale !== "personal" || !standingCrew.length) return;
+    const firstEnemy = combat.enemies.find((e) => e.hp > 0);
+    if (!firstEnemy) return;
+    setCrewOrders((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const c of standingCrew) {
+        if (!next[c.id]) {
+          next[c.id] = { type: "attack", enemyId: firstEnemy.id };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [combat?.round, combat?.active]);
 
   // The ship2 allocation panel (HANDOFF_COMBAT_V2_2.md Task C) — the
   // fine-grained alternative to the preset chips. Personal-scale / classic
