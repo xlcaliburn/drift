@@ -30,7 +30,7 @@ npm install
 cp .env.example .env.local     # DEEPSEEK_API_KEY (cheapest) or ANTHROPIC_API_KEY; + Supabase vars for auth
 npm run dev                    # http://localhost:3000
 npx tsc --noEmit               # fast typecheck (never touches .next)
-npx vitest run                 # ~1144 model-free tests, no keys needed
+npx vitest run                 # ~1152 model-free tests, no keys needed
 ```
 
 - **Keyless mode** (no Supabase vars): no login, stub dev admin, nothing persists.
@@ -148,6 +148,27 @@ npx vitest run                 # ~1144 model-free tests, no keys needed
      real (above), and a "Story so far" modal (`/api/summary`) surfaces the
      free scene-summary list plus an optional player-initiated cheap-model
      retelling.
+   - **`HANDOFF_PLAYTEST_POLISH_2.md` is FULLY SHIPPED (2026-07-20)** — the
+     second playtest pass, diagnosed from the SAME Ludo run continuing past
+     POLISH_1: the frozen scene card (`place` stuck at "high orbit, aboard
+     the shuttle" through docking AND an in-person office scene — the
+     player-reported teleport) now self-heals via the scene ANALYST
+     (`analyzeScene` returns `place`, applied behind a scene-seq guard on
+     both the mid-scene and scene-close passes) + a departed-speaker
+     presence clause (a chased-off NPC who speaks on the way out reads as
+     `"mentioned"`, not `"present"`); the prologue's `shipFight` directive
+     is rewritten (pack content, hot-applied live) to call `combat.start`
+     the moment a ship threat appears instead of staging talk-away
+     standoffs that never advance the stage (the "ghost scout" the player
+     hit twice — a `shipFight` re-fire loop, not a stall in the inert
+     sense); and `activeJobs` states an active delivery's destination vs.
+     current location explicitly (the player asked "where are we going?"
+     and got pitched a new job instead of an answer). One deliberate
+     deferral, logged in CHECKS.md's known gaps: the LIVE-turn presence
+     backstop still can't tell a departing speaker from an arriving one
+     (only the analyst's retrospective pass knows better now) — a
+     departure-verb detector at the live layer is future work if playtests
+     keep surfacing it.
 1. **Modularity roadmap** (core engine, swappable worlds): **M1 content
    boundary** and **M5 combat-system interface** SHIPPED (M1: 2026-07-18,
    `HANDOFF_MODULARITY_M1.md` — catalogs/names/flavor pools/creation data/

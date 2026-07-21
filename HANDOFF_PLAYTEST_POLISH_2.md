@@ -1,10 +1,11 @@
 # HANDOFF — Playtest polish 2: the stale scene card, the ghost scout, and travel framing
 
-*Strategy phase output (Fable, 2026-07-20). Read `WORKFLOW.md` first, then
-this doc fully. Source: Ludo Duross's live run (`camp-mrr5dyb7-rack`),
-transcript ords 46-85 — the owner's report: "where are we going? Halcyon
-then back to Halcyon"; "in Quist's office, suddenly back at the copilot
-seat"; "safely in Halcyon and then the scout was a threat again".*
+*Strategy phase output (Fable, 2026-07-20). **FULLY SHIPPED 2026-07-20** —
+see the per-task annotations below. Read `WORKFLOW.md` first, then this doc
+fully. Source: Ludo Duross's live run (`camp-mrr5dyb7-rack`), transcript
+ords 46-85 — the owner's report: "where are we going? Halcyon then back to
+Halcyon"; "in Quist's office, suddenly back at the copilot seat"; "safely in
+Halcyon and then the scout was a threat again".*
 
 ## Diagnosis (all verified against the live DB + code)
 
@@ -151,16 +152,36 @@ One player-visible mess, four braided causes:
   close-pass writes into the carried card (seq+1); cap/empty handling
   (trap 2). The analyst call itself stays untested (LLM precedent) — test
   the APPLY path with a stubbed analysis object.
+  — ✅ SHIPPED 2026-07-20. As specced. `applyAnalystUpdates` gained one
+  optional trailing param (`placeUpdate?: {place, expectedSeq}`) rather
+  than a parallel function — the seq check folds into the SAME early-return
+  guard the npc/item/thread/fact updates already share. `runOpenSceneAnalyst`
+  captures `analyzedSeq` synchronously BEFORE the await (the live session is
+  a shared in-memory object across concurrent requests, so this genuinely
+  matters, not just defensive style). 5 tests, all on the stubbed apply path.
 - **Task B — shipFight directive rewrite:** decision 3, prose within the
   locked clauses (`content/pack/drift/prologue.ts` only; trap 4).
+  — ✅ SHIPPED 2026-07-20. All four clauses in one paragraph; no schema or
+  test change (trap 4 held) — `pack.test.ts`/`prologue.test.ts` stayed
+  content-agnostic as designed.
 - **Task C — activeJobs travel framing:** decision 4 + trap 3's
   golden/test discipline.
+  — ✅ SHIPPED 2026-07-20. Golden confirmed UNCHANGED (no fixture carries an
+  active job with a `locationId` objective) — per trap 3's fallback,
+  3 direct unit tests added to `quests.test.ts` instead of a golden re-pin.
 - **Task D — docs + the live repair note:** CHECKS.md (a §1 row for the
   analyst place sync; the presence-by-speech departing-speaker known gap;
   update the shipFight-stall known-gap entry to record how it actually
   manifested); STATUS.md; annotate THIS handoff per WORKFLOW.md Phase 2.
   Decision 5's admin-editor repair is the OWNER's click — list it in the
   close-out summary so it happens.
+  — ✅ SHIPPED 2026-07-20 (docs). Decision 5's repair is flagged to the
+  owner in the close-out message, NOT performed by the implementer — this
+  session has no admin-UI credentials (Google auth) and raw SQL is
+  explicitly against the handoff's own decision 5. Exact op left for the
+  owner's click: `sceneCard` → `place: "Halcyon — dockside, near
+  Harbormaster Quist's office"`, `presentNpcIds: ["npc-quist",
+  "npc-patron-camp-mrr5dyb7-rack"]`, campaign `camp-mrr5dyb7-rack`.
 
 ## Explicitly OUT of scope
 
@@ -172,12 +193,15 @@ stands — the directive now makes the model do it).
 
 ## Definition of done
 
-- `tsc` clean; full suite green (1144 baseline + new); golden either
-  byte-identical or re-pinned exactly once with the diff inspected
-  (trap 3).
-- A stubbed analysis carrying `place` corrects a stale card on seq match
-  and never on mismatch, in tests.
-- The live pack's shipFight directive contains all four locked clauses.
-- An active delivery job's context line names BOTH ends and states the
-  player hasn't arrived, in a unit test.
-- One commit per task; annotate this handoff per WORKFLOW.md Phase 2.
+- ✅ `tsc` clean; full suite green (1144 baseline → **1152 final**, +8);
+  golden confirmed BYTE-IDENTICAL throughout (never re-pinned — Tasks A/C
+  both ran against golden and it didn't move).
+- ✅ A stubbed analysis carrying `place` corrects a stale card on seq match
+  and never on mismatch, in tests (`lib/analystRun.test.ts`).
+- ✅ The live pack's `shipFight` directive contains all four locked clauses.
+- ✅ An active delivery job's context line names BOTH ends and states the
+  player hasn't arrived, in a unit test (`quests.test.ts`).
+- ✅ One commit per task; this handoff annotated per WORKFLOW.md Phase 2.
+- ⏳ Decision 5's live repair on `camp-mrr5dyb7-rack` is the OWNER's click
+  through the admin campaign editor (`/admin/campaigns`), not part of this
+  code ship — the exact op is in Task D's annotation above.

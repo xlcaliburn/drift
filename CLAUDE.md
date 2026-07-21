@@ -307,18 +307,24 @@ Don't add prose rules for things the engine can enforce.
   modal (`/api/summary`: the free, already-persisted scene-summary list via
   `loadRecentScenes`, plus an optional player-initiated cheap-model retelling
   — `llm/summarizer.ts`'s `retellStory`, metered like an appeal).
-- `HANDOFF_PLAYTEST_POLISH_2.md` — **READY TO IMPLEMENT** (Fable,
-  2026-07-20): the second prologue-playtest batch, diagnosed from Ludo's
-  live run — the frozen scene card (place stuck at "high orbit aboard the
-  shuttle" through docking AND Quist's office; `carryScene` self-reinforces
-  it) gets an ANALYST place backstop (`analyzeScene` returns `place`,
-  applied behind a scene-seq guard) + a departed-speaker presence clause;
-  the prologue shipFight directive is rewritten (pack content, hot-applies
+- `HANDOFF_PLAYTEST_POLISH_2.md` — **FULLY SHIPPED (2026-07-20)**: the
+  second prologue-playtest batch, diagnosed from Ludo's live run — the
+  frozen scene card (place stuck at "high orbit aboard the shuttle" through
+  docking AND Quist's office; `carryScene` self-reinforces it) gets an
+  ANALYST place backstop (`analyzeScene` returns `place`, applied to
+  `sceneCard.place` behind a scene-seq guard — mid-scene exact match, scene
+  close = `closedSeq + 1`) + a departed-speaker presence clause; the
+  prologue `shipFight` directive is rewritten (pack content, hot-applies
   live) to call `combat.start` the moment the threat appears instead of
   staging talk-away standoffs that never advance the stage (the "ghost
-  scout" driver); `activeJobs` gains explicit travel framing (destination
-  vs. current location, "NOT there yet"); plus an admin-editor repair for
-  Ludo's live card.
+  scout" driver — a `shipFight` re-fire loop, not an inert stall);
+  `activeJobs` gains explicit travel framing (destination vs. current
+  location, "NOT there yet" — `llm/promptSections/quests.ts`). The
+  admin-editor repair for Ludo's live campaign card is the OWNER's click
+  (never raw SQL — the warm-cache clobber rule), not part of the code
+  ship. Known gap logged, not fixed this slice: the LIVE-turn presence
+  backstop still can't tell a departing speaker from an arriving one (only
+  the analyst's retrospective pass knows better now).
 - `COMBAT_V2.md` — **DESIGN (owner priority, decisions RESOLVED), Parts A+B
   core + customization all SHIPPED (2026-07-18)**: squad control (order every
   party member, temporary allies — Part A) + Eclipse-style ship combat (power

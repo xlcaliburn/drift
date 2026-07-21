@@ -65,6 +65,7 @@ Three tiers (design: `CONTINUITY.md`): **NOW** (scene card) → **PREVIOUSLY**
 | Scene auto-close cap | `applyPlan/world.ts` `sceneEnd`, `SCENE_TURN_CAP = 12` | turn 12 of a scene | DeepSeek under-firing `sceneEnd` — without the cap a scene never turns over and memory never compresses |
 | Move = scene boundary | route, `isSceneMove` | place/location change | the model moving the player without closing the scene; memory tier turns over anyway (economic checklist still only fires on a real `sceneEnd`) |
 | Place carry | `carryScene` | scene close | whereabouts never blank between scenes |
+| **Scene-place analyst backstop** | `analyzeScene` returns `place` → `applyAnalystUpdates` writes `sceneCard.place`, guarded on the live scene's seq still matching what was analyzed (mid-scene: exact match; scene close: `closedSeq + 1`, the carried card) | mid-scene interval + scene close | `carryScene`'s own "never blank" guarantee turned into a LIABILITY the moment the live turn under-fired `scene.place`: a frozen caption ("high orbit, aboard the shuttle") survived docking AND an entire later scene held in person, then snapped the narration back the moment an un-anchored player line read the stale card — born from the live Ludo playtest. The analyst now self-heals it within ≤10 turns (`ANALYST_INTERVAL`) instead of it riding forever |
 | Situation refresh backstop | `jsonTurn` → `runtime.refreshSituation` | model set no `scene.situation` this turn | "Here & now" going stale (the cheap model rarely sets it) |
 | Scene compression + F-3 fallback | route `compressClosedScene` | background, on close | every closed scene becomes a summary; on summarizer failure a deterministic first-action+last-beat stub — never a hole |
 | **Self-healing degraded summaries** | `scenes.degraded` + `raw_slice` (migration 026), `analystRun.repairDegradedScenes`, triggered by the next healthy scene close (2/run) + manual re-sync (3/run) | analyst failure | an F-3 stub living FOREVER as the scene's memory — born from the Lyra campaign (12 of 14 summaries junk; the narrator improvised the Ren/Renwick/dead-brother tangle over the invisible hole). A failed compression now keeps its raw transcript slice and gets re-summarized once the analyst is healthy; only pre-026 rows are unrecoverable (their slices are gone) |
@@ -236,6 +237,22 @@ mapping it to a field.
   slice. The directive re-fires every turn and the stage is hot-recoverable
   (an admin can set `campaign.prologueStage` directly), so it's a stuck
   player, never a corrupted one — but it IS a real gap, not just a risk.
+  **How it actually manifested (Ludo's live run, HANDOFF_PLAYTEST_POLISH_2.md):**
+  not a stall in the sense of nothing happening — the model kept CONJURING
+  the scout threat every turn (the directive re-firing) and the player kept
+  de-escalating it with social/piloting checks, so a "ghost scout" resurfaced
+  turn after turn without ever becoming a real fight. Task B's directive
+  rewrite (forbid a talk-away standoff; call `combat.start` the moment the
+  threat appears) addresses the ROOT CAUSE; a model that ignores that
+  instruction entirely still hits this same stall.
+- **Presence-by-speech marks a DEPARTING speaker present** (HANDOFF_
+  PLAYTEST_POLISH_2.md) — the live-turn backstop (`jsonTurn` post-narration,
+  row above) can't distinguish "I'm gone" from a greeting: a chased-off
+  hostile who speaks on their way out gets marked present in Here & now
+  anyway, alongside the analyst's own retrospective correction (which DOES
+  now know better — Task A's presence clause). Not fixed at the live-turn
+  layer this slice; if playtests keep surfacing it, the fix is a departure-
+  verb detector at the same backstop.
 
 ## Incident → check (the lineage, for the record)
 
