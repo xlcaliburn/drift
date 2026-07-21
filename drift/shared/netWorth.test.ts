@@ -123,6 +123,14 @@ describe("patronHelp — the free early-game safety net (STARTER.md)", () => {
     expect(patronHelp(s, ["npc-patron-c"]).eligible).toBe(false);
   });
 
+  it("HANDOFF_PLAYTEST_POLISH_1.md follow-up: only BELOW-HALF HP needs help — a light scratch doesn't", () => {
+    // maxHp 18: half is 9. 10 is scratched, not eligible; 8 is genuinely hurt.
+    const scratched = stateWith({ credits: 50, currentLocationId: "loc-home", npcs: [patronNpc], hp: 10 });
+    expect(patronHelp(scratched, ["npc-patron-c"]).needsHelp).toBe(false);
+    const hurt = stateWith({ credits: 50, currentLocationId: "loc-home", npcs: [patronNpc], hp: 8 });
+    expect(patronHelp(hurt, ["npc-patron-c"]).needsHelp).toBe(true);
+  });
+
   it("cuts off once the player is established (net worth ≥ the cutoff), even present and hurt", () => {
     const s = stateWith({ credits: PATRON_HELP_MAX + 100, currentLocationId: "loc-home", npcs: [patronNpc], hp: 4 });
     const { patron, underCap, eligible } = patronHelp(s, ["npc-patron-c"]);
