@@ -11,7 +11,7 @@
 import type { z } from "zod";
 import type { CampaignState } from "./schemas";
 import { GearItem } from "./schemas";
-import { catalogItem, itemCount } from "./items";
+import { catalogItem } from "./items";
 import { shipIsOwned } from "./recap";
 
 type Gear = z.infer<typeof GearItem>;
@@ -105,9 +105,13 @@ export interface PatronHelpInfo {
   present: boolean;
   /** Net worth is still in the early-game T1 band — the safety net hasn't cut off. */
   underCap: boolean;
-  /** The PC is actually hurt or low on stims — there's something to rest up FOR.
-   *  Without this, the chip kept getting offered (and clicked out of curiosity) even
-   *  at full health, which is how the patron ended up randomly narrated in. */
+  /** The PC is actually hurt — there's something to rest up FOR. Without this,
+   *  the chip kept getting offered (and clicked out of curiosity) even at full
+   *  health, which is how the patron ended up randomly narrated in. HANDOFF_
+   *  PLAYTEST_POLISH_1.md: a low-stim-but-full-HP PC alone no longer qualifies
+   *  (the rest still restocks stims when actually taken — PATRON_STIM_FLOOR is
+   *  unchanged for that) — a full-health player has nothing visible to "rest
+   *  up" from. */
   needsHelp: boolean;
   /** Offer the clickable "Rest up" chip: patron present + still early-game + the
    *  player genuinely needs it. */
@@ -126,6 +130,6 @@ export function patronHelp(
   const present = presentNpcIds.includes(patron.id);
   const underCap = netWorth(state) < PATRON_HELP_MAX;
   const pc = state.characters.find((c) => c.kind === "pc");
-  const needsHelp = !!pc && (pc.hp < pc.maxHp || itemCount(pc, "stim") < PATRON_STIM_FLOOR);
+  const needsHelp = !!pc && pc.hp < pc.maxHp;
   return { patron, present, underCap, needsHelp, eligible: present && underCap && needsHelp };
 }

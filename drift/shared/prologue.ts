@@ -43,23 +43,34 @@ export interface PrologueAdvance {
 export function advancePrologue(stage: PrologueStage, signals: PrologueSignals): PrologueAdvance {
   switch (stage) {
     case "intro":
+      // HANDOFF_PLAYTEST_POLISH_1.md: interim transitions print nothing — the
+      // stage directive already steers the narration, so a display line here
+      // just duplicates it (and printed ABOVE the very narration introducing
+      // the ally, reading as confusing meta-noise in a live playtest).
       if (signals.turnCompleted) {
-        return { stage: "groundFight", lines: ["🎓 Time to see how you handle yourself — a fight's coming."], allyDeparts: false };
+        return { stage: "groundFight", lines: [], allyDeparts: false };
       }
       break;
     case "groundFight":
       if (signals.combatResolvedAlive && signals.resolvedScale === "personal") {
-        return { stage: "shipFight", lines: ["🎓 Solid work on the ground. Now let's see you fly."], allyDeparts: false };
+        return { stage: "shipFight", lines: [], allyDeparts: false };
       }
       break;
     case "shipFight":
       if (signals.combatResolvedAlive && signals.resolvedScale === "ship") {
-        return { stage: "graduation", lines: ["🎓 You've got the basics. One last thing before you're on your own."], allyDeparts: false };
+        return { stage: "graduation", lines: [], allyDeparts: false };
       }
       break;
     case "graduation":
+      // The one stage transition that stays visible — the ally is actually
+      // leaving the party this turn, matching the house transition style
+      // (TUTORIAL_GRADUATION_BEAT in shared/tutorial.ts).
       if (signals.turnCompleted) {
-        return { stage: "complete", lines: ["🎓 Training's over — the Drift is yours now."], allyDeparts: true };
+        return {
+          stage: "complete",
+          lines: ["— your escort ships out · training's over — the Drift is yours —"],
+          allyDeparts: true,
+        };
       }
       break;
     case "complete":

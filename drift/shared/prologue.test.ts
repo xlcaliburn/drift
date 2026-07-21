@@ -7,25 +7,32 @@ describe("shared/prologue — advancePrologue", () => {
   it("walks the full intro → groundFight → shipFight → graduation → complete arc", () => {
     let stage: PrologueStage = "intro";
 
+    // HANDOFF_PLAYTEST_POLISH_1.md: interim transitions are SILENT — the
+    // stage directive already steers the narration, an extra display line
+    // just duplicates it. Only the final graduation→complete transition
+    // prints anything, since the ally is actually leaving the party.
     let step = advancePrologue(stage, { turnCompleted: true, combatResolvedAlive: false });
     expect(step.stage).toBe("groundFight");
     expect(step.allyDeparts).toBe(false);
-    expect(step.lines.length).toBeGreaterThan(0);
+    expect(step.lines).toEqual([]);
     stage = step.stage;
 
     step = advancePrologue(stage, { turnCompleted: true, combatResolvedAlive: true, resolvedScale: "personal" });
     expect(step.stage).toBe("shipFight");
     expect(step.allyDeparts).toBe(false);
+    expect(step.lines).toEqual([]);
     stage = step.stage;
 
     step = advancePrologue(stage, { turnCompleted: true, combatResolvedAlive: true, resolvedScale: "ship" });
     expect(step.stage).toBe("graduation");
     expect(step.allyDeparts).toBe(false);
+    expect(step.lines).toEqual([]);
     stage = step.stage;
 
     step = advancePrologue(stage, { turnCompleted: true, combatResolvedAlive: false });
     expect(step.stage).toBe("complete");
     expect(step.allyDeparts).toBe(true);
+    expect(step.lines.length).toBeGreaterThan(0);
     stage = step.stage;
 
     step = advancePrologue(stage, { turnCompleted: true, combatResolvedAlive: true, resolvedScale: "ship" });

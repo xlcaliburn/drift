@@ -90,7 +90,7 @@ describe("revalidateChoices — the refresh-time chip contract check", () => {
       sceneCard: { ...freshSceneCard(), presentNpcIds: ["npc-patron-c"] },
     });
     const healed = ctx({
-      // Full HP AND stocked on stims — patronHelp's needsHelp gate checks both.
+      // Full HP alone drops the chip now — patronHelp's needsHelp gate is hp-only.
       state: state({ characters: [pc({ hp: 18, stims: 3 })], npcs: [patronNpc] }),
       sceneCard: { ...freshSceneCard(), presentNpcIds: ["npc-patron-c"] },
     });

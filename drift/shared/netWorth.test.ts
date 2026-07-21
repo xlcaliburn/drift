@@ -117,9 +117,10 @@ describe("patronHelp — the free early-game safety net (STARTER.md)", () => {
     expect(eligible).toBe(false);
   });
 
-  it("needs help when low on stims even at full HP", () => {
-    const s = stateWith({ credits: 50, currentLocationId: "loc-home", npcs: [patronNpc], hp: 18, stims: 1 });
-    expect(patronHelp(s, ["npc-patron-c"]).needsHelp).toBe(true);
+  it("HANDOFF_PLAYTEST_POLISH_1.md: low stims alone (full HP) no longer triggers the chip", () => {
+    const s = stateWith({ credits: 50, currentLocationId: "loc-home", npcs: [patronNpc], hp: 18, stims: 0 });
+    expect(patronHelp(s, ["npc-patron-c"]).needsHelp).toBe(false);
+    expect(patronHelp(s, ["npc-patron-c"]).eligible).toBe(false);
   });
 
   it("cuts off once the player is established (net worth ≥ the cutoff), even present and hurt", () => {

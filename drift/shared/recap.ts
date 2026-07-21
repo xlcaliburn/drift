@@ -51,6 +51,13 @@ export function buildOpeningRecap(state: CampaignState): string {
     lines.push(`You're at ${loc.name}${desc}.`);
   }
 
+  // HANDOFF_PLAYTEST_POLISH_1.md — the prologue's temporary ally is seeded at
+  // creation (squad orders need a real character from the first fight on),
+  // but nothing on screen explained them before the first turn's narration
+  // did. Name them here too, deterministically, for free.
+  const ally = state.characters.find((c) => c.kind === "party" && c.temporary);
+  if (ally) lines.push(`${ally.name} is riding with you on your first runs.`);
+
   if (active.length) {
     lines.push(
       isFreshStart(state)
