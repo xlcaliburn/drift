@@ -289,6 +289,16 @@ Don't add prose rules for things the engine can enforce.
   accepted gap: a model that never stages the ship fight stalls that
   stage indefinitely — hot-recoverable via the admin editor, no
   auto-skip this slice.
+- `HANDOFF_PLAYTEST_POLISH_1.md` — **READY TO IMPLEMENT** (Fable,
+  2026-07-20): the first prologue-playtest polish batch, verified against
+  Ludo's live run — kill the interim 🎓 stage lines (keep one house-style
+  graduation line), fresh-campaign-only opening recap that names the ally,
+  full-transcript restore on resume (client was truncating to 5 exchanges),
+  PC-first collapsible sidebar party block + a Details "Party" tab, patron
+  rest chip gated on actually-hurt, crew aim/cover orders made real
+  (`CombatState.memberMods`, mirrors the PC's aim/cover semantics) + UI
+  default-staged attack orders, and a "Story so far" modal
+  (`/api/summary`: free scene-summary list + optional cheap-model retell).
 - `COMBAT_V2.md` — **DESIGN (owner priority, decisions RESOLVED), Parts A+B
   core + customization all SHIPPED (2026-07-18)**: squad control (order every
   party member, temporary allies — Part A) + Eclipse-style ship combat (power
