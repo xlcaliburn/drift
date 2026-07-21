@@ -214,15 +214,39 @@ function medicStabilize(rt: CombatRT, combat: CombatState, targetId: string, lin
   return true;
 }
 
+/** Read a crew member's current aim bonus (consumed by their next attack).
+ *  Defensive default — `memberMods` is a NEW field on persisted jsonb. */
+function memberAim(combat: CombatState, memberId: string): number {
+  return combat.memberMods?.[memberId]?.aim ?? 0;
+}
+
+/** Read a crew member's current cover AC bonus (protects them in the enemy
+ *  volley until they next attack). */
+export function memberCoverAc(combat: CombatState, memberId: string): number {
+  return combat.memberMods?.[memberId]?.coverAc ?? 0;
+}
+
+/** Set (aim order), clear (cover order or nothing to consume), or reset-on-
+ *  attack a member's aim/cover mods. Mutates `combat` in place — same
+ *  pattern as `combat.medicSpentIds` above; the caller's later `{...combat}`
+ *  spread picks it up. */
+function setMemberMods(combat: CombatState, memberId: string, mod: { aim: number; coverAc: number }): void {
+  combat.memberMods = { ...(combat.memberMods ?? {}), [memberId]: mod };
+}
+
 /** Crew act after the player — ONE summary line per round (C-3). An ORDERED
- *  member (HANDOFF_COMBAT_V2_1 Task C — squad orders) attacks their chosen
- *  target or self-uses a stim/item; an UN-ORDERED member keeps today's exact
- *  auto-act (muscle/gunner attack the front enemy, everyone else holds
+ *  member (HANDOFF_COMBAT_V2_1 Task C — squad orders; aim/cover added by
+ *  HANDOFF_PLAYTEST_POLISH_1.md) attacks their chosen target, takes aim,
+ *  takes cover, or self-uses a stim/item; an UN-ORDERED member keeps today's
+ *  exact auto-act (muscle/gunner attack the front enemy, everyone else holds
  *  position). The medic's stabilize is UNCONDITIONAL — a downed ally is always
  *  caught first, regardless of any order; only once there's no patient can an
- *  ordered medic act instead of holding. aim/cover/switch/flee orders aren't
- *  wired for crew this slice (no persistent per-member CombatState yet) — they
- *  silently absorb as a hold. Mutates `enemies`. */
+ *  ordered medic act instead of holding. aim/cover mirror the PC's own
+ *  semantics one level down (shared/combat.ts's CombatState.memberMods doc):
+ *  an aim/cover order is the member's WHOLE action this round (no attack),
+ *  the bonus is consumed by their next attack (this round or a later one).
+ *  switch/flee orders still aren't wired for crew — out of scope, absorb as
+ *  a hold. Mutates `enemies`. */
 function crewPhase(
   rt: CombatRT,
   combat: CombatState,
@@ -254,9 +278,11 @@ function crewPhase(
       if (!target) break;
       const w = defaultWeapon(m);
       const effAc = Math.max(1, target.ac - acPenalty(target.statuses));
-      const r = playerAttack({ ...target, ac: effAc }, computeModifier(m, weaponSkill(w?.name)), w?.damage ? String(w.damage) : "1d4", 0, rt.rng);
+      const aimBonus = memberAim(combat, m.id);
+      const r = playerAttack({ ...target, ac: effAc }, computeModifier(m, weaponSkill(w?.name)), w?.damage ? String(w.damage) : "1d4", aimBonus, rt.rng);
       target.hp = r.enemyHpAfter;
       target.shieldReady = r.shieldReadyAfter;
+      setMemberMods(combat, m.id, { aim: 0, coverAc: 0 });
       acts.push(
         r.hit
           ? r.damage > 0
@@ -273,9 +299,11 @@ function crewPhase(
       if (!target) continue;
       const w = defaultWeapon(m);
       const effAc = Math.max(1, target.ac - acPenalty(target.statuses));
-      const r = playerAttack({ ...target, ac: effAc }, computeModifier(m, weaponSkill(w?.name)), w?.damage ? String(w.damage) : "1d4", 0, rt.rng);
+      const aimBonus = memberAim(combat, m.id);
+      const r = playerAttack({ ...target, ac: effAc }, computeModifier(m, weaponSkill(w?.name)), w?.damage ? String(w.damage) : "1d4", aimBonus, rt.rng);
       target.hp = r.enemyHpAfter;
       target.shieldReady = r.shieldReadyAfter;
+      setMemberMods(combat, m.id, { aim: 0, coverAc: 0 });
       acts.push(
         r.hit
           ? r.damage > 0
@@ -283,6 +311,12 @@ function crewPhase(
             : `${m.name} hits ${target.name}'s shield`
           : `${m.name} misses ${target.name}`,
       );
+    } else if (order.type === "aim") {
+      setMemberMods(combat, m.id, { aim: 2, coverAc: 0 });
+      acts.push(`${m.name} steadies their aim`);
+    } else if (order.type === "cover") {
+      setMemberMods(combat, m.id, { aim: 0, coverAc: 2 });
+      acts.push(`${m.name} takes cover`);
     } else if (order.type === "stim" || order.type === "item") {
       const itemId = order.type === "stim" ? "stim" : order.itemId ?? "";
       const item = catalogItem(itemId);
@@ -311,7 +345,7 @@ function crewPhase(
         acts.push(`${m.name} has nothing to use.`);
       }
     }
-    // aim/cover/switch/flee: no-op this slice (see doc comment above).
+    // switch/flee: still no-op this slice (see doc comment above).
   }
   if (acts.length) lines.push(`🧑‍🚀 Crew — ${acts.join(" · ")}.`);
 }
@@ -694,8 +728,11 @@ function enemyVolley(rt: CombatRT, combat: CombatState, lines: string[], skipIds
           if (harm.downed && !medicStabilize(rt, combat, pc.id, lines)) return "downed";
         }
       } else {
-        // A crew member takes the swing.
-        const atk = enemyAttack(enemy, pick.ac, rt.rng);
+        // A crew member takes the swing — cover ordered this same round
+        // (HANDOFF_PLAYTEST_POLISH_1.md) raises their effective AC here,
+        // exactly like the PC's own playerCoverAc above.
+        const pickAc = pick.ac + memberCoverAc(combat, pick.id);
+        const atk = enemyAttack(enemy, pickAc, rt.rng);
         lines.push(`💢 ${atk.breakdown} — at ${pick.name}`);
         if (atk.hit) {
           const harm = applyDamage(rt, pick.id, atk.damage, `${enemy.name}'s attack.`);

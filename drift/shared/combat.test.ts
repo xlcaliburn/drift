@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { interpretCombatText, combatChipsFor, type CombatState, type CombatEnemy } from "./combat";
+import { interpretCombatText, combatChipsFor, crewActionChips, type CombatState, type CombatEnemy } from "./combat";
 import type { Ship2Profile } from "./ship2";
 
 const enemy = (over: Partial<CombatEnemy> = {}): CombatEnemy => ({
@@ -52,6 +52,23 @@ describe("interpretCombatText — free text can't bypass combat", () => {
   it("skips a dead enemy and attacks a living one", () => {
     const c2 = combat([enemy({ id: "a", name: "Draven", hp: 0 }), enemy({ id: "b", name: "Cutter" })]);
     expect(interpretCombatText("open fire", c2, [])).toEqual({ type: "attack", enemyId: "b" });
+  });
+});
+
+describe("crewActionChips — per-member aim/cover chips (HANDOFF_PLAYTEST_POLISH_1.md)", () => {
+  it("offers aim/cover alongside attack chips for every standing member, personal scale only", () => {
+    const c = combat([enemy()]);
+    const groups = crewActionChips(c, [{ id: "crew-1", name: "Bruno" }], {});
+    expect(groups).toHaveLength(1);
+    const types = groups[0].chips.map((ch) => ch.combatAction.type);
+    expect(types).toContain("attack");
+    expect(types).toContain("aim");
+    expect(types).toContain("cover");
+  });
+
+  it("returns nothing at ship scale — crew orders stay personal-only this slice", () => {
+    const c: CombatState = { ...combat([enemy()]), scale: "ship" };
+    expect(crewActionChips(c, [{ id: "crew-1", name: "Bruno" }], {})).toEqual([]);
   });
 });
 

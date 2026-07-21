@@ -180,3 +180,70 @@ describe("squad orders (HANDOFF_COMBAT_V2_1 Task C)", () => {
     expect(withEmpty.combat.enemies[0].hp).toBe(withSingle.combat.enemies[0].hp);
   });
 });
+
+describe("crew aim/cover orders (HANDOFF_PLAYTEST_POLISH_1.md)", () => {
+  // Bruno's smallArms mod here is attrMod(0) + skillProficiency(level 1)=1 → 1.
+  // Fixed d20=10 → no-aim total=11 (miss vs AC 13), +2 aim → total=13 (hit).
+  const pinnedD20: RNG = { int: (min, max) => (min === 1 && max === 20 ? 10 : min === 0 ? 0 : min) };
+
+  it("an aim order does not attack this round, and sets memberMods.aim", () => {
+    const rt = new TurnRuntime(state([crew("Bruno", "face")]), pinnedD20);
+    const r = rt.resolveCombatRound(combatWith([enemy({ id: "e-1", hp: 60, ac: 13 })]), [
+      { memberId: "pc-1", action: { type: "cover" } },
+      { memberId: "crew-bruno", action: { type: "aim" } },
+    ]);
+    expect(r.combat.enemies[0].hp).toBe(60); // no attack happened
+    expect(r.combat.memberMods?.["crew-bruno"]).toEqual({ aim: 2, coverAc: 0 });
+    expect(r.lines.find((l) => l.startsWith("🧑‍🚀 Crew —"))).toMatch(/Bruno steadies their aim/);
+  });
+
+  it("the aim bonus carries to the member's NEXT attack (this round doesn't attack) and is consumed", () => {
+    const rt = new TurnRuntime(state([crew("Bruno", "face")]), pinnedD20);
+    const round1 = rt.resolveCombatRound(combatWith([enemy({ id: "e-1", hp: 60, ac: 13 })]), [
+      { memberId: "pc-1", action: { type: "cover" } },
+      { memberId: "crew-bruno", action: { type: "aim" } },
+    ]);
+    const round2 = rt.resolveCombatRound(round1.combat, [
+      { memberId: "pc-1", action: { type: "cover" } },
+      { memberId: "crew-bruno", action: { type: "attack", enemyId: "e-1" } },
+    ]);
+    expect(round2.combat.enemies[0].hp).toBeLessThan(60); // 11+2=13 >= AC 13 -> hit
+    expect(round2.combat.memberMods?.["crew-bruno"]).toEqual({ aim: 0, coverAc: 0 }); // spent
+  });
+
+  it("without a prior aim order, the SAME roll misses (proves the bonus mattered, not a lucky roll)", () => {
+    const rt = new TurnRuntime(state([crew("Bruno", "face")]), pinnedD20);
+    const r = rt.resolveCombatRound(combatWith([enemy({ id: "e-1", hp: 60, ac: 13 })]), [
+      { memberId: "pc-1", action: { type: "cover" } },
+      { memberId: "crew-bruno", action: { type: "attack", enemyId: "e-1" } },
+    ]);
+    expect(r.combat.enemies[0].hp).toBe(60); // 11 < AC 13 -> miss, no aim carried in
+  });
+
+  it("a cover order raises the member's effective AC in the SAME round's enemy volley", () => {
+    // Target-pick pinned to index 1 (the only crew member) via pinnedD20's `min===0` branch
+    // returning 0 for int(0,1) too — override it here to pick Bruno specifically.
+    const pickBruno: RNG = { int: (min, max) => (min === 1 && max === 20 ? 10 : min === 0 && max === 1 ? 1 : min) };
+    const rt = new TurnRuntime(state([crew("Bruno", "face")]), pickBruno);
+    // Enemy atk 2: d20(10)+2=12 -> hits base AC 12, but not 12+2=14 with cover.
+    const r = rt.resolveCombatRound(combatWith([enemy({ id: "e-1", hp: 60, atk: 2 })]), [
+      { memberId: "pc-1", action: { type: "cover" } },
+      { memberId: "crew-bruno", action: { type: "cover" } },
+    ]);
+    const bruno = rt.state.characters.find((c) => c.name === "Bruno")!;
+    expect(bruno.hp).toBe(10); // untouched -- the enemy volley missed
+    expect(r.combat.memberMods?.["crew-bruno"]).toEqual({ aim: 0, coverAc: 2 });
+  });
+
+  it("the SAME enemy roll hits an un-covered member (proves cover, not a guaranteed miss)", () => {
+    const pickBruno: RNG = { int: (min, max) => (min === 1 && max === 20 ? 10 : min === 0 && max === 1 ? 1 : min) };
+    const rt = new TurnRuntime(state([crew("Bruno", "face")]), pickBruno);
+    const r = rt.resolveCombatRound(combatWith([enemy({ id: "e-1", hp: 60, atk: 2 })]), [
+      { memberId: "pc-1", action: { type: "cover" } },
+      // Bruno holds position (face, un-ordered) -- no cover this round.
+    ]);
+    const bruno = rt.state.characters.find((c) => c.name === "Bruno")!;
+    expect(bruno.hp).toBeLessThan(10); // 10+2=12 >= AC 12 -> hit
+    expect(r.combat.enemies[0].hp).toBe(60);
+  });
+});

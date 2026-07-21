@@ -88,6 +88,14 @@ export interface CombatState {
    *  that round only (the enemy gets the negated value). Absent for classic
    *  ship fights (legacy or newly-started ground fights never set it). */
   ship2?: { player: Ship2Profile; surpriseMod?: number };
+  /** Per-CREW-MEMBER aim/cover, personal scale only (HANDOFF_PLAYTEST_POLISH_1.md
+   *  — mirrors playerAimBonus/playerCoverAc's exact semantics one level down):
+   *  an `aim` order sets +2 to that member's NEXT attack roll (consumed then,
+   *  same round or a later one); a `cover` order sets +2 to their effective AC
+   *  against the enemy volley until they next attack. NEW field on persisted
+   *  jsonb — legacy rows have none; every read must default missing entries to
+   *  {aim:0, coverAc:0} (`combat.memberMods?.[id]?.aim ?? 0`), never assume set. */
+  memberMods?: Record<string, { aim?: number; coverAc?: number }>;
 }
 
 export type CombatActionType = "attack" | "aim" | "cover" | "stim" | "flee" | "item" | "switch" | "allocate";
@@ -205,14 +213,13 @@ export interface CrewChipGroup {
 }
 
 /** Per-member combat chip GROUPS for standing crew/allies (HANDOFF_COMBAT_V2_1
- *  Task C — squad orders): attack a chosen enemy, or use one of their own held
- *  consumables. Deliberately modest (no aim/cover/switch for crew this slice —
- *  see runtimeCombat.ts's crewPhase doc comment) and PERSONAL SCALE ONLY: ship
- *  crew orders are out of scope this slice (they become station assignments in
- *  COMBAT_V2.md slice 2), so an un-ordered member there just keeps auto-acting.
- *  `membersConsumables` is pre-filtered per member — same pattern as
- *  `combatActions`' own `consumables` param, keeping this module free of a
- *  server import. */
+ *  Task C — squad orders; aim/cover added by HANDOFF_PLAYTEST_POLISH_1.md):
+ *  attack a chosen enemy, take aim, take cover, or use one of their own held
+ *  consumables. PERSONAL SCALE ONLY: ship crew orders are out of scope this
+ *  slice (they become station assignments in COMBAT_V2.md slice 2), so an
+ *  un-ordered member there just keeps auto-acting. `membersConsumables` is
+ *  pre-filtered per member — same pattern as `combatActions`' own
+ *  `consumables` param, keeping this module free of a server import. */
 export function crewActionChips(
   combat: CombatState,
   members: { id: string; name: string }[],
@@ -226,6 +233,8 @@ export function crewActionChips(
         label: `Attack ${e.name} (${e.hp}/${e.maxHp})`,
         combatAction: { type: "attack", enemyId: e.id },
       }));
+    chips.push({ label: "Take aim (+2 next hit)", combatAction: { type: "aim" } });
+    chips.push({ label: "Take cover (+2 AC)", combatAction: { type: "cover" } });
     for (const u of membersConsumables[m.id] ?? []) {
       chips.push({ label: `${u.verb} ${u.name} (×${u.count})`, combatAction: { type: "item", itemId: u.itemId } });
     }
