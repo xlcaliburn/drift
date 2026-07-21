@@ -211,6 +211,68 @@ export async function summarizeScene(
   }
 }
 
+const RETELL_SYSTEM =
+  "You retell a space-opera TTRPG campaign's story so far, as flowing second-person " +
+  '("you") prose, past tense, warm and evocative but concise — 150-200 words. Ground ' +
+  "EVERY beat in the scene summaries given; never invent a character, place, or event " +
+  "that isn't in them. No headers, no bullet points — just the story.";
+
+/**
+ * "Story so far" (HANDOFF_PLAYTEST_POLISH_1.md decision 10) — a free-prose
+ * retelling composed from already-persisted scene summaries (never raw
+ * transcript — keeps this cheap, and it's player-initiated only, never run
+ * automatically). Same cheap-model-first / Haiku-fallback shape as
+ * summarizeScene above, but returns plain text (no JSON) plus real usage so
+ * the caller can meter it like an appeal.
+ */
+export async function retellStory(
+  sceneSummaries: string,
+  situation: string,
+  opts: { apiKey?: string; model?: string } = {},
+): Promise<{ text: string; model: string; usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number } }> {
+  const primary = resolveModel(opts.model ?? defaultSummarizerModel());
+  const user = `Scene summaries, oldest to newest:\n${sceneSummaries}\n\nCurrent situation: ${situation}`;
+
+  const candidates = [primary];
+  if (isDeepSeekModel(primary) && process.env.ANTHROPIC_API_KEY) {
+    candidates.push("claude-haiku-4-5-20251001");
+  }
+
+  for (const model of candidates) {
+    const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    try {
+      if (isDeepSeekModel(model)) {
+        const resp = await deepseekChat({
+          model,
+          maxTokens: 500,
+          system: [{ type: "text", text: RETELL_SYSTEM }],
+          messages: [{ role: "user", content: user }],
+        });
+        usage.inputTokens += resp.usage.input_tokens;
+        usage.outputTokens += resp.usage.output_tokens;
+        usage.cacheReadTokens += resp.usage.cache_read_input_tokens ?? 0;
+        const text = resp.content.find((b) => b.type === "text");
+        return { text: text && text.type === "text" ? text.text.trim() : "", model, usage };
+      }
+      const client = new Anthropic({ apiKey: opts.apiKey ?? process.env.ANTHROPIC_API_KEY });
+      const resp = await client.messages.create({
+        model,
+        max_tokens: 500,
+        system: RETELL_SYSTEM,
+        messages: [{ role: "user", content: user }],
+      });
+      usage.inputTokens += resp.usage.input_tokens;
+      usage.outputTokens += resp.usage.output_tokens;
+      usage.cacheReadTokens += resp.usage.cache_read_input_tokens ?? 0;
+      const text = resp.content.find((b) => b.type === "text");
+      return { text: text && text.type === "text" ? text.text.trim() : "", model, usage };
+    } catch (e) {
+      console.error(`[retellStory] model ${model} failed:`, e instanceof Error ? e.message : e);
+    }
+  }
+  return { text: "", model: primary, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } };
+}
+
 /**
  * SCENE ANALYST — a richer pass than summarizeScene (CONTINUITY). Runs in the
  * background on scene close and reads the scene for lasting memory: the summary +

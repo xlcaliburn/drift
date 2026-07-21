@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { CampaignState } from "@/shared/schemas";
 import type { ChatEntry } from "@/shared/chat";
 import { buildOpeningRecap, buildOpeningChoices, buildFallbackChoices } from "@/shared/recap";
+import { StorySoFarModal } from "./StorySoFarModal";
 import { TUTORIAL_GRADUATION_BEAT } from "@/shared/tutorial";
 import { stripInlineMenu } from "@/shared/narration";
 import type { ChoiceOption } from "@/shared/turnPlan";
@@ -81,6 +82,7 @@ export default function PlayClient({
   const [choicesCollapsed, setChoicesCollapsed] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showStorySoFar, setShowStorySoFar] = useState(false);
   const [showSheet, setShowSheet] = useState(false); // mobile sidebar drawer
   // Mobile scene strip: the persistent Here & now bar under the header (tap to expand).
   const [sceneStripOpen, setSceneStripOpen] = useState(false);
@@ -569,6 +571,12 @@ export default function PlayClient({
             </Link>
           )}
           <button
+            onClick={() => setShowStorySoFar(true)}
+            className="rounded-md border border-edge px-2.5 py-1.5 text-xs text-neutral-400 transition hover:border-accent hover:text-accent"
+          >
+            📖<span className="hidden sm:inline"> Story so far</span>
+          </button>
+          <button
             onClick={() => setShowFeedback(true)}
             className="rounded-md border border-edge px-2.5 py-1.5 text-xs text-neutral-400 transition hover:border-accent hover:text-accent"
           >
@@ -673,6 +681,8 @@ export default function PlayClient({
       {/* Feature-request modal — z-[60], above the Sidebar/DetailsModal (z-50), so
           flagging a remembered fact from inside the details modal surfaces this
           on top instead of being hidden behind it. */}
+      {showStorySoFar && <StorySoFarModal campaignId={campaignId} onClose={() => setShowStorySoFar(false)} />}
+
       {showFeedback && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/80 p-4" onClick={() => setShowFeedback(false)}>
           <div className="w-full max-w-md rounded-xl border border-edge bg-panel p-5" onClick={(e) => e.stopPropagation()}>
