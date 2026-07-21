@@ -12,9 +12,20 @@ export const activeJobs: Section = ({ jobs, state }) => {
   const active = (jobs ?? []).filter((j) => j.status === "active");
   if (!active.length) return [];
   const locName = (id?: string) => (id ? state.locations.find((l) => l.id === id)?.name ?? id : "somewhere unnamed");
+  const here = state.campaign.currentLocationId;
   const lines = active.map((j) => {
     const next = j.objectives.find((o) => !o.done);
     const step = next ? next.summary : "wrap it up";
+    // TRAVEL FRAMING (HANDOFF_PLAYTEST_POLISH_2.md) — the engine already knows
+    // where this step happens; nothing said so explicitly, so a player asking
+    // "where are we going?" got a pitched NEW job instead of an answer, and
+    // "full burn for home" read as escaping the step rather than completing it.
+    // Born from the live Ludo playtest.
+    const travel = next?.locationId
+      ? next.locationId === here
+        ? ` [the player is AT ${locName(next.locationId)} now — play the step out here]`
+        : ` [destination: ${locName(next.locationId)} — the player is at ${locName(here)}, NOT there yet; getting there IS the step. Never narrate the hand-off before the engine reports arrival]`
+      : "";
     const freight = j.cargo ? ` [they are CARRYING ${j.cargo} — real inventory; it leaves their hands ONLY when the engine reports delivery. Never narrate it sold, handed off early, or duplicated]` : "";
     // CAST (HANDOFF Task D): the fixed people this job involves — the model
     // narrates them, it never invents an ADDITIONAL gang member/middleman/
@@ -27,7 +38,7 @@ export const activeJobs: Section = ({ jobs, state }) => {
           .map((m) => `${m.role} ${m.name} (${m.roleLabel}, at ${locName(castHomeLocation(j, m.role))})`)
           .join("; ")}]`
       : "";
-    return `  - ${j.title}: next → ${step}${j.complication ? ` (complication: ${j.complication})` : ""}${freight}${cast}`;
+    return `  - ${j.title}: next → ${step}${j.complication ? ` (complication: ${j.complication})` : ""}${travel}${freight}${cast}`;
   });
   return [
     `ACTIVE JOBS the player has taken (weave the NEXT step into the fiction; the ENGINE tracks completion and pays the reward — never declare a job done or grant credits yourself):\n${lines.join("\n")}`,

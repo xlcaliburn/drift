@@ -81,6 +81,31 @@ describe("offeredJobs — the giver is named in the pitch", () => {
   });
 });
 
+describe("activeJobs — travel framing (HANDOFF_PLAYTEST_POLISH_2.md)", () => {
+  it("states the destination explicitly when the player hasn't arrived yet", () => {
+    const s = { ...state(), campaign: { ...state().campaign, currentLocationId: "loc-a" } };
+    const lines = activeJobs(ctx({ state: s, jobs: [job({ status: "active" })] }));
+    const text = lines.join("\n");
+    expect(text).toContain("[destination: The Shear — the player is at Rook Station, NOT there yet; getting there IS the step");
+  });
+
+  it("says the player IS at the destination once currentLocationId matches", () => {
+    const s = { ...state(), campaign: { ...state().campaign, currentLocationId: "loc-b" } };
+    const lines = activeJobs(ctx({ state: s, jobs: [job({ status: "active" })] }));
+    const text = lines.join("\n");
+    expect(text).toContain("[the player is AT The Shear now — play the step out here]");
+    expect(text).not.toContain("destination:");
+  });
+
+  it("omits the travel bracket entirely for an objective with no locationId", () => {
+    const noLoc = job({ status: "active", objectives: [{ id: "o1", kind: "persuade", summary: "Talk them down", done: false }] });
+    const lines = activeJobs(ctx({ jobs: [noLoc] }));
+    const text = lines.join("\n");
+    expect(text).not.toContain("destination:");
+    expect(text).not.toContain("the player is AT");
+  });
+});
+
 describe("LEGACY jobs (no cast field — raw-jsonb load) never crash the context build", () => {
   // Pre-manifest jobs persist WITHOUT `cast` and load unparsed, so the Zod
   // default never fills it. The load path normalizes; these prove the sections
