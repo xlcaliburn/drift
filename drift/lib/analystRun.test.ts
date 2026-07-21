@@ -81,3 +81,53 @@ describe("applyAnalystUpdates — faction backstop (HANDOFF_NPC_CANON Task B)", 
     expect(live.state.npcs.find((n) => n.id === "npc-gen-sera-1")?.factionId).toBeUndefined();
   });
 });
+
+describe("applyAnalystUpdates — scene PLACE backstop (HANDOFF_PLAYTEST_POLISH_2.md)", () => {
+  it("applies the corrected place when the live scene seq matches expectedSeq (mid-scene pass)", async () => {
+    const live = session([]); // freshSceneCard() default seq = 1
+    const changed = await applyAnalystUpdates(live, [], [], [], [], {
+      place: "Halcyon — dockside, outside Quist's office",
+      expectedSeq: 1,
+    });
+    expect(changed).toBe(true);
+    expect(live.sceneCard.place).toBe("Halcyon — dockside, outside Quist's office");
+  });
+
+  it("drops the place update when the live scene has moved on (seq mismatch)", async () => {
+    const live = session([]);
+    live.sceneCard = { ...live.sceneCard, seq: 3, place: "current place" };
+    const changed = await applyAnalystUpdates(live, [], [], [], [], {
+      place: "a stale correction for an old scene",
+      expectedSeq: 1,
+    });
+    expect(changed).toBe(false);
+    expect(live.sceneCard.place).toBe("current place"); // untouched
+  });
+
+  it("close-pass semantics: expectedSeq = closedSeq + 1 (the NEW carried-forward card)", async () => {
+    // Scene 2 just closed; carryScene already built scene 3 as the live card
+    // (this is exactly the card that stale-carried the OLD place forward).
+    const live = session([]);
+    live.sceneCard = { ...live.sceneCard, seq: 3, place: "stale — high orbit, aboard the shuttle" };
+    const closedSeq = 2;
+    const changed = await applyAnalystUpdates(live, [], [], [], [], {
+      place: "Halcyon — dockside",
+      expectedSeq: closedSeq + 1,
+    });
+    expect(changed).toBe(true);
+    expect(live.sceneCard.place).toBe("Halcyon — dockside");
+  });
+
+  it("a place update alone (no npc/item/thread/fact changes) still reports changed:true", async () => {
+    const live = session([]);
+    const changed = await applyAnalystUpdates(live, [], [], [], [], { place: "somewhere new", expectedSeq: 1 });
+    expect(changed).toBe(true);
+  });
+
+  it("no placeUpdate + no other updates is a true no-op", async () => {
+    const live = session([]);
+    const changed = await applyAnalystUpdates(live, [], [], [], []);
+    expect(changed).toBe(false);
+    expect(live.sceneCard.place).toBeUndefined();
+  });
+});

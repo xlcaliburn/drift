@@ -45,8 +45,19 @@ export async function applyAnalystUpdates(
   itemUpdates: ItemAnalysis[],
   threadUpdates: ThreadAnalysis[] = [],
   factUpdates: FactAnalysis[] = [],
+  /** The scene PLACE backstop (HANDOFF_PLAYTEST_POLISH_2.md) — the analyst's
+   *  corrected `place`, applied ONLY if the live session's scene card is still
+   *  the exact one this analysis was for (`expectedSeq`). A mid-scene pass
+   *  expects the card it read; a scene-close pass expects the NEW carried-
+   *  forward card (closedSeq + 1). Any other live seq means the session moved
+   *  on while this ran in the background — drop it silently rather than
+   *  stamp a place onto the wrong scene. */
+  placeUpdate?: { place: string; expectedSeq: number },
 ): Promise<boolean> {
-  if (!npcUpdates.length && !itemUpdates.length && !threadUpdates.length && !factUpdates.length) return false;
+  const applyPlace = placeUpdate && live.sceneCard.seq === placeUpdate.expectedSeq;
+  if (!npcUpdates.length && !itemUpdates.length && !threadUpdates.length && !factUpdates.length && !applyPlace) {
+    return false;
+  }
   const { TurnRuntime } = await import("@/llm/engineBridge");
   const { liveRng } = await import("@/engine");
   const { isPlausibleNpcName, isCollectiveName } = await import("@/shared/npcExtract");
@@ -94,6 +105,11 @@ export async function applyAnalystUpdates(
   }
   for (const it of itemUpdates) rt.grantSceneItem(it.name, it.note);
 
+  // PLACE backstop (HANDOFF_PLAYTEST_POLISH_2.md) — see the param doc above
+  // for the seq guard. Self-heals a frozen `scene.place` within ANALYST_
+  // INTERVAL turns, and corrects the carried-forward card at scene close.
+  if (applyPlace) rt.sceneCard = { ...rt.sceneCard, place: placeUpdate!.place };
+
   // QUEST backstop: the analyst caught an objective the live turn's threads[] missed
   // (or an OPEN thread the scene finished) — reconcile it into the tracked threads.
   const { applyThreadUpdates } = await import("@/llm/threadReconcile");
@@ -137,6 +153,10 @@ export async function runOpenSceneAnalyst(campaignId: string): Promise<boolean> 
   if (!live) return false;
   const slice = live.transcript.slice(live.sceneCard.startTranscriptIdx);
   if (slice.length < 3) return false; // too little has happened to analyze
+  // Captured BEFORE the analyst call — the place backstop's seq guard (trap 1)
+  // compares against this, not whatever live.sceneCard.seq happens to be by
+  // the time the (possibly slow) call returns.
+  const analyzedSeq = live.sceneCard.seq;
   const text = sliceText(live.transcript, live.sceneCard.startTranscriptIdx);
   const beatsNote = live.sceneCard.beats.length ? `\nEstablished so far: ${live.sceneCard.beats.join(" · ")}` : "";
   const entityIds = [
@@ -161,7 +181,14 @@ export async function runOpenSceneAnalyst(campaignId: string): Promise<boolean> 
     return false;
   }
   await recordSummaryCall(campaignId, `mid-scene analyst (scene ${live.sceneCard.seq})`, res.telemetry, res.summary);
-  const changed = await applyAnalystUpdates(live, res.npcs, res.items, res.threads, res.facts);
+  const changed = await applyAnalystUpdates(
+    live,
+    res.npcs,
+    res.items,
+    res.threads,
+    res.facts,
+    res.place ? { place: res.place, expectedSeq: analyzedSeq } : undefined,
+  );
   setSession(campaignId, live);
   if (changed) await persistSession(campaignId, live);
   return changed;

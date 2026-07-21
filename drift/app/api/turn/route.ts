@@ -88,6 +88,7 @@ async function compressClosedScene(
   let itemUpdates: ItemAnalysis[] = [];
   let threadUpdates: ThreadAnalysis[] = [];
   let factUpdates: FactAnalysis[] = [];
+  let placeUpdate: { place: string; expectedSeq: number } | undefined;
   try {
     const res = await analyzeScene(text + beatsNote, sceneNpcs, knownEntityIds, openThreads, {
       establishedFacts: knownFacts,
@@ -99,6 +100,11 @@ async function compressClosedScene(
     itemUpdates = res.items;
     threadUpdates = res.threads;
     factUpdates = res.facts;
+    // PLACE backstop (HANDOFF_PLAYTEST_POLISH_2.md) — this scene's own
+    // analyzed slice ran through `closedCard.seq`; the corrected place
+    // belongs on the NEW card `carryScene` already built (closedCard.seq + 1)
+    // — the exact card that stale-carried the OLD place forward.
+    if (res.place) placeUpdate = { place: res.place, expectedSeq: closedCard.seq + 1 };
     // Memory-tier telemetry — this used to be the only unaudited model path.
     await recordSummaryCall(campaignId, `scene ${closedCard.seq} close`, res.telemetry, summary);
   } catch {
@@ -153,7 +159,7 @@ async function compressClosedScene(
   live.recentScenes = [...live.recentScenes.filter((s) => s.seq !== scene.seq), scene]
     .sort((a, b) => a.seq - b.seq)
     .slice(-20);
-  const changed = await applyAnalystUpdates(live, npcUpdates, itemUpdates, threadUpdates, factUpdates);
+  const changed = await applyAnalystUpdates(live, npcUpdates, itemUpdates, threadUpdates, factUpdates, placeUpdate);
   setSession(campaignId, live);
   if (changed) await persistSession(campaignId, live);
 }
