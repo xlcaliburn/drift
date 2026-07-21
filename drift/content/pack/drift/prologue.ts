@@ -54,7 +54,7 @@ export const driftPrologue: PackPrologue = {
     groundFight:
       "Steer this scene into a SMALL, forgiving fight — call combat.start, tier T1, 1-2 foes, scale personal — with {ally} fighting alongside the player. The player can ORDER {ally} once the fight opens (squad orders).",
     shipFight:
-      "Steer this scene into a WEAK ship engagement on the player's own hull — combat.start, scale \"ship\", a lone T1 scout-class opponent. Keep stakes low: power allocation is the lesson, not a real threat. Fleeing counts as surviving it.",
+      "Steer this scene into a WEAK ship engagement on the player's own hull. If the player is docked or grounded, first get them FLYING with the shortest believable hook (their active delivery is the obvious one) — do not stage the fight on the ground. Once they're in flight and a ship threat appears, call combat.start THAT SAME TURN — scale \"ship\", a lone T1 scout-class opponent. Do NOT stage a standoff, a hail exchange, or a chase resolved by skill checks first: only a fight that actually STARTS teaches the lesson (power allocation) or advances the player past training — talking the threat away just repeats the drill next turn. Fleeing counts as surviving it, once the fight has started. Never carry a ship threat as a lingering shadow/watcher across turns where this isn't the engagement itself — either it's here now, or it's gone.",
     graduation:
       "{ally}'s unit recalls them — write one clean departure beat, warm, not final. Have {patron} hand the player off to the open Drift. This is the last turn {ally} rides along.",
   },
